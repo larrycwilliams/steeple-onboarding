@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2 style="margin-top:0">{{ manifest.org_name }} — package generated</h2>
+  <div class="derived" style="margin-bottom:18px">
+    <dl>
+      <dt>Store URL</dt><dd>{{ manifest.store_url }}</dd>
+      <dt>QR points at</dt><dd>{{ manifest.qr_target }}</dd>
+      <dt>Redirect</dt><dd>{{ manifest.redirect.from }} → {{ manifest.redirect.to }}</dd>
+      {% if manifest.pdf_fonts %}
+        <dt>Signable PDF fonts</dt>
+        <dd>
+          {% for requested, resolved in manifest.pdf_fonts.items() %}
+            {{ requested }} → {{ resolved }}{{ ", " if not loop.last }}
+          {% endfor %}
+          {% if 'fallback' in manifest.pdf_fonts.values()|join(' ') %}
+            <div class="help">A “fallback” means that family was not found on this
+            Mac, so the PDF will not match the .docx on the page.</div>
+          {% endif %}
+        </dd>
+      {% endif %}
+      {% if manifest.kit_pdf %}
+        <dt>Launch Week Kit PDF</dt>
+        <dd>
+          {% if manifest.kit_pdf.ok %}
+            converted with {{ manifest.kit_pdf.engine }}
+          {% else %}
+            <strong>not produced</strong> — {{ manifest.kit_pdf.error }}
+          {% endif %}
+        </dd>
+      {% endif %}
+      {% if manifest.qr_check %}
+        <dt>Branded QR</dt>
+        <dd>
+          logo at {{ (manifest.qr_check.logo_fraction * 100)|round|int }}% width —
+          {% if manifest.qr_check.verified %}decoded successfully
+          {% elif manifest.qr_check.verified is none %}not verified (OpenCV not installed)
+          {% else %}DID NOT DECODE — use the plain QR instead
+          {% endif %}
+        </dd>
+      {% endif %}
+    </dl>
+  </div>
+
+  {% if manifest.incomplete %}
+  <div class="note" style="border-color:#B4472F;background:#FBF1EE;margin-bottom:18px">
+    <strong>Do not send these yet — {{ manifest.incomplete|length }}
+    field{{ 's' if manifest.incomplete|length != 1 }} still unset:</strong>
+    {{ manifest.incomplete|join(', ') }}.
+    <div class="help" style="margin-top:6px">
+      Blank fees fall back to the seed values ($0 setup, $0 monthly, 10% margin) and
+      print as real terms above the signature line.
+    </div>
+  </div>
+  {% endif %}
+
+  <table>
+    <thead><tr><th>File</th><th></th></tr></thead>
+    <tbody>
+    {% for label, path in manifest.files.items() %}
+      <tr>
+        <td>
+          <strong>{{ label }}</strong>
+          <div class="help" style="font-family:ui-monospace,Menlo,monospace">
+            {{ path.split('/')[-1] }}</div>
+        </td>
+        <td style="text-align:right">
+          <a class="btn btn-quiet" href="{{ url_for('download') }}?path={{ path|urlencode }}">Download</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="note">
+  <strong>Before anything goes to print:</strong> add the redirect
+  <code>{{ manifest.redirect.from }} → {{ manifest.redirect.to }}</code> in Shopify
+  under Online Store → Navigation → URL Redirects, then scan-test the printed QR
+  from about three feet with both an iPhone and an Android.
+</div>
+
+<div class="actions">
+  <a class="btn btn-gold" href="{{ url_for('partner_email', pid=manifest.partner_id) }}">
+    Welcome email &rarr;</a>
+  <a class="btn btn-primary" href="{{ url_for('edit_partner', pid=manifest.partner_id) }}">Back to partner</a>
+  <a class="btn btn-quiet" href="{{ url_for('index') }}">All partners</a>
+</div>
+
+{% endblock %}

@@ -1,0 +1,9 @@
+Flask>=3.0
+python-docx>=1.1
+docxtpl>=0.16
+Jinja2>=3.1
+segno>=1.6
+Pillow>=10.2
+numpy>=1.26
+requests>=2.31
+reportlab>=4.0

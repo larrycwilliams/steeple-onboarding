@@ -1,0 +1,123 @@
+Welcome aboard, {{ contact_first_name }}.
+
+We're glad {{ org_name }} is in. Starting today, we're building your
+{{ audience }} a real online store — your name, your logo, your colors —
+and running the whole thing for you.
+
+Nothing gets printed until somebody orders it. There's no inventory in
+a closet, no volunteer chasing people for $18 in the lobby, and no task
+added to your staff's plate. A share of every sale comes back to your
+{{ org_word }}, every quarter.
+
+Most stores go from signed agreement to live in two to three weeks.
+Here's exactly how that works.
+
+----------------------------------------------------------------------
+YOUR LAUNCH TIMELINE
+----------------------------------------------------------------------
+
+Week 0  Agreement signed. You return your Launch Kit with brand assets
+        and payout details.
+
+Week 1  We build and brand your store, and create product mockups from
+        your assets.
+
+Week 2  You review and approve mockups. We test the store end to end,
+        including a live test order.
+
+Week 3  Your store goes live. We send your store link, QR code, and
+        launch-week promo kit.
+
+{% if attachment_count %}----------------------------------------------------------------------
+WHAT'S ATTACHED
+----------------------------------------------------------------------
+{% if has_agreement %}
+  >> SERVICE AGREEMENT — please sign and return this first.
+
+     It's a fillable PDF. Open it, type your name in the signature box,
+     tick the box underneath, save, and reply with it attached. Takes
+     about a minute, and nothing else starts until it's back.
+{% endif %}{% if has_kit %}
+* Launch Week Kit. Your week-by-week plan, the copy for every email and
+  post, and a page for who owns what. Fill in the names and send it back
+  with the agreement.
+{% endif %}{% if has_postcards %}
+* Postcards, print-ready. Hand this file to any commercial printer as
+  it is. Nothing to print yet — it's here so you can get a quote and
+  plan the run.
+{% endif %}{% if has_qr %}
+* Your QR code. The scannable link to your store, for signs, slides and
+  the welcome desk. It goes live when your store does.
+{% endif %}{% endif %}
+----------------------------------------------------------------------
+WHAT WE NEED FROM YOU THIS WEEK
+----------------------------------------------------------------------
+
+Alongside the signed agreement, this is the only real homework — and
+it's the one thing that controls your launch date. Send it over and the
+clock starts.
+
+* Your logo, high resolution. Vector .ai or .eps is ideal; a large .png
+  with a transparent background works too.
+
+* Any sub-logos you want on products — {{ subgroup_examples }}.
+
+* Your brand colors. Hex codes if you have them. If you don't, send a
+  photo of your signage or a slide and we'll pull them.
+
+* Taglines, mottos, or scripture you'd like to see on a shirt.
+
+* Payout details — how your quarterly margin should be paid, and who on
+  your side handles finance.
+
+Don't have all of it? Send what you have. We'll work with it and chase
+the rest. And if anything is unclear, don't fill in a guess — just
+reply to this email.
+
+{% if asset_upload_link %}  >> SEND YOUR BRAND ASSETS: {{ asset_upload_link }}
+     Or just reply to this email with the files attached.
+{% else %}  >> JUST REPLY TO THIS EMAIL with your files attached.
+     Anything you have — logos, colors, photos. We'll take it from there.
+{% endif %}
+
+----------------------------------------------------------------------
+YOUR PLAN
+----------------------------------------------------------------------
+
+Your plan:      {{ tier }}
+Your store:     {{ store_name }}
+Your giveback:  {{ giveback_percent }} of margin, paid to {{ org_name }}
+                every quarter with a line-item statement showing exactly
+                what sold and what it made.
+
+----------------------------------------------------------------------
+WHO TO CONTACT
+----------------------------------------------------------------------
+
+Store setup & brand questions
+  {{ point_of_contact_name }}
+  {{ point_of_contact_email }}
+  {{ point_of_contact_phone }}
+
+Orders & fulfillment
+  {{ support_email }}
+
+We answer within one business day. During launch week, call or text
+{{ point_of_contact_name }} directly — that's what the number is there for.
+
+----------------------------------------------------------------------
+
+One last thing. You're not dealing with a faceless print shop — you have
+my name, my email and my cell, and I'm the one who answers. We only make
+money when your store sells, so making this easy for you is the whole job.
+
+Let's build something your {{ org_word }} will actually be excited to wear.
+
+{{ signoff_name }}
+{{ signoff_title }}
+A division of The Williams Collective
+steepleandstitch.com
+
+{% if company_address %}----------------------------------------------------------------------
+{{ company_address }}
+{% endif %}

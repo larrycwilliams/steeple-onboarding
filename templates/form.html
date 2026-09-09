@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block content %}
+
+<form method="post" enctype="multipart/form-data">
+
+{% for group in GROUPS %}
+  <h2>{{ group }}</h2>
+  <div class="card">
+    <div class="grid">
+    {% for f in FIELDS if f.group == group %}
+      <div class="field">
+        <label for="{{ f.key }}">{{ f.label }}{% if f.required %} <span class="req">*</span>{% endif %}</label>
+        {% if f.kind == 'select' %}
+          <select id="{{ f.key }}" name="{{ f.key }}">
+            {% for choice in f.choices %}
+              <option value="{{ choice }}" {% if record.get(f.key) == choice %}selected{% endif %}>{{ choice }}</option>
+            {% endfor %}
+          </select>
+        {% elif f.kind == 'textarea' %}
+          <textarea id="{{ f.key }}" name="{{ f.key }}"
+                    placeholder="{{ f.placeholder }}">{{ record.get(f.key, '') }}</textarea>
+        {% elif f.kind == 'date' %}
+          <input type="date" id="{{ f.key }}" name="{{ f.key }}" value="{{ record.get(f.key, '') }}">
+        {% elif f.kind == 'file' %}
+          <input type="file" id="logo_file" name="logo_file" accept="image/*">
+          {% if record.get('logo_path') %}
+            <div class="help">Current: {{ record.logo_path.split('/')[-1] }}</div>
+          {% endif %}
+        {% else %}
+          <input type="text" id="{{ f.key }}" name="{{ f.key }}"
+                 value="{{ record.get(f.key, '') }}" placeholder="{{ f.placeholder }}">
+        {% endif %}
+        {% if f.help %}<div class="help">{{ f.help }}</div>{% endif %}
+      </div>
+    {% endfor %}
+    </div>
+
+    {% if group == 'Store' and shopify_ready %}
+      <div class="actions">
+        <button type="button" class="btn btn-quiet" onclick="pullShopify()">
+          Pull lineup &amp; sizes from Shopify</button>
+        <span id="shopify-status" class="help"></span>
+      </div>
+    {% endif %}
+
+    {% if group == 'Brand' %}
+      <h2 style="margin-top:26px">Palette</h2>
+      {% for i in range(5) %}
+        {% set colour = (record.palette or [])[i] if (record.palette or [])|length > i else None %}
+        <div class="swatch-row">
+          <div class="swatch" id="sw{{ i }}"
+               style="background:#{{ colour.hex if colour else 'FFFFFF' }}"></div>
+          <input type="text" name="palette_name_{{ i }}" id="pn{{ i }}"
+                 value="{{ colour.name if colour else '' }}" placeholder="Colour name">
+          <input type="text" name="palette_hex_{{ i }}" id="ph{{ i }}"
+                 value="{{ colour.hex if colour else '' }}" placeholder="HEX"
+                 oninput="document.getElementById('sw{{ i }}').style.background='#'+this.value">
+        </div>
+        <div class="help" style="margin:-4px 0 12px">{{ PALETTE_ROLES[i][1] }}</div>
+      {% endfor %}
+      {% if not is_new %}
+        <div class="actions">
+          <button type="button" class="btn btn-quiet" onclick="samplePalette()">
+            Sample palette from logo</button>
+          <span id="palette-status" class="help"></span>
+        </div>
+        <div class="help" style="margin-top:8px">
+          Save the logo first, then sample. Colours come from the artwork itself,
+          so printed pieces match the merch.</div>
+      {% endif %}
+    {% endif %}
+  </div>
+{% endfor %}
+
+<h2>Derived — what the documents will say</h2>
+<div class="derived">
+  <dl>
+    <dt>Store name</dt><dd>{{ ctx.store_name }}</dd>
+    <dt>Store URL</dt><dd>{{ ctx.store_url }}</dd>
+    <dt>QR points at</dt><dd>{{ ctx.qr_target }}</dd>
+    <dt>Redirect to add</dt><dd>/go/{{ ctx.redirect_slug }} → /collections/{{ ctx.collection_handle }}</dd>
+    <dt>Audience</dt><dd>{{ ctx.audience }} · addressed as “{{ ctx.audience_address }}”</dd>
+    <dt>Announcement</dt><dd>{{ ctx.announcement_slot }}</dd>
+    <dt>Payout</dt><dd>{{ ctx.margin_pct_fmt }}% · {{ ctx.payout_frequency }} · {{ ctx.payout_method }}</dd>
+  </dl>
+</div>
+
+<div class="actions">
+  <button type="submit" name="action" value="save" class="btn btn-primary">Save</button>
+  {% if not is_new %}
+    <a class="btn btn-quiet" href="{{ url_for('partner_storefront', pid=record.id) }}">Create storefront</a>
+  {% endif %}
+  {% if not is_new %}
+    <button type="submit" name="action" value="generate" class="btn btn-gold">
+      Save &amp; generate package</button>
+    <button type="submit" name="action" value="save_as_new" class="btn btn-quiet">
+      Save as a new partner</button>
+    <a class="btn btn-quiet" href="{{ url_for('partner_email', pid=record.id) }}">
+      Welcome email</a>
+    <a class="btn btn-quiet" href="{{ url_for('index') }}">Back</a>
+  {% endif %}
+</div>
+
+{% if not is_new %}
+<div class="note">
+  <strong>Editing {{ record.org_name }}.</strong> Changing the organization name
+  here <em>renames this partner</em> — its record, logo and output folder move
+  with it. To set up a different customer, use
+  <a href="{{ url_for('new_partner') }}">New partner</a>, or
+  <strong>Save as a new partner</strong> to copy these settings into a separate
+  record and leave this one alone.
+</div>
+{% endif %}
+</form>
+
+{% if not is_new %}
+<form method="post" action="{{ url_for('delete_partner', pid=record.id) }}"
+      style="margin-top:26px"
+      onsubmit="return confirm('Remove this partner record? Generated files stay on disk.')">
+  <button class="btn btn-danger" type="submit">Remove partner</button>
+</form>
+{% endif %}
+
+<script>
+function samplePalette(){
+  const status = document.getElementById('palette-status');
+  status.textContent = 'Sampling…';
+  fetch('{{ url_for("sample_palette", pid=record.id) if not is_new else "" }}', {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+      if(!d.ok){ status.textContent = d.error; return; }
+      d.palette.forEach((c,i) => {
+        document.getElementById('pn'+i).value = c.name;
+        document.getElementById('ph'+i).value = c.hex;
+        document.getElementById('sw'+i).style.background = '#'+c.hex;
+      });
+      status.textContent = 'Sampled from the logo — review, then Save.';
+    })
+    .catch(e => status.textContent = 'Failed: ' + e);
+}
+
+function pullShopify(){
+  const handle = document.getElementById('collection_handle').value.trim();
+  const status = document.getElementById('shopify-status');
+  if(!handle){ status.textContent = 'Enter a collection handle first.'; return; }
+  status.textContent = 'Fetching…';
+  fetch('/shopify/collection?handle=' + encodeURIComponent(handle))
+    .then(r => r.json())
+    .then(d => {
+      if(!d.ok){ status.textContent = d.error; return; }
+      if(d.suggested_lineup) document.getElementById('product_lineup').value = d.suggested_lineup;
+      if(d.suggested_sizes) document.getElementById('size_range').value = d.suggested_sizes;
+      if(d.title && !document.getElementById('store_name').value)
+        document.getElementById('store_name').value = d.title;
+      status.textContent = d.product_count + ' active products found — review, then Save.';
+    })
+    .catch(e => status.textContent = 'Failed: ' + e);
+}
+</script>
+{% endblock %}

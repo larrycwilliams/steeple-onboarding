@@ -1,0 +1,35 @@
+#!/bin/bash
+# Double-clickable launcher for the onboarding app.
+#
+# WHY THIS HANDS OFF TO TERMINAL INSTEAD OF RUNNING PYTHON ITSELF
+#
+# The onboarding folder lives in iCloud Drive, which macOS protects under
+# Privacy & Security. Permission is granted per *application*, and an unsigned
+# bundle like this one has no stable identity for a grant to attach to, so
+# every read of the folder came back "PermissionError: [Errno 1] Operation not
+# permitted" -- before Python had loaded a single module.
+#
+# Terminal already has that permission, because run.command has been used from
+# it. Handing the job to Terminal inherits the grant instead of asking for a
+# second one, and keeps run.command as the single place that knows how to
+# build and update the environment.
+#
+# Everything below is deliberately string manipulation, not filesystem access:
+# even testing whether run.command exists would be a protected read and would
+# fail for the same reason.
+
+SELF="$0"
+BUNDLE="${SELF%/Contents/MacOS/*}"     # .../Steeple & Stitch Onboarding.app
+APPDIR="${BUNDLE%/*}"                  # the onboarding folder it sits in
+TARGET="$APPDIR/run.command"
+
+if ! /usr/bin/open -a Terminal "$TARGET" 2>/dev/null; then
+  MESSAGE="Could not start the onboarding app.
+
+Open the onboarding folder in Finder and double-click run.command instead.
+
+If that works but this icon does not, the app has been moved out of the folder -- put it back beside run.command."
+  /usr/bin/osascript -e "display alert \"Steeple & Stitch\" message \"$MESSAGE\" as critical" >/dev/null 2>&1
+  exit 1
+fi
+exit 0

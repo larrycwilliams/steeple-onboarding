@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Create storefront — {{ record.org_name }}{% endblock %}
+{% block content %}
+
+<style>
+  .sf-plan dl{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;margin:0}
+  .sf-plan dt{color:var(--muted);font-weight:600;font-size:12px;letter-spacing:.05em;
+              text-transform:uppercase;padding-top:2px}
+  .sf-plan dd{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:13px;word-break:break-word}
+  .sf-rule{background:#14181F;color:#E8E3D8;border-radius:8px;padding:13px 15px;
+           font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.6;
+           overflow-x:auto;margin:14px 0 0}
+  .sf-rule b{color:var(--gold);font-weight:600}
+  .sf-list{margin:0;padding:0;list-style:none}
+  .sf-list li{padding:9px 0 9px 26px;position:relative;font-size:14.5px;
+              border-bottom:1px solid #EFEBE2}
+  .sf-list li:last-child{border-bottom:0}
+  .sf-list li::before{position:absolute;left:0;top:9px;font-weight:700}
+  .sf-list li.bad::before{content:"✕";color:var(--bad)}
+  .sf-list li.warn::before{content:"!";color:#9A7B2F}
+  .sf-list li.good::before{content:"✓";color:var(--ok)}
+  .sf-steps{margin:0;padding:0;list-style:none;font-size:14.5px}
+  .sf-order{counter-reset:sf;margin:0;padding:0;list-style:none}
+  .sf-order li{counter-increment:sf;padding:10px 0 10px 34px;position:relative;
+               font-size:14.5px;border-bottom:1px solid #EFEBE2}
+  .sf-order li:last-child{border-bottom:0}
+  .sf-order li::before{content:counter(sf);position:absolute;left:0;top:9px;
+    width:22px;height:22px;border-radius:99px;background:var(--ink);color:var(--paper);
+    font:600 12px/22px ui-monospace,Menlo,monospace;text-align:center}
+  .sf-order small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+</style>
+
+<p style="margin:0 0 4px">
+  <a href="{{ url_for('edit_partner', pid=pid) }}">&larr; {{ record.org_name }}</a></p>
+
+<h2>Create storefront</h2>
+
+<div class="card sf-plan">
+  <dl>
+    <dt>Collection</dt><dd>{{ plan.title }}</dd>
+    <dt>Handle</dt><dd>{{ plan.handle or "—" }}</dd>
+    <dt>Vendor</dt><dd>{{ plan.vendor or "— not set —" }}</dd>
+    <dt>Redirect</dt>
+    <dd>{% if plan.redirect_from %}{{ plan.redirect_from }} &rarr; {{ plan.redirect_to }}
+        {% else %}— skipped, no slug —{% endif %}</dd>
+    <dt>Image</dt><dd>{{ plan.logo }}</dd>
+    <dt>Channels</dt>
+    <dd>{{ plan.channels|join(", ") if plan.channels else "— none found —" }}</dd>
+    {% if plan.template_suffix %}
+      <dt>Template</dt><dd>{{ plan.template_suffix }}</dd>
+    {% endif %}
+  </dl>
+
+  <div class="sf-rule">
+    collectionCreate(input: {<br>
+    &nbsp;&nbsp;title: "{{ plan.title }}", handle: "{{ plan.handle }}",<br>
+    &nbsp;&nbsp;ruleSet: { appliedDisjunctively: false, rules: [<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;{ column: <b>VENDOR</b>, relation: <b>EQUALS</b>,
+        condition: <b>"{{ plan.vendor }}"</b> }<br>
+    &nbsp;&nbsp;] }<br>
+    })
+  </div>
+  <div class="help" style="margin-top:10px">
+    The rule goes on at creation, in the same call. There is no moment where this
+    collection exists without knowing who it belongs to.
+  </div>
+</div>
+
+{% if blocking %}
+  <h2>Blocking</h2>
+  <div class="card">
+    <ul class="sf-list">
+      {% for problem in blocking %}<li class="bad">{{ problem }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{% if warnings %}
+  <h2>Worth a look</h2>
+  <div class="card">
+    <ul class="sf-list">
+      {% for warning in warnings %}<li class="warn">{{ warning }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+<h2>What will happen</h2>
+<div class="card">
+  <ol class="sf-order">
+    <li>Create the collection with its vendor rule
+      <small>One call. A collection is never created ruleless.</small></li>
+    <li>Publish it to the sales channels
+      <small>{{ plan.channels|join(", ") if plan.channels else "None found — it will be created unpublished." }}</small></li>
+    <li>Create the QR redirect
+      <small>{% if plan.redirect_from %}Last, because it is the only step that points at
+        something. A redirect made before the collection exists sends people to a 404, and
+        printed QR codes are permanent.{% else %}Skipped — no redirect slug on this record.{% endif %}</small></li>
+    <li>Write the collection ID back onto the partner record
+      <small>So the store link stops being a string somebody typed.</small></li>
+  </ol>
+
+  <div class="actions">
+    <form method="post" action="{{ url_for('partner_storefront_create', pid=pid) }}">
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;
+                    font-size:13.5px;font-weight:400;letter-spacing:0;color:#3E444D;
+                    margin:0 0 10px">
+        <input type="checkbox" name="publish" value="1" checked
+               style="width:auto;margin:0">
+        Publish to the sales channels now
+      </label>
+      <div class="help" style="margin:-6px 0 12px">
+        Uncheck to create it hidden — the collection exists and the rule works, but the
+        store URL stays dark until you publish it at launch. Nothing else changes.
+      </div>
+      <button class="btn btn-gold" type="submit" {{ 'disabled' if blocking }}>
+        Create storefront in Shopify</button>
+    </form>
+    <a class="btn btn-quiet" href="{{ url_for('partner_storefront', pid=pid) }}">Re-check</a>
+  </div>
+
+  {% if blocking %}
+    <div class="note">Fix the blocking items above and re-check. Nothing has been written.</div>
+  {% else %}
+    <div class="note">This writes to the live store. Everything above is what it will do.</div>
+  {% endif %}
+</div>
+
+{% endblock %}

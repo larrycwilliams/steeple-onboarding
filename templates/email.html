@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2 style="margin-top:0">Welcome email — {{ record.org_name }}</h2>
+
+  <div class="derived" style="margin-bottom:18px">
+    <dl>
+      <dt>To</dt>
+      <dd>{{ email.to_name }} &lt;{{ email.to or 'no email on the record' }}&gt;</dd>
+      <dt>Subject</dt><dd>{{ email.subject }}</dd>
+      <dt>Voice</dt>
+      <dd>{{ record.org_type }} — “your {{ email.fields.org_word }}”,
+          “{{ email.fields.audience }}”</dd>
+      <dt>Attachments</dt>
+      <dd>
+        {% if email.attachments %}
+          {% for a in email.attachments %}
+            {{ a.label }} <span class="help">({{ (a.bytes / 1048576)|round(2) }} MB)</span>
+            {{ ", " if not loop.last }}
+          {% endfor %}
+        {% else %}
+          <strong>none found</strong> — generate this partner's package first.
+        {% endif %}
+      </dd>
+    </dl>
+  </div>
+
+  {% if email.missing %}
+    <div class="note" style="border-color:#B4472F;background:#FBF1EE;margin-bottom:18px">
+      <strong>Not ready to send — {{ email.missing|length }}
+      field{{ 's' if email.missing|length != 1 }} still unset:</strong>
+      {{ email.missing|join(', ') }}.
+      <div class="help" style="margin-top:6px">
+        Fields marked (Settings) are yours — fill them on the
+        <a href="{{ url_for('settings_page') }}">Settings</a> page. The rest are
+        on this partner's record.
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="actions" style="margin-bottom:6px">
+    <form method="post" action="{{ url_for('partner_email_draft', pid=record.id) }}"
+          style="display:inline">
+      <button class="btn btn-gold" type="submit"
+              {% if email.missing or not mail_available %}disabled{% endif %}>
+        Create draft in Mail
+      </button>
+    </form>
+    <a class="btn btn-quiet"
+       href="{{ url_for('partner_email_preview', pid=record.id, download=1) }}">
+      Download .html
+    </a>
+    <a class="btn btn-quiet" href="{{ url_for('edit_partner', pid=record.id) }}">
+      Back to partner
+    </a>
+  </div>
+  <p class="help">
+    {% if not mail_available %}
+      Apple Mail was not found on this Mac, so the draft button is off.
+    {% else %}
+      Opens a draft with the recipient, subject, body and attachments in place.
+      It is never sent for you — read it, then hit send. The first time, macOS
+      will ask permission to control Mail.
+    {% endif %}
+  </p>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Preview</h2>
+  <iframe src="{{ url_for('partner_email_preview', pid=record.id) }}"
+          style="width:100%;height:760px;border:1px solid var(--line);border-radius:8px;background:#fff"
+          title="Welcome email preview"></iframe>
+</div>
+
+{% endblock %}

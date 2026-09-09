@@ -1,0 +1,233 @@
+{# Shared by the live page and the iCloud snapshot. No url_for in here — the
+   snapshot is opened straight off disk on an iPad with no server behind it. #}
+
+<div class="dash-head">
+  <div>
+    <h2 style="margin-top:0">Sales &amp; Payouts</h2>
+    <div class="help">
+      {{ data.totals.orders }} orders · {{ data.totals.units }} items ·
+      data {{ source }}{% if pulled_at %}, pulled {{ pulled_at }}{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="tiles">
+  <div class="tile">
+    <div class="tile-label">Revenue</div>
+    <div class="tile-value">${{ '%.2f'|format(data.totals.revenue) }}</div>
+    <div class="tile-note">after all discounts and refunds</div>
+  </div>
+  <div class="tile">
+    <div class="tile-label">Margin</div>
+    <div class="tile-value">${{ '%.2f'|format(data.totals.margin) }}</div>
+    <div class="tile-note">revenue minus cost of goods</div>
+  </div>
+  <div class="tile tile-gold">
+    <div class="tile-label">Owed to partners</div>
+    <div class="tile-value">${{ '%.2f'|format(data.totals.payout) }}</div>
+    <div class="tile-note">all time, at each partner's rate</div>
+  </div>
+  <div class="tile{% if data.totals.uncosted_revenue %} tile-warn{% endif %}">
+    <div class="tile-label">Revenue with no cost</div>
+    <div class="tile-value">${{ '%.2f'|format(data.totals.uncosted_revenue) }}</div>
+    <div class="tile-note">
+      {% if data.totals.uncosted_revenue %}excluded from margin and payout
+      {% else %}every sold item has a cost{% endif %}
+    </div>
+  </div>
+</div>
+
+{% if data.totals.estimated_revenue %}
+<div class="note">
+  <strong>${{ '%.2f'|format(data.totals.estimated_revenue) }} of revenue sold on
+  product variants that have since been deleted from Shopify.</strong>
+  Cost lives on the variant, not the product, so those lines point at nothing
+  and no cost can be read from them &mdash; entering a cost on the product will
+  not attach to a variant that no longer exists. They are priced from the median
+  of the product's surviving variants, which puts the total owed at
+  <strong>${{ '%.2f'|format(data.totals.payout_with_estimates) }}</strong>
+  rather than ${{ '%.2f'|format(data.totals.payout) }}. Pay the estimate only
+  if you are comfortable with the basis.
+</div>
+{% endif %}
+
+{% if data.totals.uncosted_revenue %}
+<div class="note">
+  <strong>${{ '%.2f'|format(data.totals.uncosted_revenue) }} of revenue has no
+  cost recorded</strong>, so it contributes nothing to margin and nothing to
+  what a partner is owed. These payouts are <em>floors</em>. Where the variant
+  still exists, entering its cost in Shopify fixes it; where the line is named
+  below and the variant is gone, it cannot be fixed after the fact.
+</div>
+{% endif %}
+
+<h2>By partner</h2>
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Partner</th>
+        <th class="phone-hide">Orders</th>
+        <th class="phone-hide">Items</th>
+        <th class="num">Revenue</th>
+        <th class="num phone-hide">Margin</th>
+        <th class="num phone-hide">Rate</th>
+        <th class="num">Owed</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in data.partners %}
+      <tr{% if not row.revenue %} class="quiet"{% endif %}>
+        <td>
+          <strong>{{ row.org_name }}</strong>
+          {% if row.plan %}<span class="pill">{{ row.plan }}</span>{% endif %}
+          {% if row.estimated_revenue %}
+            <div class="help">${{ '%.2f'|format(row.estimated_revenue) }} sold on
+              deleted variants, estimated from surviving ones
+              {%- if row.estimated_titles %}: {{ row.estimated_titles|join('; ') }}
+              {%- endif %} &mdash; owed
+              ${{ '%.2f'|format(row.payout_with_estimates) }} including them.</div>
+          {% endif %}
+          {% if row.uncosted_revenue %}
+            <div class="help">${{ '%.2f'|format(row.uncosted_revenue) }} of this
+              has no cost on file
+              {%- if row.uncosted_titles %}:
+                {{ row.uncosted_titles|join('; ') }}{% endif %}</div>
+          {% endif %}
+        </td>
+        <td class="phone-hide">{{ row.orders }}</td>
+        <td class="phone-hide">{{ row.units }}</td>
+        <td class="num">${{ '%.2f'|format(row.revenue) }}</td>
+        <td class="num phone-hide">${{ '%.2f'|format(row.margin) }}</td>
+        <td class="num phone-hide">
+          {% if row.margin_pct is not none %}{{ row.margin_pct }}%
+          {% else %}<span class="bad">not set</span>{% endif %}
+        </td>
+        <td class="num">
+          {% if row.payout is not none %}<strong>${{ '%.2f'|format(row.payout) }}</strong>
+          {% else %}<span class="bad" title="margin_pct is still the 0% seed value">—</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% for row in data.partners if row.quarters %}
+  {% if loop.first %}<h2>By quarter</h2>{% endif %}
+  <div class="card">
+    <div class="row-title">{{ row.org_name }}
+      {% if row.margin_pct is not none %}
+        <span class="help">{{ row.margin_pct }}% of margin</span>{% endif %}
+    </div>
+    <table>
+      <thead><tr><th>Quarter</th><th class="num">Revenue</th>
+        <th class="num phone-hide">Items</th><th class="num">Margin</th>
+        <th class="num">Owed</th></tr></thead>
+      <tbody>
+      {% for q in row.quarters %}
+        <tr{% if q.quarter == data.quarter %} class="current"{% endif %}>
+          <td>{{ q.quarter }}{% if q.quarter == data.quarter %}
+              <span class="pill">current</span>{% endif %}</td>
+          <td class="num">${{ '%.2f'|format(q.revenue) }}</td>
+          <td class="num phone-hide">{{ q.units }}</td>
+          <td class="num">${{ '%.2f'|format(q.margin) }}</td>
+          <td class="num">{% if q.payout is not none %}${{ '%.2f'|format(q.payout) }}
+            {% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if row.products %}
+      <div class="help" style="margin-top:12px">Top sellers:
+        {% for p in row.products[:5] %}{{ p.title }}
+          (${{ '%.0f'|format(p.revenue) }}){% if not loop.last %} · {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endfor %}
+
+<h2>What's live in each store</h2>
+<div class="card">
+  <div class="help" style="margin-bottom:12px">
+    Active listings only. The print-on-demand original and its “ TWC” duplicate
+    share a vendor and only one of the pair is ever live, so counting every
+    status would show each store at twice its real size.
+  </div>
+  <table>
+    <thead><tr><th>Partner</th><th class="num">Live</th>
+      <th class="num phone-hide">TWC</th><th class="num">No cost</th></tr></thead>
+    <tbody>
+    {% for row in data.catalog.rows %}
+      <tr{% if not row.live %} class="quiet"{% endif %}>
+        <td>{{ row.org_name }}</td>
+        <td class="num">{{ row.live }}</td>
+        <td class="num phone-hide">{{ row.twc }}</td>
+        <td class="num">{% if row.no_cost %}<span class="bad">{{ row.no_cost }}</span>
+          {% else %}0{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Worth a look</h2>
+<div class="card">
+  {% set nothing = not data.catalog.orphans and not data.unmatched
+                   and not data.collisions %}
+  {% if nothing %}
+    <div class="help">Nothing misfiled. Every active product belongs to a
+      partner collection and every sale is credited.</div>
+  {% endif %}
+
+  {% if data.unmatched %}
+    <div class="row-title bad">Sales credited to no partner</div>
+    <div class="help">These sold, but their vendor matches no partner record,
+      so nobody is being paid on them.</div>
+    <table><tbody>
+    {% for row in data.unmatched %}
+      <tr><td>{{ row.vendor_label }}</td>
+          <td class="num">${{ '%.2f'|format(row.revenue) }}</td>
+          <td class="num">{{ row.units }} items</td></tr>
+    {% endfor %}
+    </tbody></table>
+  {% endif %}
+
+  {% if data.catalog.orphans %}
+    <div class="row-title" style="margin-top:16px">Active products in no partner
+      collection ({{ data.catalog.orphan_count }})</div>
+    <div class="help">Your collections are smart collections keyed on vendor, so
+      a product whose vendor is wrong is invisible in the partner's store and
+      earns them nothing. Steeple &amp; Stitch's own goods belong here; a
+      partner's product does not.</div>
+    <table><tbody>
+    {% for p in data.catalog.orphans %}
+      <tr><td><span class="pill">{{ p.vendor or 'no vendor' }}</span></td>
+          <td>{{ p.title }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  {% endif %}
+
+  {% if data.collisions %}
+    <div class="row-title bad" style="margin-top:16px">Two partners claim the
+      same vendor</div>
+    <table><tbody>
+    {% for c in data.collisions %}
+      <tr><td>{{ c.vendor }}</td>
+          <td>credited to <strong>{{ c.winner }}</strong> over
+            {{ c.others|join(', ') }}
+            {% if not c.resolved %}<span class="bad"> — arbitrary; set the
+              Shopify vendor on the right record</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  {% endif %}
+</div>
+
+<div class="help" style="margin-top:20px">
+  Revenue is what was actually collected — after every discount, and excluding
+  refunded units. Margin is that minus Shopify's recorded cost of goods. Owed is
+  margin × each partner's negotiated rate; a partner still on the 0% seed value
+  shows a dash rather than $0.00, because those are not the same thing.
+</div>

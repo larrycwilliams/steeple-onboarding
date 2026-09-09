@@ -1,0 +1,34 @@
+# ============================================================ secrets
+.env
+.env.*
+
+# ================================================== live business data
+# Partner records carry contact names, emails, phones, addresses, fees
+# and signers. They are NOT source code and must never reach a repo --
+# private or otherwise. store.py already keeps its own snapshot history
+# for these (store.history / store.restore), so they are not unprotected.
+partners/
+partners_backup_*/
+leads/
+product_runs/
+cache/
+
+# ============================================== generated + heavy files
+# 81M of generated agreements and kits, 78M of partner logos and art.
+output/
+assets/
+
+# ========================================================= local noise
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+*.tmp.docx
+*.pre-traveler
+*.pre-storefront
+*.pre-local
+*.pre-tiervocab
+*.pre-preview
+*.pre-git
+_backup_*/

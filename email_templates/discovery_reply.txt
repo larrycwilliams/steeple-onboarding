@@ -1,0 +1,101 @@
+Got it, {{ contact_first_name }} — thanks for reaching out.
+
+Your discovery call request for {{ org_name }} came through, and it's on my
+desk — not in a queue somewhere.
+
+I'll reach out within one business day to find a time that works. The call
+runs about 20 minutes, by phone or video — whichever is easier for you.
+
+There's nothing to prepare and nothing to sign. It's a conversation about
+what your {{ vocab_people }} would actually wear, and whether this is worth
+your time at all.
+{% if show_tier %}
+You told us {{ org_name }} is around {{ org_size }} people. That puts you in
+our {{ likely_tier }} range — {{ tier_one_liner }} We'll confirm on the call;
+if a different tier fits you better, I'll say so.
+{% endif %}
+{%- if booking_link %}
+  >> GRAB A TIME ON MY CALENDAR: {{ booking_link }}
+     Or just reply to this email with a couple of windows that work.
+{%- else %}
+Just reply to this email with a couple of windows that work for you this
+week, and I'll lock one in.
+{%- endif %}
+
+----------------------------------------------------------------------
+WHAT WE'LL COVER
+----------------------------------------------------------------------
+
+1. What your people already ask for.
+   Every {{ vocab_org }} has the shirt someone keeps asking about. We start
+   there.
+
+2. Which {{ vocab_groups }} need their own gear.
+   Sub-logos and separate looks are included, not an upcharge.
+
+3. What's on your calendar.
+   Camps, VBS, retreats, staff shirts — anything with a hard date changes
+   how we sequence the build.
+
+4. Which tier fits and what comes back to you.
+   Real numbers on your size, not a brochure average.
+
+After the call you'll get a short written recommendation — tier, pricing,
+and a launch timeline — so you have something to take to your team. No
+obligation attached to it.
+
+----------------------------------------------------------------------
+HELPFUL, NOT REQUIRED
+----------------------------------------------------------------------
+
+If these are easy to grab before we talk, the call goes faster. If not, no
+problem — we can get them later.
+
+* Where your logo file lives, and what format it's in
+* Roughly how many people you're printing for
+* Any event in the next 90 days that needs shirts
+* Who signs off on spending, if it isn't you
+
+----------------------------------------------------------------------
+THE SHORT VERSION
+----------------------------------------------------------------------
+
+We talk       20 minutes, this week.
+We build      your store, your logo, your colors, in about two weeks.
+You launch    with a link, a QR code, and a ready-made promo kit.
+You get paid  a share of every sale, every quarter, with a line-item
+              statement.
+
+Nothing gets printed until somebody orders it. No inventory in a closet, no
+volunteer chasing people for $18 in the lobby, no task added to your staff's
+plate.
+{% if sample_store_link %}
+Want to look around before we talk? Here's a live example store:
+{{ sample_store_link }}
+{% endif %}
+----------------------------------------------------------------------
+REACH ME DIRECTLY
+----------------------------------------------------------------------
+
+{{ point_of_contact_name }}
+{{ point_of_contact_email }}
+{{ point_of_contact_phone }}
+
+Call or text. If something's time-sensitive on your end, say so and we'll
+move it up.
+
+----------------------------------------------------------------------
+
+One last thing. We're a small shop in Dayton, Ohio — which means the person
+who answers when you call is the person doing your artwork. We only make
+money when your store sells, so making this easy for you is the whole job.
+
+Talk soon.
+
+{{ signoff_name or point_of_contact_name }}
+{{ signoff_title or 'Founder · Steeple & Stitch Co.' }}
+A division of The Williams Collective
+steepleandstitch.com
+{% if company_address %}
+{{ company_address }}
+{% endif %}

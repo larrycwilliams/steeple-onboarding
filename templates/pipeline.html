@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}Pipeline — Steeple &amp; Stitch{% endblock %}
+{% block content %}
+<style>
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+         gap:14px;margin-bottom:20px}
+  .tile{background:#fff;border:1px solid #E2DDD2;border-radius:10px;padding:16px 18px}
+  .tile-late{border-color:var(--bad);box-shadow:inset 3px 0 0 var(--bad)}
+  .tile-label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+              color:var(--muted);font-weight:700}
+  .tile-value{font-size:26px;font-weight:700;margin:6px 0 2px;letter-spacing:-.02em}
+  .lead{border:1px solid #E2DDD2;border-radius:10px;background:#fff;
+        padding:18px 20px;margin-bottom:14px}
+  .lead.late{border-color:var(--bad);box-shadow:inset 3px 0 0 var(--bad)}
+  .lead-top{display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;
+            justify-content:space-between}
+  .lead-name{font-size:17px;font-weight:700}
+  .age{font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap}
+  .age.late{color:var(--bad)}
+  .meta{font-size:13px;color:#5C6470;margin-top:4px}
+  .meta a{color:#7A5C1C}
+  .stage-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+  .stage-row select{width:auto;min-width:150px}
+  .inline-form{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;
+               margin-top:12px;padding-top:12px;border-top:1px dashed #DAD4C8}
+  .inline-form .field{margin:0;flex:1 1 180px}
+</style>
+
+<div class="actions" style="margin:0 0 18px 0">
+  <a class="btn btn-gold" href="{{ url_for('pipeline_page', refresh=1) }}">Refresh from Shopify</a>
+  <span class="help">{{ source }}{% if pulled_at %} · {{ pulled_at }}{% endif %}</span>
+</div>
+
+{% if error %}
+  <div class="flash error">{{ error }}</div>
+{% endif %}
+
+<div class="tiles">
+  <div class="tile">
+    <div class="tile-label">Open</div>
+    <div class="tile-value">{{ stats.open }}</div>
+  </div>
+  <div class="tile">
+    <div class="tile-label">Awaiting reply</div>
+    <div class="tile-value">{{ stats.awaiting }}</div>
+  </div>
+  <div class="tile{% if stats.overdue %} tile-late{% endif %}">
+    <div class="tile-label">Past one day</div>
+    <div class="tile-value">{{ stats.overdue }}</div>
+  </div>
+  {% if stats.holding %}
+  <div class="tile">
+    <div class="tile-label">On hold</div>
+    <div class="tile-value">{{ stats.holding }}</div>
+  </div>
+  {% endif %}
+  <div class="tile">
+    <div class="tile-label">Signed</div>
+    <div class="tile-value">{{ stats.won }}</div>
+  </div>
+  <div class="tile">
+    <div class="tile-label">Missing details</div>
+    <div class="tile-value">{{ stats.needs_details }}</div>
+  </div>
+</div>
+
+{% if stats.needs_details %}
+<div class="note">
+  <strong>{{ stats.needs_details }} lead(s) are missing a company name or size.</strong>
+  Both normally come straight from the discovery form — the company name is the
+  Shopify company itself, and the size is a company metafield. A blank here
+  means the submission predates those fields. Fill it in below; a lead cannot
+  be promoted to a partner without the organisation name.
+</div>
+{% endif %}
+
+<h2>Leads</h2>
+
+{% if not rows %}
+  <div class="card empty">
+    No leads yet. Submissions to the Book a Discovery Call page appear here.
+  </div>
+{% endif %}
+
+{% for lead in rows %}
+<div class="lead{% if lead.overdue %} late{% endif %}">
+  <div class="lead-top">
+    <div>
+      <span class="lead-name">{{ lead.org_name or lead.name or lead.email }}</span>
+      {% if lead.stage %}<span class="pill">{{ lead.stage }}</span>{% endif %}
+      {% if lead.likely_tier %}<span class="pill">{{ lead.likely_tier }} likely</span>{% endif %}
+      {% if lead.org_type %}<span class="pill"
+        {%- if lead.org_type_source == 'guess' %} style="background:#FBF3DF;color:#6A5B33"
+        title="Guessed from the organisation name — set it below to be sure"
+        {%- endif %}>{{ lead.org_type }}{% if lead.org_type_source == 'guess' %}?{% endif %}</span>{% endif %}
+      {% if lead.logo_ref %}<span class="pill"
+        style="background:#E4F0E8;color:#265B41">logo attached</span>{% endif %}
+      {% if lead.duplicate_org %}<span class="pill"
+        style="background:#F8E3E1;color:#8C332C">same org as another lead</span>{% endif %}
+      <div class="meta">
+        {% if lead.org_name and lead.name %}{{ lead.name }} · {% endif %}
+        <a href="mailto:{{ lead.email }}">{{ lead.email }}</a>
+        {% if lead.phone %} · <a href="tel:{{ lead.phone }}">{{ lead.phone }}</a>{% endif %}
+        {% if lead.org_size %} · {{ lead.org_size }} people{% endif %}
+      </div>
+      {% if lead.partner_id %}
+        <div class="meta">Partner record:
+          <a href="{{ url_for('edit_partner', pid=lead.partner_id) }}">{{ lead.partner_id }}</a></div>
+      {% endif %}
+      {% if lead.prompt %}
+        <div class="note" style="margin:8px 0 0 0;font-size:13px">
+          <strong>Why they came:</strong> {{ lead.prompt }}
+        </div>
+      {% endif %}
+    </div>
+    <div class="age{% if lead.overdue %} late{% endif %}">
+      {% if lead.days_open == 0 %}today
+      {% elif lead.days_open == 1 %}1 day
+      {% else %}{{ lead.days_open }} days{% endif %}
+      {% if lead.overdue %}<br>past the promise{% endif %}
+      {% if lead.holding %}
+        <br><span style="font-weight:600;color:#6A5B33">holding until {{ lead.hold_label }}</span>
+      {% endif %}
+      {% if lead.reply_label %}
+        <br><span style="font-weight:600;color:{% if lead.on_time %}#265B41{% else %}#8C6B2C{% endif %}">
+          answered {{ lead.reply_label }}</span>
+      {% elif lead.answered and not lead.overdue %}
+        <br><span style="font-weight:600;color:#265B41">answered</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="stage-row">
+    {# The stage select saves itself on change. It used to sit next to its own
+       "Set stage" button, a few pixels above the details form's "Update" --
+       two save buttons on one card, each silently ignoring the other half of
+       it. Picking a stage and pressing Update saved the details and dropped
+       the stage on the floor, with a cheerful "Saved." to confirm it. One
+       button per card now, and the dropdown needs none. #}
+    <form method="post" action="{{ url_for('pipeline_stage', key=lead.key) }}"
+          style="display:flex;gap:8px;align-items:center">
+      <select name="stage" aria-label="Stage" onchange="this.form.submit()">
+        {% for stage in stages %}
+          <option value="{{ stage }}"{% if stage == lead.stage %} selected{% endif %}>{{ stage }}</option>
+        {% endfor %}
+      </select>
+      <noscript><button class="btn btn-quiet" type="submit">Set stage</button></noscript>
+    </form>
+
+    {% if not lead.answered and lead.email %}
+      <form method="post" action="{{ url_for('pipeline_reply', key=lead.key) }}">
+        <button class="btn btn-primary" type="submit">Draft reply</button>
+      </form>
+    {% elif lead.email %}
+      {# An answered lead used to lose the draft button AND the preview link
+         together, so there was no way to re-read what had gone out. Drafting
+         again is right to hide -- it would open a second copy in Mail -- but
+         previewing is read-only and stays available. #}
+      <form method="post" action="{{ url_for('pipeline_reply', key=lead.key) }}"
+            onsubmit="return confirm('This lead is already marked answered. Open another copy of the discovery-call email in Mail?')">
+        <button class="btn btn-quiet" type="submit">Draft again</button>
+      </form>
+    {% endif %}
+    {% if lead.email %}
+      <a class="btn btn-quiet" target="_blank" rel="noopener"
+         href="{{ url_for('pipeline_reply_preview', key=lead.key) }}">Preview</a>
+    {% endif %}
+
+    {% if lead.partner_id %}
+      <a class="btn btn-quiet" href="{{ url_for('partner_email', pid=lead.partner_id) }}">Welcome email</a>
+    {% else %}
+      <form method="post" action="{{ url_for('pipeline_promote', key=lead.key) }}">
+        <button class="btn btn-gold" type="submit"
+                {% if not lead.org_name %}disabled
+                   title="Needs an organisation name — the partner id is derived from it"{% endif %}>
+          Promote to partner
+        </button>
+      </form>
+    {% endif %}
+  </div>
+
+  <form class="inline-form" method="post"
+        action="{{ url_for('pipeline_details', key=lead.key) }}">
+    <div class="field">
+      <label for="org-{{ lead.key }}">Organization name</label>
+      <input type="text" id="org-{{ lead.key }}" name="org_name"
+             value="{{ lead.org_name }}" placeholder="from the notification email">
+    </div>
+    <div class="field" style="flex:0 1 140px">
+      <label for="size-{{ lead.key }}">Size</label>
+      <input type="text" id="size-{{ lead.key }}" name="org_size"
+             value="{{ lead.org_size }}" placeholder="230">
+    </div>
+    <div class="field" style="flex:0 1 160px">
+      <label for="type-{{ lead.key }}">Type</label>
+      <select id="type-{{ lead.key }}" name="org_type">
+        <option value="">{% if lead.org_type_source == 'guess' %}guessed: {{ lead.org_type }}{% else %}—{% endif %}</option>
+        {% for value, label in [('church','Church'),('school','School'),('nonprofit','Non-Profit')] %}
+          <option value="{{ value }}"{% if lead.org_type_source in ('set','customer') and lead.org_type == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit">{% if lead.missing %}Save{% else %}Update{% endif %}</button>
+  </form>
+
+  {# Holding a lead on purpose. Only offered while it is still unanswered --
+     once you have replied the overdue clock is already stopped, and a hold
+     would be a second control doing the same job. #}
+  {% if not lead.answered %}
+  <form class="inline-form" method="post"
+        action="{{ url_for('pipeline_snooze', key=lead.key) }}">
+    <div class="field" style="flex:0 1 170px">
+      <label for="hold-{{ lead.key }}">Hold until</label>
+      <input type="date" id="hold-{{ lead.key }}" name="snoozed_until"
+             value="{{ lead.snoozed_until }}">
+    </div>
+    <div class="field">
+      <label for="why-{{ lead.key }}">Why</label>
+      <input type="text" id="why-{{ lead.key }}" name="snooze_reason"
+             value="{{ lead.snooze_reason }}"
+             placeholder="they're travelling until Monday">
+    </div>
+    <button class="btn btn-quiet" type="submit">
+      {% if lead.holding %}Update hold{% else %}Hold{% endif %}</button>
+  </form>
+  {% if lead.holding and lead.snooze_reason %}
+    <div class="meta" style="margin-top:6px">
+      Holding until {{ lead.hold_label }} — {{ lead.snooze_reason }}
+    </div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="help" style="margin-top:18px">
+  Leads come from the Shopify Forms submissions on the Book a Discovery Call
+  page. Your own test submissions are filtered out by email address, so testing
+  the form never adds a lead. Stage is stored here, not written back to Shopify.
+  <br><br>
+  <strong>Past one day</strong> counts only leads still sitting on
+  <strong>New</strong> — the promise is about the first reply, so moving a lead
+  to <strong>Replied</strong> stops that clock even if the call is not booked
+  yet. The &ldquo;answered in&rdquo; time is measured from the submission to
+  the moment you set the stage here, not to when you actually sent the reply,
+  so log it when you send it and the number stays honest.
+  <br><br>
+  <strong>Draft reply</strong> opens the discovery-call email in Mail with the
+  name, organisation and tier paragraph already filled, and moves the lead to
+  Replied once Mail has it. It is always a draft, never a send.
+  <strong>Hold until</strong> is for the times waiting is the right call — the
+  lead stays open and keeps its age, but it stops counting as a broken promise
+  until that date passes.
+</div>
+{% endblock %}

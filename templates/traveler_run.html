@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block title %}{{ run.title or "Traveler" }} — Product Pair Traveler{% endblock %}
+{% block content %}
+
+<style>
+  .tv-head{display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:6px}
+  .tv-head h3{margin:0;font-size:21px;letter-spacing:-.01em}
+  .tv-head .tv-prog{margin-left:auto}
+  .tv-prog{display:flex;align-items:center;gap:10px}
+  .tv-bar{height:8px;width:180px;border-radius:99px;background:#E6E1D6;overflow:hidden}
+  .tv-bar i{display:block;height:100%;background:var(--ok);transition:width .2s ease}
+  .tv-count{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--muted)}
+
+  .tv-phase{margin-top:26px}
+  .tv-phase-head{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid #DAD4C8;
+                 padding-bottom:8px;margin-bottom:2px}
+  .tv-phase-head .mark{font-family:ui-monospace,Menlo,monospace;font-size:12px;
+                       letter-spacing:.14em;color:var(--gold);font-weight:700}
+  .tv-phase-head h4{margin:0;font-size:15px;flex:1;letter-spacing:.01em}
+  .tv-phase-head .where{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+
+  .tv-step{display:grid;grid-template-columns:30px 1fr;gap:0 14px;padding:16px 0;
+           border-bottom:1px solid #EFEBE2}
+  .tv-step:last-child{border-bottom:0}
+  .tv-step input[type=checkbox]{width:20px;height:20px;margin:3px 0 0;accent-color:var(--ok);
+                                cursor:pointer;grid-row:span 2}
+  .tv-step h5{margin:0 0 6px;font-size:15.5px;line-height:1.35}
+  .tv-step h5 .n{font-family:ui-monospace,Menlo,monospace;font-weight:400;font-size:12.5px;
+                 color:var(--muted);margin-right:8px}
+  .tv-step p{margin:0 0 9px;font-size:14.5px;color:#3E444D;max-width:66ch}
+  .tv-step.done h5,.tv-step.done p{opacity:.5}
+  .tv-step.done h5{text-decoration:line-through;text-decoration-color:#C9C3B4}
+
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;
+       background:#EFEBE2;border-radius:4px;padding:1px 5px}
+  pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.6;
+      background:#14181F;color:#E8E3D8;border-radius:8px;padding:12px 14px;margin:0 0 9px;
+      overflow-x:auto;max-width:100%}
+  pre .c{color:#8A9099}
+  .copy{float:right;background:#2C333F;color:#C8A253;border:0;border-radius:5px;
+        font:600 11px/1 inherit;padding:5px 9px;cursor:pointer;margin-left:10px}
+  .copy:hover{background:#3A4250}
+
+  .stop{font-size:13.5px;color:#8C332C;background:#F8E3E1;border-left:3px solid #B4443C;
+        padding:11px 14px;border-radius:0 7px 7px 0;margin:0 0 9px;max-width:66ch}
+  .why{font-size:13.5px;color:#6A5B33;background:#FBF3DF;border-left:3px solid var(--gold);
+       padding:11px 14px;border-radius:0 7px 7px 0;margin:0 0 9px;max-width:66ch}
+
+  .tv-shotbox{border:1px dashed #D8D1C2;border-radius:8px;padding:12px 14px;margin:10px 0 4px;
+              background:#FBF9F4;max-width:66ch}
+  .tv-shotbox.has{border-style:solid;border-color:#E2DDD2;background:#fff}
+  .tv-shotbox img{display:block;width:100%;height:auto;border-radius:6px;border:1px solid #E2DDD2}
+  .tv-shotbox .tag{display:inline-block;font-family:ui-monospace,Menlo,monospace;font-size:10.5px;
+                   letter-spacing:.12em;text-transform:uppercase;color:#3F5764;background:#E7EEF2;
+                   border:1px solid #B9CBD6;border-radius:3px;padding:2px 7px;margin-bottom:7px}
+  .tv-shotbox p{font-size:13.5px;margin:0 0 8px}
+  .tv-upload{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .tv-upload input[type=file]{flex:1;min-width:170px;font-size:12.5px;padding:6px 8px}
+  .tv-upload button{padding:7px 12px;font-size:12.5px}
+
+  .tv-vendor{background:#fff;border:1px solid #E2DDD2;border-radius:8px;padding:12px 14px;
+             margin:0 0 9px;max-width:66ch}
+  .tv-vendor .big{font-family:ui-monospace,Menlo,monospace;font-size:16px;font-weight:600;
+                  color:var(--ink);word-break:break-word}
+  .tv-vendor small{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+  table.mini{font-size:13.5px;max-width:66ch;margin-bottom:9px}
+  table.mini td,table.mini th{padding:6px 12px 6px 0}
+  td.mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;padding-right:20px}
+</style>
+
+<p style="margin:0 0 4px"><a href="{{ url_for('traveler_index') }}">&larr; All runs</a></p>
+
+<div class="tv-head">
+  <h3>{{ run.title or "Untitled product" }}</h3>
+  <div class="tv-prog">
+    <div class="tv-bar"><i id="bar" style="width:{{ pct }}%"></i></div>
+    <span class="tv-count" id="count">{{ done }} / {{ total }}</span>
+  </div>
+</div>
+
+<h2>Run details</h2>
+<div class="card">
+  <form method="post" action="{{ url_for('traveler_save', run_id=run.id) }}">
+    <div class="grid">
+      <div class="field">
+        <label for="title">Product</label>
+        <input type="text" id="title" name="title" value="{{ run.title }}">
+      </div>
+      <div class="field">
+        <label for="org_key">Partner org</label>
+        <select id="org_key" name="org_key">
+          <option value="">Choose…</option>
+          {% for o in orgs %}
+            <option value="{{ o.key }}" {{ 'selected' if o.key == run.org_key }}>{{ o.vendor }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="platform">POD platform</label>
+        <select id="platform" name="platform">
+          <option value="">Choose…</option>
+          {% for p in platforms %}
+            <option value="{{ p }}" {{ 'selected' if p == run.platform }}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="product_id">POD product ID</label>
+        <input type="text" id="product_id" name="product_id" value="{{ run.product_id }}"
+               placeholder="15262932533616">
+        <div class="help">Last segment of the Shopify admin URL.</div>
+      </div>
+      <div class="field">
+        <label for="cost">Loaded in-house cost</label>
+        <input type="text" id="cost" name="cost" value="{{ run.cost }}" placeholder="14.00">
+        <div class="help">Including labor. Expected to sit above the POD basis.</div>
+      </div>
+    </div>
+    <div class="field" style="margin-top:12px">
+      <label for="notes">Notes</label>
+      <textarea id="notes" name="notes" placeholder="Coverage gaps, supplier oddities, anything the next run should know.">{{ run.notes }}</textarea>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Save details</button>
+      <span class="tv-count">Commands below rebuild from these fields.</span>
+    </div>
+  </form>
+</div>
+
+{% for phase in phases %}
+<div class="tv-phase">
+  <div class="tv-phase-head">
+    <span class="mark">{{ phase.mark }}</span>
+    <h4>{{ phase.title }}</h4>
+    <span class="where">{{ phase.where }}</span>
+  </div>
+
+  {% for step in phase.steps %}
+  {% set n = loop_index_map[step.key] %}
+  <div class="tv-step {{ 'done' if run.steps.get(step.key) }}" id="step-{{ step.key }}">
+    <input type="checkbox" class="tv-box" data-step="{{ step.key }}"
+           {{ 'checked' if run.steps.get(step.key) }}
+           aria-label="{{ step.title }}">
+    <div>
+      <h5><span class="n">{{ "%02d"|format(n) }}</span>{{ step.title }}</h5>
+
+      {% if step.body %}<p>{{ step.body|safe }}</p>{% endif %}
+
+      {% if step.ladder %}
+      <table class="mini">
+        <thead><tr><th>Adult Comfort Colors tee</th>
+          {% for size, _ in ladder %}<th style="text-align:right">{{ size }}</th>{% endfor %}</tr></thead>
+        <tbody><tr><td>Every colourway</td>
+          {% for _, price in ladder %}<td class="mono num">${{ price }}</td>{% endfor %}</tr></tbody>
+      </table>
+      {% endif %}
+
+      {% if step.vendor_box %}
+        {% if org %}
+        <div class="tv-vendor">
+          <span class="big">{{ org.vendor }}</span>
+          <small>Type this exactly into Vendor. Collection <code>{{ org.collection }}</code> ·
+                 org key <code>{{ org.key }}</code></small>
+        </div>
+        {% else %}
+        <div class="stop"><b>No partner org selected.</b> Choose one in Run details above and the
+          exact vendor string appears here.</div>
+        {% endif %}
+      {% endif %}
+
+      {% if step.cmd %}
+      <pre><button class="copy" type="button" data-copy="cmd-{{ step.key }}">Copy</button><span id="cmd-{{ step.key }}">{% if step.cmd in ('dry','commit') %}{{ cmds.prefix }}
+{% endif %}{{ cmds[step.cmd] }}</span></pre>
+      {% endif %}
+
+      {% if step.flags %}
+      <table class="mini">
+        <thead><tr><th>Flag</th><th>When to reach for it</th></tr></thead>
+        <tbody>
+          {% for flag, when in flags %}
+            <tr><td class="mono">{{ flag }}</td><td>{{ when }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      {% if step.metafields %}
+      <table class="mini">
+        <thead><tr><th>#</th><th>Field</th><th>Should read</th></tr></thead>
+        <tbody>
+          {% for pos, name, reads in metafields %}
+            <tr><td class="mono">{{ pos }}</td><td>{{ name }}</td><td>{{ reads }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      {% if step.why %}<div class="why">{{ step.why|safe }}</div>{% endif %}
+      {% if step.stop %}<div class="stop">{{ step.stop|safe }}</div>{% endif %}
+
+      {% if step.shot %}
+      <div class="tv-shotbox {{ 'has' if shots.get(step.shot) }}">
+        <span class="tag">{{ step.shot.replace('-', ' ') }}</span>
+        {% if shots.get(step.shot) %}
+          <img src="{{ url_for('traveler_shot', key=step.shot) }}?v={{ run.updated }}"
+               alt="{{ step.shot_hint }}">
+        {% else %}
+          <p>{{ step.shot_hint }}</p>
+        {% endif %}
+        <form class="tv-upload" method="post" enctype="multipart/form-data"
+              action="{{ url_for('traveler_shot_upload', run_id=run.id, key=step.shot) }}">
+          <input type="file" name="shot" accept="image/png,image/jpeg,image/webp,image/gif">
+          <button class="btn btn-quiet" type="submit">
+            {{ "Replace" if shots.get(step.shot) else "Upload" }}
+          </button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+<h2>If you need the capacity valve</h2>
+<div class="card">
+  <p style="margin-top:0;font-size:14.5px;color:#3E444D;max-width:66ch">
+    Flip when the oldest unfulfilled order passes <b>5 business days</b>, or open orders exceed
+    <b>10</b>, whichever comes first. Set the trigger in advance, not while you're behind.
+  </p>
+  <pre><button class="copy" type="button" data-copy="cmd-flip">Copy</button><span id="cmd-flip">{{ cmds.prefix }}
+$P ~/Dev/pod2twc/pod2twc.py flip {{ run.product_id or '&lt;ref&gt;'|safe }} --to pod            <span class="c"># dry run</span>
+$P ~/Dev/pod2twc/pod2twc.py flip {{ run.product_id or '&lt;ref&gt;'|safe }} --to pod --commit</span></pre>
+  <p style="font-size:14.5px;color:#3E444D;max-width:66ch;margin-bottom:0">
+    The command <b>refuses</b> if the POD half covers fewer colours or sizes than the in-house
+    half. That refusal is the point — read what it lists before overriding.
+  </p>
+</div>
+
+<div class="actions" style="margin-top:26px">
+  <form method="post" action="{{ url_for('traveler_delete', run_id=run.id) }}"
+        onsubmit="return confirm('Delete this run? The products themselves are untouched.')">
+    <button class="btn btn-danger" type="submit">Delete run</button>
+  </form>
+</div>
+
+<script>
+(function(){
+  var total = {{ total }};
+  var bar = document.getElementById("bar");
+  var count = document.getElementById("count");
+
+  document.querySelectorAll(".tv-box").forEach(function(box){
+    box.addEventListener("change", function(){
+      var row = box.closest(".tv-step");
+      row.classList.toggle("done", box.checked);
+      repaint();
+      fetch("{{ url_for('traveler_step', run_id=run.id) }}", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({step: box.dataset.step, done: box.checked})
+      }).catch(function(){
+        // The server is on the Mac and the page is often open on an iPad, so a
+        // dropped Wi-Fi hop is the likely failure. Put the box back rather than
+        // showing a tick that was never saved.
+        box.checked = !box.checked;
+        row.classList.toggle("done", box.checked);
+        repaint();
+        alert("Could not save that step — check the connection to the Mac.");
+      });
+    });
+  });
+
+  function repaint(){
+    var done = document.querySelectorAll(".tv-box:checked").length;
+    bar.style.width = (done / total * 100) + "%";
+    count.textContent = done + " / " + total;
+  }
+
+  document.querySelectorAll(".copy").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var el = document.getElementById(btn.dataset.copy);
+      if(!el) return;
+      var text = el.innerText;
+      var done = function(){ btn.textContent = "Copied"; setTimeout(function(){ btn.textContent = "Copy"; }, 1400); };
+      if(navigator.clipboard && window.isSecureContext){
+        navigator.clipboard.writeText(text).then(done);
+      } else {
+        // Served over plain http on the LAN, so the clipboard API is often
+        // unavailable. Fall back to the old selection trick.
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); done(); } catch(e){}
+        document.body.removeChild(ta);
+      }
+    });
+  });
+})();
+</script>
+
+{% endblock %}

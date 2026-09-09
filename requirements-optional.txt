@@ -1,0 +1,4 @@
+# Not required. Enables the automatic scan test on branded QR codes.
+# If this will not install, the app still generates codes — they just are not
+# machine-verified, so scan-test by hand.
+opencv-python-headless>=4.9

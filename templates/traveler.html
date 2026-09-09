@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Product Pair Traveler — Steeple &amp; Stitch{% endblock %}
+{% block content %}
+
+<style>
+  .tv-start{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:12px 16px;align-items:end}
+  @media (max-width:699px){.tv-start{grid-template-columns:1fr}}
+  .tv-bar{height:7px;border-radius:99px;background:#E6E1D6;overflow:hidden;min-width:90px}
+  .tv-bar i{display:block;height:100%;background:var(--ok)}
+  .tv-prog{display:flex;align-items:center;gap:10px}
+  .tv-count{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+            color:var(--muted);white-space:nowrap}
+  .pill.done{background:#E4F0E8;color:#265B41}
+  .pill.wip{background:#FBF3DF;color:#6A5B33}
+  .tv-shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+  .tv-shot{border:1px dashed #D8D1C2;border-radius:8px;padding:10px 12px;font-size:12.5px;
+           background:#FBF9F4}
+  .tv-shot.has{border-style:solid;border-color:#CFE0D4;background:#F3F8F4}
+  .tv-shot b{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+             color:var(--muted);margin-bottom:3px}
+</style>
+
+<h2>Start a product</h2>
+<div class="card">
+  <form method="post" action="{{ url_for('traveler_new') }}" class="tv-start">
+    <div class="field">
+      <label for="title">Product</label>
+      <input type="text" id="title" name="title" required
+             placeholder="GCS Volleyball — Comfort Colors tee">
+    </div>
+    <div class="field">
+      <label for="org_key">Partner org</label>
+      <select id="org_key" name="org_key">
+        <option value="">Choose…</option>
+        {% for org in orgs %}
+          <option value="{{ org.key }}">{{ org.vendor }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="platform">POD platform</label>
+      <select id="platform" name="platform">
+        <option value="">Choose…</option>
+        {% for p in platforms %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <button class="btn btn-gold" type="submit">Start traveler</button>
+    </div>
+  </form>
+  <div class="note">
+    Thirteen steps, five phases. The order is load-bearing in three places and each one is
+    flagged on the run. Reference: <code>claude/ops/14-new-product-sop.md</code>.
+  </div>
+</div>
+
+<h2>Runs</h2>
+{% if runs %}
+<div class="card" style="padding:6px 22px">
+  <table>
+    <thead>
+      <tr>
+        <th>Product</th>
+        <th class="phone-hide">Org</th>
+        <th class="phone-hide">Platform</th>
+        <th>Progress</th>
+        <th class="phone-hide">Updated</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in runs %}
+      <tr>
+        <td>
+          <a href="{{ url_for('traveler_run', run_id=row.run.id) }}">{{ row.run.title or "Untitled" }}</a>
+          {% if row.done == row.total %}
+            <span class="pill done">Complete</span>
+          {% elif row.done > 0 %}
+            <span class="pill wip">In progress</span>
+          {% endif %}
+        </td>
+        <td class="phone-hide">{{ row.vendor or "—" }}</td>
+        <td class="phone-hide">{{ row.run.platform or "—" }}</td>
+        <td>
+          <div class="tv-prog">
+            <div class="tv-bar"><i style="width:{{ row.pct }}%"></i></div>
+            <span class="tv-count">{{ row.done }}/{{ row.total }}</span>
+          </div>
+        </td>
+        <td class="phone-hide tv-count">{{ row.run.updated[:10] }}</td>
+        <td style="text-align:right">
+          <a class="btn btn-quiet" href="{{ url_for('traveler_run', run_id=row.run.id) }}">Open</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty">No runs yet. Start one above when you add your next product.</div>
+{% endif %}
+
+<h2>Screenshot library</h2>
+<div class="card">
+  <p style="margin-top:0;font-size:13.5px;color:var(--muted)">
+    Screens look the same on every product, so a screenshot uploaded once shows on every run.
+    Upload them from inside a run — each step has its own slot.
+  </p>
+  <div class="tv-shots">
+    {% for key, hint in shot_hints %}
+      <div class="tv-shot {{ 'has' if shots.get(key) }}">
+        <b>{{ key.replace('-', ' ') }}</b>
+        {{ "Uploaded" if shots.get(key) else hint }}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if not partners %}
+  <div class="card empty">
+    <p style="font-size:16px;margin:0 0 18px">No partners yet.</p>
+    <a class="btn btn-primary" href="{{ url_for('new_partner') }}">Add your first partner</a>
+  </div>
+{% else %}
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Organization</th><th class="phone-hide">Type</th><th>Tier</th>
+            <th>Margin</th>
+            <th class="phone-hide">Store</th><th class="phone-hide">Updated</th>
+            <th></th></tr>
+      </thead>
+      <tbody>
+      {% for p in partners %}
+        <tr>
+          <td>
+            <strong>{{ p.org_name }}</strong>
+            {% if p.org_short and p.org_short != p.org_name %}<span
+              class="phone-hide-inline"
+              style="color:var(--muted)"> · {{ p.org_short }}</span>{% endif %}
+          </td>
+          <td class="phone-hide"><span class="pill">{{ p.org_type }}</span></td>
+          <td>{{ p.plan }}</td>
+          <td>{{ p.margin_pct }}%</td>
+          <td class="phone-hide"
+              style="font-size:12.5px;font-family:ui-monospace,Menlo,monospace">
+            /{{ p.collection_handle }}</td>
+          <td class="phone-hide"
+              style="color:var(--muted);font-size:12.5px">{{ (p.updated_at or '')[:10] }}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <a class="btn btn-quiet" href="{{ url_for('edit_partner', pid=p.id) }}">Edit</a>
+            <a class="btn btn-gold" href="{{ url_for('generate', pid=p.id) }}">Generate</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ url_for('new_partner') }}">New partner</a>
+    <a class="btn btn-quiet" href="{{ url_for('redirects') }}">Download all Shopify redirects</a>
+  </div>
+{% endif %}
+
+<div class="note">
+  <strong>Redirect step, once per partner.</strong> QR codes point at
+  <code>/go/&lt;slug&gt;</code>, not the collection URL. Import the redirect CSV in
+  Shopify under <em>Online Store → Navigation → URL Redirects</em>. Do this before
+  anything goes to print, and a collection rename can never kill a printed postcard.
+</div>
+
+{% if not shopify_ready %}
+<div class="note">
+  Shopify auto-fill is off. Add <code>SHOPIFY_STORE</code> and
+  <code>SHOPIFY_ADMIN_TOKEN</code> to <code>.env</code> to pull the product lineup
+  and size range straight from the live collection.
+</div>
+{% endif %}
+
+{% endblock %}

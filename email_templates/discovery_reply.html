@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>Your discovery call &mdash; Steeple &amp; Stitch</title>
+<!--[if mso]>
+<noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+<![endif]-->
+<style>
+  body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
+  table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
+  img{-ms-interpolation-mode:bicubic;border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}
+  table{border-collapse:collapse!important;}
+  body{margin:0!important;padding:0!important;width:100%!important;background-color:#F6F1E6;}
+  a{color:#8A6420;}
+  @media screen and (max-width:600px){
+    .wrap{width:100%!important;}
+    .px{padding-left:24px!important;padding-right:24px!important;}
+    .h1{font-size:26px!important;line-height:32px!important;}
+    .btn a{display:block!important;}
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#F6F1E6;">
+
+<!-- PREHEADER -->
+<div style="display:none;font-size:1px;color:#F6F1E6;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+  We'll be in touch within one business day. Here's what the call covers, what to have handy, and how the whole thing works.
+  &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F1E6;">
+<tr>
+<td align="center" style="padding:24px 12px;">
+
+  <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+  <table role="presentation" class="wrap" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#FFFFFF;border-radius:6px;overflow:hidden;">
+
+    <!-- ============ HEADER ============ -->
+    <tr>
+      <td align="center" bgcolor="#001739" style="background-color:#001739;padding:38px 32px 34px 32px;">
+        <img src="{{ logo_src }}" width="260" alt="Steeple &amp; Stitch Co. &mdash; Where Ministry Meets Merch" style="display:block;width:260px;max-width:260px;height:auto;margin:0 auto;">
+      </td>
+    </tr>
+    <tr><td bgcolor="#C9993F" style="background-color:#C9993F;font-size:0;line-height:0;height:4px;">&nbsp;</td></tr>
+
+    <!-- ============ OPENING ============ -->
+    <tr>
+      <td class="px" style="padding:36px 40px 8px 40px;">
+        <h1 class="h1" style="margin:0 0 18px 0;font-family:Georgia,'Times New Roman',serif;font-size:30px;line-height:36px;font-weight:normal;color:#001739;">
+          Got it, {{ contact_first_name }} &mdash; thanks for reaching out.
+        </h1>
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          Your discovery call request for <strong style="color:#001739;">{{ org_name }}</strong> came through,
+          and it's on my desk &mdash; not in a queue somewhere.
+        </p>
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          I'll reach out within one business day to find a time that works. The call runs about
+          20 minutes, by phone or video &mdash; whichever is easier for you.
+        </p>
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          There's nothing to prepare and nothing to sign. It's a conversation about what your
+          {{ vocab_people }} would actually wear, and whether this is worth your time at all.
+        </p>
+{%- if show_tier %}
+        <!-- The sentence that proves a person read the form rather than a robot
+             acknowledging it. Dropped whole when the size field is empty; never
+             rendered around a blank. No price here on purpose -- naming the tier
+             earns the call, naming a number invites a decision before you talk. -->
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          You told us {{ org_name }} is around <strong style="color:#001739;">{{ org_size }}</strong> people.
+          That puts you in our <strong style="color:#001739;">{{ likely_tier }}</strong> range &mdash;
+          {{ tier_one_liner }} We'll confirm on the call; if a different tier fits you better, I'll say so.
+        </p>
+{%- endif %}
+      </td>
+    </tr>
+
+{%- if booking_link %}
+    <!-- ============ BOOKING BUTTON ============ -->
+    <tr>
+      <td class="px" align="center" style="padding:14px 40px 8px 40px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="btn">
+          <tr><td align="center" bgcolor="#C9993F" style="background-color:#C9993F;border-radius:4px;">
+            <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ booking_link }}" style="height:52px;v-text-anchor:middle;width:300px;" arcsize="8%" stroke="f" fillcolor="#C9993F"><w:anchorlock/><center style="color:#001739;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;"><![endif]-->
+            <a href="{{ booking_link }}" style="display:inline-block;padding:16px 38px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;letter-spacing:1px;color:#001739;text-decoration:none;border-radius:4px;">
+              GRAB A TIME ON MY CALENDAR
+            </a>
+            <!--[if mso]></center></v:roundrect><![endif]-->
+          </td></tr>
+        </table>
+        <p style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#6A6A6A;">
+          Or just reply to this email with a couple of windows that work.
+        </p>
+      </td>
+    </tr>
+{%- else %}
+    <tr>
+      <td class="px" style="padding:4px 40px 8px 40px;">
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          Just reply to this email with a couple of windows that work for you this week,
+          and I'll lock one in.
+        </p>
+      </td>
+    </tr>
+{%- endif %}
+
+    <!-- ============ WHAT WE'LL COVER ============ -->
+    <tr>
+      <td class="px" style="padding:22px 40px 0 40px;">
+        <p style="margin:0 0 14px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9993F;">What we'll cover</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr><td valign="top" width="26" style="padding:0 0 12px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">1.</td>
+              <td style="padding:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;"><strong style="color:#001739;">What your people already ask for.</strong> Every {{ vocab_org }} has the shirt someone keeps asking about. We start there.</td></tr>
+          <tr><td valign="top" width="26" style="padding:0 0 12px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">2.</td>
+              <td style="padding:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;"><strong style="color:#001739;">Which {{ vocab_groups }} need their own gear.</strong> Sub-logos and separate looks are included, not an upcharge.</td></tr>
+          <tr><td valign="top" width="26" style="padding:0 0 12px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">3.</td>
+              <td style="padding:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;"><strong style="color:#001739;">What's on your calendar.</strong> Camps, VBS, retreats, staff shirts &mdash; anything with a hard date changes how we sequence the build.</td></tr>
+          <tr><td valign="top" width="26" style="padding:0 0 12px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">4.</td>
+              <td style="padding:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;"><strong style="color:#001739;">Which tier fits and what comes back to you.</strong> Real numbers on your size, not a brochure average.</td></tr>
+        </table>
+        <p style="margin:6px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          After the call you'll get a short written recommendation &mdash; tier, pricing, and a launch
+          timeline &mdash; so you have something to take to your team. No obligation attached to it.
+        </p>
+      </td>
+    </tr>
+
+    <!-- ============ HELPFUL, NOT REQUIRED ============ -->
+    <tr>
+      <td class="px" style="padding:26px 40px 0 40px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F1E6;border-radius:4px;">
+          <tr><td style="padding:20px 22px 6px 22px;">
+            <p style="margin:0 0 10px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9993F;">Helpful, not required</p>
+            <p style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#333333;">
+              If these are easy to grab before we talk, the call goes faster. If not, no problem &mdash; we can get them later.
+            </p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td valign="top" width="22" style="padding:0 0 8px 0;font-family:Georgia,serif;font-size:15px;color:#C9993F;line-height:24px;">&#10022;</td>
+                  <td style="padding:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#333333;">Where your logo file lives, and what format it's in</td></tr>
+              <tr><td valign="top" width="22" style="padding:0 0 8px 0;font-family:Georgia,serif;font-size:15px;color:#C9993F;line-height:24px;">&#10022;</td>
+                  <td style="padding:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#333333;">Roughly how many people you're printing for</td></tr>
+              <tr><td valign="top" width="22" style="padding:0 0 8px 0;font-family:Georgia,serif;font-size:15px;color:#C9993F;line-height:24px;">&#10022;</td>
+                  <td style="padding:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#333333;">Any event in the next 90 days that needs shirts</td></tr>
+              <tr><td valign="top" width="22" style="padding:0 0 16px 0;font-family:Georgia,serif;font-size:15px;color:#C9993F;line-height:24px;">&#10022;</td>
+                  <td style="padding:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#333333;">Who signs off on spending, if it isn't you</td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- ============ THE SHORT VERSION ============ -->
+    <tr>
+      <td class="px" style="padding:26px 40px 0 40px;">
+        <p style="margin:0 0 14px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9993F;">The short version</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #E5DFD0;border-bottom:1px solid #E5DFD0;">
+          <tr><td width="110" valign="top" style="padding:14px 0 6px 0;font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#C9993F;font-weight:bold;">We talk</td>
+              <td style="padding:14px 0 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#333333;">20 minutes, this week.</td></tr>
+          <tr><td width="110" valign="top" style="padding:6px 0;font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#C9993F;font-weight:bold;">We build</td>
+              <td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#333333;">your store, your logo, your colors, in about two weeks.</td></tr>
+          <tr><td width="110" valign="top" style="padding:6px 0;font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#C9993F;font-weight:bold;">You launch</td>
+              <td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#333333;">with a link, a QR code, and a ready-made promo kit.</td></tr>
+          <tr><td width="110" valign="top" style="padding:6px 0 14px 0;font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#C9993F;font-weight:bold;">You get paid</td>
+              <td style="padding:6px 0 14px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#333333;">a share of every sale, every quarter, with a line-item statement.</td></tr>
+        </table>
+        <p style="margin:16px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          Nothing gets printed until somebody orders it. No inventory in a closet, no volunteer chasing
+          people for $18 in the lobby, no task added to your staff's plate.
+        </p>
+{%- if sample_store_link %}
+        <p style="margin:14px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          Want to look around before we talk? Here's a live example store:
+          <a href="{{ sample_store_link }}" style="color:#8A6420;">{{ sample_store_label }}</a>
+        </p>
+{%- endif %}
+      </td>
+    </tr>
+
+    <!-- ============ REACH ME DIRECTLY ============ -->
+    <tr>
+      <td class="px" style="padding:26px 40px 0 40px;">
+        <p style="margin:0 0 12px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9993F;">Reach me directly</p>
+        <p style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          <strong style="color:#001739;">{{ point_of_contact_name }}</strong><br>
+          <a href="mailto:{{ point_of_contact_email }}" style="color:#8A6420;">{{ point_of_contact_email }}</a><br>
+          <a href="tel:{{ point_of_contact_phone }}" style="color:#8A6420;">{{ point_of_contact_phone }}</a>
+        </p>
+        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#6A6A6A;">
+          Call or text. If something's time-sensitive on your end, say so and we'll move it up.
+        </p>
+      </td>
+    </tr>
+
+    <!-- ============ SIGN-OFF ============ -->
+    <tr>
+      <td class="px" style="padding:26px 40px 34px 40px;">
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          One last thing. We're a small shop in Dayton, Ohio &mdash; which means the person who
+          answers when you call is the person doing your artwork. We only make money when your
+          store sells, so making this easy for you is the whole job.
+        </p>
+        <p style="margin:0 0 4px 0;font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:26px;color:#001739;">
+          Talk soon.
+        </p>
+        <p style="margin:14px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#333333;">
+          <strong style="color:#001739;">{{ signoff_name or point_of_contact_name }}</strong><br>
+          {{ signoff_title or 'Founder &middot; Steeple &amp; Stitch Co.' }}<br>
+          <span style="color:#6A6A6A;">A division of The Williams Collective</span><br>
+          <a href="https://steepleandstitch.com" style="color:#8A6420;">steepleandstitch.com</a>
+        </p>
+      </td>
+    </tr>
+
+    <!-- ============ FOOTER ============ -->
+    <tr>
+      <td bgcolor="#001739" style="background-color:#001739;padding:20px 40px;">
+        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;color:#9FB0C6;text-align:center;">
+          Steeple &amp; Stitch Co. &mdash; branded merch for ministry.
+{%- if company_address %}
+          <br>{{ company_address }}
+{%- endif %}
+        </p>
+      </td>
+    </tr>
+
+  </table>
+  <!--[if mso]></td></tr></table><![endif]-->
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>

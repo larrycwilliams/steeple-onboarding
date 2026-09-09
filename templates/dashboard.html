@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Steeple &amp; Stitch{% endblock %}
+{% block content %}
+<style>
+  .dash-head{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;
+             justify-content:space-between}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+         gap:14px;margin-bottom:20px}
+  .tile{background:#fff;border:1px solid #E2DDD2;border-radius:10px;padding:16px 18px}
+  .tile-gold{border-color:var(--gold);box-shadow:inset 3px 0 0 var(--gold)}
+  .tile-warn{border-color:#E0C7A0;background:#FDFAF4}
+  .tile-label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+              color:var(--muted);font-weight:700}
+  .tile-value{font-size:26px;font-weight:700;margin:6px 0 2px;letter-spacing:-.02em}
+  .tile-note{font-size:12px;color:var(--muted);line-height:1.4}
+  .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .row-title{font-weight:700;margin-bottom:6px}
+  tr.quiet td{color:var(--muted)}
+  tr.current td{background:#FBF3DF}
+  .bad{color:var(--bad);font-weight:600}
+</style>
+
+<div class="actions" style="margin:0 0 18px 0">
+  {% if configured %}
+    <a class="btn btn-gold" href="{{ url_for('dashboard_page', refresh=1) }}">Refresh from Shopify</a>
+  {% elif ready_to_connect %}
+    <a class="btn btn-gold" href="{{ url_for('shopify_connect') }}">Connect to Shopify</a>
+  {% endif %}
+  <a class="btn btn-primary" href="{{ url_for('dashboard_snapshot') }}">Save snapshot to iCloud</a>
+  {% if snapshot_path %}<span class="help">Last saved: {{ snapshot_path }}</span>{% endif %}
+</div>
+
+{% if not configured %}
+  {% if ready_to_connect %}
+    <div class="note">
+      <strong>One step left.</strong> Your app credentials are saved — click
+      below and Shopify hands the access token straight to this app. These
+      figures are the seeded snapshot until then.
+      <div class="actions" style="margin-top:12px">
+        <a class="btn btn-gold" href="{{ url_for('shopify_connect') }}">Connect to Shopify</a>
+      </div>
+    </div>
+  {% else %}
+    <div class="note">
+      <strong>Not connected to Shopify yet, so these are seeded figures.</strong>
+      Your store has no legacy custom apps, so there is no token to paste by
+      hand — add the app's Client ID and secret in
+      <a href="{{ url_for('settings_page') }}">Settings</a> and connect from
+      there.
+    </div>
+  {% endif %}
+{% endif %}
+
+{% include "_dashboard_body.html" %}
+{% endblock %}

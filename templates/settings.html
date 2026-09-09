@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2 style="margin-top:0">Your details</h2>
+  <p class="help" style="margin-top:0">
+    The half of the welcome email that never changes. Entered once here instead
+    of re-typed for every partner. The other half — organization name, store
+    name, plan, giveback — comes off the partner record.
+  </p>
+
+  {% if missing %}
+    <div class="note" style="border-color:#B4472F;background:#FBF1EE;margin:16px 0">
+      <strong>{{ missing|length }} still needed before an email can go out:</strong>
+      {{ missing|join(', ') }}.
+    </div>
+  {% endif %}
+
+  <form method="post">
+    {% for key, label, hint, _ in fields %}
+      <div style="margin-bottom:16px">
+        <label for="{{ key }}" style="display:block;font-weight:600;margin-bottom:4px">
+          {{ label }}{% if key in optional %}
+            <span class="help" style="font-weight:400"> — optional</span>
+          {% endif %}
+        </label>
+        <input type="text" id="{{ key }}" name="{{ key }}"
+               value="{{ values[key] }}" style="width:100%"
+               {% if key not in optional %}required{% endif %}>
+        {% if hint %}<div class="help">{{ hint }}</div>{% endif %}
+      </div>
+    {% endfor %}
+
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Save settings</button>
+      <a class="btn btn-quiet" href="{{ url_for('index') }}">Back to partners</a>
+    </div>
+  </form>
+</div>
+
+<h2>Shopify connection</h2>
+<div class="card">
+  {% if shopify_token %}
+    <div class="flash ok" style="margin-bottom:14px">
+      Connected as <code>{{ shopify_token }}</code> to
+      <code>{{ shopify_store }}</code>.
+    </div>
+    <div class="actions" style="margin-top:0">
+      <a class="btn btn-gold" href="{{ url_for('dashboard_page', refresh=1) }}">Refresh the dashboard</a>
+      <a class="btn btn-quiet" href="{{ url_for('shopify_connect') }}">Reconnect</a>
+    </div>
+  {% else %}
+    <div class="note" style="margin-top:0">
+      <strong>Your store has no legacy custom apps</strong>, so there is no
+      static token to copy — Shopify mints one during install and sends it to
+      the app's redirect URL. Point that redirect at this app and it lands
+      here instead of vanishing.
+    </div>
+
+    <form method="post" action="{{ url_for('save_shopify_app') }}">
+      <div class="grid">
+        <div class="field">
+          <label for="shopify_store2">Store domain</label>
+          <input type="text" id="shopify_store2" name="shopify_store"
+                 value="{{ shopify_store }}" readonly>
+          <div class="help">Read from your live store — the generated handle,
+            not steepleandstitch.com.</div>
+        </div>
+        <div class="field">
+          <label for="client_id">Client ID</label>
+          <input type="text" id="client_id" name="client_id"
+                 value="{{ client_id }}" autocomplete="off" spellcheck="false"
+                 placeholder="32 hex characters">
+          <div class="help">Dev Dashboard → your app → <em>App settings</em> →
+            Credentials.</div>
+        </div>
+        <div class="field">
+          <label for="client_secret">Client secret</label>
+          <input type="password" id="client_secret" name="client_secret"
+                 autocomplete="off" spellcheck="false"
+                 placeholder="{% if client_secret %}{{ client_secret }} — saved{% else %}shpss_…{% endif %}">
+          <div class="help">Directly under the Client ID. Starts with
+            <code>shpss_</code>.</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Save app credentials</button>
+      </div>
+    </form>
+
+    {% if client_id and client_secret %}
+      <hr style="border:0;border-top:1px solid #E2DDD2;margin:20px 0">
+      <div class="row-title">Ready to connect</div>
+      <div class="help" style="margin-bottom:12px">
+        In Dev Dashboard → Versions → <em>New version</em>, set
+        <strong>Allowed redirection URL(s)</strong> to
+        <code>http://localhost:5000/shopify/callback</code> and release it.
+        Then click below — Shopify will ask you to confirm, and hand the token
+        straight back to this app.
+      </div>
+      <div class="actions" style="margin-top:0">
+        <a class="btn btn-gold" href="{{ url_for('shopify_connect') }}">Connect to Shopify</a>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <div class="help" style="margin-top:14px">
+    Everything here is stored in <code>.env</code> beside the app, which is in
+    <code>.gitignore</code> and never syncs anywhere. The access token is never
+    displayed after it is saved.
+  </div>
+</div>
+
+<div class="note">
+  Pasted phone numbers and addresses are cleaned on save — copying from
+  Contacts or Messages wraps them in invisible characters that otherwise end up
+  in the email body and can break the <code>tel:</code> link.
+</div>
+
+{% endblock %}
