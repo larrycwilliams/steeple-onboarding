@@ -1,0 +1,12 @@
+{
+  "name": "Steeple & Stitch Onboarding",
+  "short_name": "S&S Onboarding",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F2A45",
+  "theme_color": "#0F2A45",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
