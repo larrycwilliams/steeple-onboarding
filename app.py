@@ -38,7 +38,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.7"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.8"   # shown in the header so you can tell a stale process at a glance
 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"
@@ -46,6 +46,24 @@ app.jinja_env.globals["APP_VERSION"] = APP_VERSION
 app.jinja_env.globals.update(
     FIELDS=FIELDS, GROUPS=GROUPS, ORG_TYPES=ORG_TYPES, PALETTE_ROLES=PALETTE_ROLES
 )
+
+
+@app.after_request
+def _no_html_cache(response):
+    """Never let a browser cache a page of this app.
+
+    The version in the header only tells you a page is stale if you happen to
+    look at it, and it cannot tell you at all when the number has not moved.
+    Safari served a cached partner list for a while after a deploy that had
+    already succeeded, which reads exactly like the deploy having failed.
+
+    HTML only -- /static keeps its normal caching, since those files are
+    fingerprinted by name and there is no reason to refetch them every load.
+    """
+    if response.mimetype == "text/html":
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    return response
 
 
 def _form_to_record(form, files, existing: dict | None = None) -> dict:
