@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re as _re
 from datetime import datetime
 import webbrowser
 from pathlib import Path
@@ -21,11 +22,12 @@ import secrets as secrets_module
 from urllib.parse import urlencode
 
 import requests
+from markupsafe import Markup, escape as _escape
 
 from flask import (Flask, abort, flash, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
 
-from onboarding import dashboard, discovery_reply, leads, mail_draft, package, library, reconcile, terms
+from onboarding import dashboard, discovery, discovery_reply, leads, mail_draft, package, library, reconcile, terms
 from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
 from onboarding import storefront, traveler
@@ -38,7 +40,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.8"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.9"   # shown in the header so you can tell a stale process at a glance
 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"
@@ -413,6 +415,9 @@ def _pipeline_context(refresh: bool = False) -> dict:
         "source": source,
         "pulled_at": (snap.get("pulled_at") or "").replace("T", " ").replace("+00:00", " UTC"),
         "error": "" if rows or source in ("live", "cache") else source,
+        # {lead key: progress} so each card can say how far its call got.
+        "calls": {key: discovery.progress(s)
+                  for key, s in discovery.by_lead_key().items()},
     }
 
 
@@ -533,6 +538,143 @@ def pipeline_promote(key):
     # Straight to the partner form, because the record is deliberately
     # incomplete: fees, margin and signers are blank until the call fills them.
     return redirect(url_for("edit_partner", pid=store.partner_id(record)))
+
+# ------------------------------------------------------------------ discovery
+
+# Prices and size ranges in the reference card read in the mono face, so the
+# numbers you are about to say out loud are the first thing your eye lands on.
+_FIGURES = _re.compile(r"\$\d[\d,]*(?:\.\d+)?(?:–\$?\d[\d,]*(?:\.\d+)?)?"
+                        r"|\b(?:[SML]|\d?XL)–\d?XL\b|\b\dXL\b")
+
+
+@app.template_filter("figures")
+def _figures(text):
+    return Markup(_FIGURES.sub(lambda m: f'<span class="mono">{m.group(0)}</span>',
+                               str(_escape(text or ""))))
+
+
+def _wants_json() -> bool:
+    return request.headers.get("X-Requested-With") == "fetch"
+
+
+def _discovery_or_404(sid: str) -> dict:
+    call = discovery.load(sid)
+    if call is None:
+        abort(404)
+    return call
+
+
+@app.route("/discovery")
+def discovery_index():
+    rows, _source = leads.list_leads()
+    sessions = discovery.list_sessions()
+    by_key = {s["lead_key"]: s for s in sessions if s.get("lead_key")}
+    open_leads = [r for r in rows if r["stage"] in leads.OPEN_STAGES]
+    return render_template(
+        "discovery_index.html",
+        open_leads=open_leads,
+        by_key=by_key,
+        sessions=sessions,
+        progress={s["id"]: discovery.progress(s) for s in sessions},
+        org_types=[("church", "Church"), ("school", "School"), ("nonprofit", "Non-Profit")],
+    )
+
+
+@app.route("/discovery/lead/<key>")
+def discovery_for_lead(key):
+    lead = leads.find_lead(key)
+    if not lead:
+        flash("That lead is no longer in the pipeline.", "error")
+        return redirect(url_for("pipeline_page"))
+    call = discovery.open_for_lead(lead)
+    return redirect(url_for("discovery_page", sid=call["id"]))
+
+
+@app.route("/discovery/walkin", methods=["POST"])
+def discovery_walkin():
+    call, message = discovery.open_walkin(request.form.get("org_name", ""),
+                                             request.form.get("org_type", ""))
+    if call is None:
+        flash(message, "error")
+        return redirect(url_for("discovery_index"))
+    return redirect(url_for("discovery_page", sid=call["id"]))
+
+
+@app.route("/discovery/<sid>")
+def discovery_page(sid):
+    if discovery.load(sid) is None and sid.startswith("lead-"):
+        # A bookmarked call whose file is not there yet (or was restored from
+        # an older backup): open it fresh rather than 404 in front of someone.
+        lead = leads.find_lead(sid[len("lead-"):])
+        if lead:
+            discovery.open_for_lead(lead)
+    call = discovery.link_partner(_discovery_or_404(sid))
+    lead = leads.find_lead(call["lead_key"]) if call.get("lead_key") else None
+    ref = discovery.promise()
+    partner = store.load(call["partner_id"]) if call.get("partner_id") else None
+    return render_template(
+        "discovery.html",
+        s=call,
+        lead=lead,
+        ref=ref,
+        questions=discovery.rendered_questions(ref),
+        phases=discovery.PHASES,
+        progress=discovery.progress(call),
+        partner=partner,
+        org_types=[("church", "Church"), ("school", "School"), ("nonprofit", "Non-Profit")],
+    )
+
+
+@app.route("/discovery/<sid>/save", methods=["POST"])
+def discovery_save(sid):
+    _discovery_or_404(sid)
+    if _wants_json():
+        call, error = discovery.save_field(sid, request.form.get("field", ""),
+                                              request.form.get("value", ""))
+        if call is None:
+            return jsonify(ok=False, error=error), 400
+        return jsonify(ok=True, saved_at=call["updated_at"],
+                       progress=discovery.progress(call))
+    call, error = discovery.save_form(sid, request.form)
+    flash(error or "Saved.", "error" if error else "ok")
+    return redirect(url_for("discovery_page", sid=sid))
+
+
+@app.route("/discovery/<sid>/writeup")
+def discovery_writeup(sid):
+    call = _discovery_or_404(sid)
+    lead = leads.find_lead(call["lead_key"]) if call.get("lead_key") else None
+    return app.response_class(discovery.writeup(call, lead),
+                              mimetype="text/plain; charset=utf-8")
+
+
+@app.route("/discovery/<sid>/held", methods=["POST"])
+def discovery_held(sid):
+    _discovery_or_404(sid)
+    ok, message = discovery.mark_held(sid)
+    flash(message, "ok" if ok else "error")
+    return redirect(url_for("discovery_page", sid=sid))
+
+
+@app.route("/discovery/<sid>/promote", methods=["POST"])
+def discovery_promote(sid):
+    _discovery_or_404(sid)
+    record, message = discovery.promote(sid)
+    if record is None:
+        flash(message, "error")
+        return redirect(url_for("discovery_page", sid=sid))
+    flash(message, "ok")
+    # Straight to the partner form, same as promoting from the pipeline: the
+    # record is deliberately incomplete until fees, margin and signers are in.
+    return redirect(url_for("edit_partner", pid=store.partner_id(record)))
+
+
+@app.route("/discovery/<sid>/apply", methods=["POST"])
+def discovery_apply(sid):
+    _discovery_or_404(sid)
+    record, message = discovery.apply_to_partner(sid)
+    flash(message, "ok" if record is not None else "error")
+    return redirect(url_for("discovery_page", sid=sid))
 
 # ------------------------------------------------------------------ dashboard
 

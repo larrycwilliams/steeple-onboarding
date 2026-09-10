@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Discovery — Steeple &amp; Stitch{% endblock %}
+{% block content %}
+<style>
+  .call-row{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+            padding:12px 0;border-bottom:1px solid #EFEBE2}
+  .call-row:last-child{border-bottom:0}
+  .call-name{font-weight:700}
+  .call-meta{font-size:13px;color:#5C6470}
+  .bar{height:6px;border-radius:99px;background:#EAE5D9;width:120px;overflow:hidden;display:inline-block;vertical-align:middle}
+  .bar i{display:block;height:100%;background:var(--gold)}
+</style>
+
+<h2>Start or resume a call</h2>
+<div class="card">
+  {% if not open_leads %}
+    <div class="empty" style="padding:20px">No open leads. Walk-ins go below.</div>
+  {% endif %}
+  {% for lead in open_leads %}
+    {% set call = by_key.get(lead.key) %}
+    {% set p = progress.get(call.id) if call else None %}
+    <div class="call-row">
+      <div>
+        <div class="call-name">{{ lead.org_name or lead.name or lead.email }}
+          <span class="pill">{{ lead.stage }}</span>
+          {% if lead.likely_tier %}<span class="pill">{{ lead.likely_tier }} likely</span>{% endif %}</div>
+        <div class="call-meta">{{ lead.name }}{% if lead.org_size %} · {{ lead.org_size }} people{% endif %}</div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center">
+        {% if p and p.started %}
+          <span class="bar" title="{{ p.covered }} of {{ p.total }} covered"><i style="width:{{ (100 * p.covered / p.total)|round|int }}%"></i></span>
+          <span class="call-meta">{{ p.covered }}/{{ p.total }}</span>
+        {% endif %}
+        <a class="btn {% if p and p.started %}btn-quiet{% else %}btn-primary{% endif %}"
+           href="{{ url_for('discovery_for_lead', key=lead.key) }}">{% if p and p.started %}Resume{% else %}Start{% endif %}</a>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<h2>Someone who didn't use the form</h2>
+<form class="card" method="post" action="{{ url_for('discovery_walkin') }}"
+      style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+  <div class="field" style="flex:2 1 260px;margin:0">
+    <label for="walk-org">Organization</label>
+    <input type="text" id="walk-org" name="org_name" placeholder="Church or school name" required autocomplete="off">
+  </div>
+  <div class="field" style="flex:1 1 150px;margin:0">
+    <label for="walk-type">Type</label>
+    <select id="walk-type" name="org_type">
+      <option value="">—</option>
+      {% for value, label in org_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+  <button class="btn btn-gold" type="submit">Start notes</button>
+</form>
+<p class="help">A merch-table introduction, a pastor who rang. These notes aren't tied to a
+  pipeline lead, so they don't move a stage — promote them straight to a partner when it's a yes.</p>
+
+<h2>All discovery notes</h2>
+<div class="card">
+  {% if not sessions %}<div class="empty" style="padding:20px">None yet.</div>{% endif %}
+  {% for s in sessions %}
+    {% set p = progress[s.id] %}
+    <div class="call-row">
+      <div>
+        <div class="call-name"><a href="{{ url_for('discovery_page', sid=s.id) }}">{{ s.org_name or s.id }}</a>
+          <span class="pill">{% if s.kind == 'lead' %}lead{% else %}walk-in{% endif %}</span>
+          {% if s.held_at %}<span class="pill" style="background:#E4F0E8;color:#265B41">held</span>{% endif %}
+          {% if s.partner_id %}<span class="pill" style="background:#E4F0E8;color:#265B41">partner</span>{% endif %}</div>
+        <div class="call-meta">{{ p.covered }} of {{ p.total }} covered · updated {{ (s.updated_at or '')[:16].replace('T', ' ') }} UTC</div>
+      </div>
+      <a class="btn btn-quiet" href="{{ url_for('discovery_page', sid=s.id) }}">Open</a>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

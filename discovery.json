@@ -1,0 +1,30 @@
+{
+  "_comment": "What Larry can promise across the table on a discovery call. Commercial terms (plans, giveback, contract) are NOT here -- the screen reads those from terms.json so the two cannot drift. Everything below was checked against the live store on the 'verified' date; re-check it when shipping rates or the price ladder change.",
+  "verified": "2026-09-10",
+  "pickup_area": "the Dayton area",
+  "price_points": {
+    "tee": "$20–22",
+    "tee_top": "$26",
+    "layer": "$35–40",
+    "hat": "$25",
+    "toddler": "$16–18"
+  },
+  "promise": [
+    {
+      "label": "Decoration",
+      "text": "Screen print, DTF transfer, embroidery. Artwork is built to suit the method, so decide the method before the art."
+    },
+    {
+      "label": "Delivery",
+      "text": "Free pickup at the church office in the Dayton area. Everyone else ships: in-house items $8 to the door, free over $100. Print-on-demand items ship at the vendor's rate."
+    },
+    {
+      "label": "Typical price points",
+      "text": "$20–22 tee (up to $26 in 4XL) · $35–40 crewneck or hoodie · $25 hat · $16–18 toddler tee"
+    },
+    {
+      "label": "Sizes available",
+      "text": "Adult S–4XL on most blanks, some to 5XL. Youth and toddler on request."
+    }
+  ]
+}

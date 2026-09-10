@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+{% block title %}Discovery — {{ s.org_name or "New call" }}{% endblock %}
+{% block content %}
+<style>
+  .dc{max-width:760px;margin:0 auto}
+  .dc .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+            font-variant-numeric:tabular-nums;font-size:.93em}
+  .dc-eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+              color:#8C6B2C;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .dc h1{font-size:clamp(26px,5vw,34px);line-height:1.12;letter-spacing:-.015em;
+         margin:8px 0 6px}
+  .dc-sub{color:#5C6470;margin:0 0 4px;max-width:60ch}
+  .dc-context{font-size:14px;color:#3B4049;margin-top:10px;display:flex;flex-wrap:wrap;gap:4px 14px}
+  .dc-context a{color:#7A5C1C}
+  .dc-head{display:grid;grid-template-columns:2fr 1fr 1.3fr;gap:12px;margin-top:14px}
+  @media (max-width:699px){.dc-head{grid-template-columns:1fr}}
+
+  .dc-ref{background:#fff;border:1px solid #E2DDD2;border-radius:10px;padding:18px 20px;margin:22px 0 6px}
+  .dc-ref h3{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#8C6B2C;margin:0 0 12px}
+  .dc-refgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px 20px}
+  .dc-refgrid dl{margin:0}
+  .dc-refgrid dt{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  .dc-refgrid dd{margin:0;font-size:14px;line-height:1.45}
+  .dc-ref details{margin-top:14px;border-top:1px dashed #DAD4C8;padding-top:12px}
+  .dc-ref summary{cursor:pointer;font-weight:600;font-size:14px;color:#3B4049}
+  .dc-ref table{margin-top:10px;font-size:14px}
+  .dc-ref td,.dc-ref th{padding:7px 8px}
+  .dc-verified{font-size:12px;color:var(--muted);margin-top:10px}
+
+  .dc-phase{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.12em;
+            text-transform:uppercase;color:#6A5B33;background:#FBF3DF;padding:6px 10px;
+            border-radius:5px;margin:28px 0 4px}
+  .dc-item{border-bottom:1px solid #E6E1D6;padding:18px 0}
+  .dc-top{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start}
+  .dc-num{font:700 12px/1 ui-monospace,Menlo,monospace;color:#102C48;background:#E7EBF0;
+          width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center}
+  .dc-ask{font-size:18px;font-weight:600;line-height:1.3;margin:2px 0 0}
+  .dc-item.done .dc-ask{color:var(--muted);text-decoration:line-through;text-decoration-color:#CFC9BC}
+  .dc-tick{width:28px;height:28px;accent-color:#A87B33;cursor:pointer;margin:0}
+  .dc-why{margin:8px 0 10px 40px;font-size:14.5px;color:#4E5C68;max-width:62ch}
+  .dc-why b{color:var(--ink)}
+  .dc-hint{margin:-4px 0 8px 40px;font-size:13px;color:#265B41}
+  .dc-hint.form{color:#6A5B33}
+  .dc-item textarea{margin-left:40px;width:calc(100% - 40px);min-height:52px}
+  @media (max-width:699px){.dc-why,.dc-hint{margin-left:0}.dc-item textarea{margin-left:0;width:100%}}
+
+  .dc-bar{position:sticky;bottom:0;z-index:5;background:rgba(245,242,236,.96);
+          backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+          border-top:1px solid #DAD4C8;margin:22px -28px -28px;padding:12px 28px;
+          display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+  @media (max-width:699px){.dc-bar{margin:22px -14px -18px;padding:10px 14px}}
+  .dc-count{font:600 13px/1.3 ui-monospace,Menlo,monospace;color:#3B4049}
+  .dc-status{font-size:13px;color:var(--muted);flex:1 1 180px}
+  .dc-status[data-state=ok]{color:#265B41}
+  .dc-status[data-state=offline],.dc-status[data-state=error]{color:#8C332C;font-weight:600}
+  .dc-bar form{margin:0}
+  .dc-acts{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  /* The base .btn font shorthand ends in "inherit", which makes the whole
+     declaration invalid -- so a <button> falls back to the UA font and an <a>
+     to the body font, and the two sit at different sizes side by side. Pin
+     it here rather than change every screen at once. */
+  .dc-bar .btn{font:600 14px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+               padding:11px 16px}
+  .dc-short{display:none}
+  @media (max-width:699px){
+    .dc-acts{width:100%;gap:8px}
+    .dc-bar .btn{font-size:14px;padding:10px 12px}
+    .dc-long{display:none}.dc-short{display:inline}
+  }
+  .dc-writeup{margin-top:24px}
+  .dc-writeup textarea{font:13px/1.55 ui-monospace,Menlo,monospace;min-height:320px;white-space:pre}
+</style>
+
+<div class="dc">
+  <div class="dc-eyebrow">
+    <span>Discovery call</span>
+    {% if lead %}<span class="pill">{{ lead.stage }}</span>{% else %}<span class="pill">walk-in</span>{% endif %}
+    {% if s.held_at %}<span class="pill" style="background:#E4F0E8;color:#265B41">held</span>{% endif %}
+    <a href="{{ url_for('discovery_index') }}" style="margin-left:auto;letter-spacing:.04em;text-transform:none;font-weight:600">All calls</a>
+  </div>
+  <h1>{{ s.org_name or "New conversation" }}</h1>
+  <p class="dc-sub">Twelve questions, in the order a conversation actually goes. Start from
+    nothing and build the line-up in the room — don't walk in with a catalog to defend.</p>
+
+  {% if lead %}
+  <div class="dc-context">
+    {% if lead.name %}<span>{{ lead.name }}</span>{% endif %}
+    {% if lead.email %}<a href="mailto:{{ lead.email }}">{{ lead.email }}</a>{% endif %}
+    {% if lead.phone %}<a href="tel:{{ lead.phone }}">{{ lead.phone }}</a>{% endif %}
+    {% if lead.org_type %}<span>{{ lead.org_type }}{% if lead.org_type_source == 'guess' %} (guessed){% endif %}</span>{% endif %}
+  </div>
+  {% if lead.prompt %}
+    <div class="note" style="margin-top:10px"><strong>Why they came:</strong> {{ lead.prompt }}</div>
+  {% endif %}
+  {% endif %}
+
+  <form id="notes" method="post" action="{{ url_for('discovery_save', sid=s.id) }}"
+        data-sid="{{ s.id }}" data-writeup="{{ url_for('discovery_writeup', sid=s.id) }}">
+
+  {% if not lead %}
+  {# A walk-in has nothing behind it but these three boxes, so they are
+     editable here. A lead's name belongs to its Shopify company and is fixed
+     on the pipeline card, so the two can never disagree. #}
+  <div class="dc-head">
+    <div class="field">
+      <label for="org_name">Organization</label>
+      <input type="text" id="org_name" name="org_name" value="{{ s.org_name }}" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="org_type">Type</label>
+      <select id="org_type" name="org_type">
+        <option value="">—</option>
+        {% for value, label in org_types %}
+          <option value="{{ value }}"{% if s.org_type == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="contact">Who you spoke to</label>
+      <input type="text" id="contact" name="contact" value="{{ s.contact }}" autocomplete="off" placeholder="Name, role">
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="dc-ref">
+    <h3>What you can promise in the room</h3>
+    <div class="dc-refgrid">
+      {% for item in ref["items"] %}
+        <dl><dt>{{ item.label }}</dt><dd>{{ item.text | figures }}</dd></dl>
+      {% endfor %}
+      {% if ref.launch_weeks %}
+        <dl><dt>Time to launch</dt><dd><span class="mono">{{ ref.launch_weeks }}</span> weeks from final artwork to a live store.</dd></dl>
+      {% endif %}
+    </div>
+    {% if ref.plans %}
+    <details>
+      <summary>If they ask what it costs</summary>
+      <div style="overflow-x:auto">
+      <table>
+        <tr><th>Plan</th><th>Setup</th><th>Monthly</th><th>Fits</th></tr>
+        {% for name, p in ref.plans.items() %}
+          <tr{% if lead and lead.likely_tier == name %} style="background:#FBF3DF"{% endif %}>
+            <td><strong>{{ name }}</strong>{% if lead and lead.likely_tier == name %} <span class="pill">likely</span>{% endif %}</td>
+            <td class="mono">${{ p.setup_fee }}</td>
+            <td class="mono">${{ p.monthly_fee }}</td>
+            <td>{{ p.attendance }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+      </div>
+      <p style="font-size:14px;margin:10px 0 0">
+        {% if ref.giveback.pct %}Giveback: <strong>{{ ref.giveback.pct }}% of the {{ ref.giveback.basis or "margin" }}</strong>{% if ref.giveback.note %} — {{ ref.giveback.note }}{% endif %}{% if ref.payout.frequency %} Paid {{ ref.payout.frequency | lower }}{% if ref.payout.statement %} with a {{ ref.payout.statement }}{% endif %}.{% endif %}{% endif %}
+        {% if ref.term.cadence %}<br>No long-term contract: {{ ref.term.cadence }}, {{ ref.term.notice_days }} days' notice.{% endif %}
+      </p>
+    </details>
+    {% endif %}
+    {% if ref.verified %}<div class="dc-verified">Checked against the live store {{ ref.verified }} · terms from terms.json</div>{% endif %}
+  </div>
+
+  {% set ns = namespace(phase="") %}
+  {% for q in questions %}
+    {% if q.phase != ns.phase %}{% set ns.phase = q.phase %}<div class="dc-phase">{{ q.phase }}</div>{% endif %}
+    {% set a = s.answers[q.id] %}
+    <div class="dc-item{% if a.covered %} done{% endif %}" data-q="{{ q.id }}">
+      <div class="dc-top">
+        <span class="dc-num">{{ q.number }}</span>
+        <p class="dc-ask" id="ask-{{ q.id }}">{{ q.ask }}</p>
+        <input class="dc-tick" type="checkbox" name="{{ q.id }}.covered" value="1"
+               aria-label="Mark question {{ q.number }} covered"{% if a.covered %} checked{% endif %}>
+      </div>
+      <p class="dc-why">{{ q.why | safe }}</p>
+      {% if q.id == 'attendance' and lead and lead.org_size %}
+        <p class="dc-hint form">On the form: {{ lead.org_size }} people{% if lead.likely_tier %} → {{ lead.likely_tier }} likely{% endif %}. Check it — forms get filled in a hurry.</p>
+      {% endif %}
+      {% if q.id == 'artwork' and lead and lead.logo_ref %}
+        <p class="dc-hint">They attached a logo with the form. Ask whether it's the master file or a copy.</p>
+      {% endif %}
+      {% if q.partner_label %}
+        <p class="dc-hint">Carries into the partner's <em>{{ q.partner_label }}</em> when promoted.</p>
+      {% endif %}
+      <textarea name="{{ q.id }}.note" rows="2" aria-labelledby="ask-{{ q.id }}"
+                placeholder="{{ q.placeholder }}">{{ a.note }}</textarea>
+    </div>
+  {% endfor %}
+
+  <noscript>
+    <div class="actions"><button class="btn btn-primary" type="submit">Save notes</button></div>
+  </noscript>
+  </form>
+
+  <section class="dc-writeup" id="writeupBlock" hidden>
+    <h2>Write-up</h2>
+    <p class="help" id="copyState">Paste into an email, Notes, or the partner's file.</p>
+    <textarea id="writeup" readonly></textarea>
+  </section>
+
+  <div class="dc-bar">
+    <span class="dc-count" id="count">{{ progress.covered }} of {{ progress.total }} covered</span>
+    <span class="dc-status" id="status" data-state="ok" role="status" aria-live="polite">
+      {% if s.updated_at %}Saved{% else %}Nothing saved yet{% endif %}</span>
+    <div class="dc-acts">
+    <a class="btn btn-quiet" id="build" href="{{ url_for('discovery_writeup', sid=s.id) }}" target="_blank" rel="noopener">Write-up</a>
+    {% if not s.held_at or (lead and lead.stage in ('New', 'Replied', 'Call booked')) %}
+    <form method="post" action="{{ url_for('discovery_held', sid=s.id) }}">
+      <button class="btn btn-primary" type="submit"><span class="dc-long">Mark call held</span><span class="dc-short">Call held</span></button>
+    </form>
+    {% endif %}
+    {% if partner %}
+      <a class="btn btn-quiet" href="{{ url_for('edit_partner', pid=partner.id) }}">Open partner</a>
+      <form method="post" action="{{ url_for('discovery_apply', sid=s.id) }}"
+            onsubmit='return confirm({{ ("Copy the line-up and sizes into " ~ partner.org_name ~ "? Only fields the partner record has not filled in itself are touched.")|tojson }})'>
+        <button class="btn btn-quiet" type="submit">Copy into partner</button>
+      </form>
+    {% else %}
+      <form method="post" action="{{ url_for('discovery_promote', sid=s.id) }}"
+            onsubmit='return confirm({{ ("Create a partner record for " ~ (s.org_name or "this organisation") ~ " from these notes?")|tojson }})'>
+        <button class="btn btn-gold" type="submit"{% if not s.org_name %} disabled title="Needs an organisation name"{% endif %}><span class="dc-long">Promote to partner</span><span class="dc-short">Promote</span></button>
+      </form>
+    {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById("notes");
+  if (!form || !window.fetch) return;
+  var url = form.action;
+  var KEY = "discovery-pending:" + form.dataset.sid;
+  var statusEl = document.getElementById("status");
+  var countEl = document.getElementById("count");
+  var total = {{ progress.total }};
+  var timers = {};
+  var pending = {};
+
+  function read() { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } }
+  function persist() {
+    try {
+      if (Object.keys(pending).length) localStorage.setItem(KEY, JSON.stringify(pending));
+      else localStorage.removeItem(KEY);
+    } catch (e) {}
+  }
+  function show(state, text) { statusEl.dataset.state = state; statusEl.textContent = text; }
+  function clock() { return new Date().toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}); }
+
+  function paintItems() {
+    var covered = 0;
+    Array.prototype.forEach.call(form.querySelectorAll(".dc-item"), function (item) {
+      var on = item.querySelector(".dc-tick").checked;
+      item.classList.toggle("done", on);
+      if (on) covered++;
+    });
+    countEl.textContent = covered + " of " + total + " covered";
+  }
+
+  function send(field) {
+    if (!(field in pending)) return;
+    var value = pending[field];
+    show("saving", "Saving…");
+    var body = new URLSearchParams();
+    body.set("field", field); body.set("value", value);
+    fetch(url, {method: "POST", headers: {"X-Requested-With": "fetch"}, body: body})
+      .then(function (r) {
+        return r.json().catch(function () { return {ok: false, error: "The app sent back something unexpected."}; })
+          .then(function (j) { return {status: r.status, j: j}; });
+      })
+      .then(function (res) {
+        if (res.status >= 400 || !res.j.ok) {
+          // A 400 is the app refusing the value -- retrying will not help.
+          if (res.status === 400) { delete pending[field]; persist(); }
+          show("error", "Not saved: " + (res.j.error || "the app refused it."));
+          return;
+        }
+        if (pending[field] === value) { delete pending[field]; persist(); }
+        if (!Object.keys(pending).length) show("ok", "Saved " + clock());
+      })
+      .catch(function () {
+        show("offline", "Not saved yet — no connection. Kept on this device; it will send when the connection is back.");
+      });
+  }
+
+  function queue(field, value, delay) {
+    pending[field] = value; persist();
+    clearTimeout(timers[field]);
+    timers[field] = setTimeout(function () { send(field); }, delay);
+    show("dirty", "Unsaved…");
+  }
+  function flush() { Object.keys(pending).forEach(send); }
+
+  // Edits made on this device that never reached the app -- the connection
+  // dropped mid-call, or the tab was closed before they sent. Put them back
+  // on screen and send them; they are newer than what the page loaded with.
+  var left = read();
+  if (Object.keys(left).length) {
+    Object.keys(left).forEach(function (field) {
+      var el = form.elements[field];
+      if (!el) return;
+      if (el.type === "checkbox") el.checked = left[field] === "1";
+      else el.value = left[field];
+    });
+    pending = left;
+    paintItems();
+    show("saving", "Sending edits kept from earlier…");
+    flush();
+  }
+
+  form.addEventListener("input", function (e) {
+    var el = e.target;
+    if (!el.name) return;
+    if (el.type === "checkbox") return;               // handled on change
+    if (el.tagName === "SELECT") return;
+    queue(el.name, el.value, 700);
+    // Writing a note means the question came up. Tick it, so the count on the
+    // bar is honest without a second tap mid-conversation. Unticking stays
+    // possible -- it only happens on the way from empty to not-empty.
+    if (el.tagName === "TEXTAREA" && el.value.trim()) {
+      var tick = el.closest(".dc-item").querySelector(".dc-tick");
+      if (!tick.checked) { tick.checked = true; queue(tick.name, "1", 0); paintItems(); }
+    }
+  });
+  form.addEventListener("change", function (e) {
+    var el = e.target;
+    if (el.type === "checkbox") { queue(el.name, el.checked ? "1" : "0", 0); paintItems(); }
+    else if (el.tagName === "SELECT") { queue(el.name, el.value, 0); }
+  });
+  // Enter in a one-line box would submit the whole form the old way.
+  form.addEventListener("submit", function (e) { e.preventDefault(); flush(); });
+
+  window.addEventListener("online", flush);
+  setInterval(function () { if (Object.keys(pending).length) flush(); }, 15000);
+  window.addEventListener("pagehide", function () {
+    Object.keys(pending).forEach(function (field) {
+      var body = new URLSearchParams(); body.set("field", field); body.set("value", pending[field]);
+      try { fetch(url, {method: "POST", headers: {"X-Requested-With": "fetch"}, body: body, keepalive: true}); } catch (e) {}
+    });
+  });
+
+  // Write-up: fetch the server's text so it is exactly what was saved, not
+  // what this page thinks it has.
+  var build = document.getElementById("build");
+  build.addEventListener("click", function (e) {
+    e.preventDefault();
+    flush();
+    setTimeout(function () {
+      fetch(form.dataset.writeup).then(function (r) { return r.text(); }).then(function (text) {
+        var block = document.getElementById("writeupBlock");
+        var box = document.getElementById("writeup");
+        box.value = text; block.hidden = false;
+        box.scrollIntoView({behavior: "smooth", block: "start"});
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () {
+            document.getElementById("copyState").textContent = "Copied to the clipboard. Paste it into an email, Notes, or the partner's file.";
+          }).catch(function () {});
+        }
+      }).catch(function () { show("offline", "Couldn't reach the app for the write-up."); });
+    }, Object.keys(pending).length ? 600 : 0);
+  });
+})();
+</script>
+{% endblock %}

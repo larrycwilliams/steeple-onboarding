@@ -166,6 +166,14 @@
          href="{{ url_for('pipeline_reply_preview', key=lead.key) }}">Preview</a>
     {% endif %}
 
+    {# The call itself. Shows how far the notes got, so a half-finished call
+       is visible from here without opening it. #}
+    {% set call = calls.get(lead.key) %}
+    <a class="btn {% if lead.stage in ('Call booked', 'Call held') %}btn-primary{% else %}btn-quiet{% endif %}"
+       href="{{ url_for('discovery_for_lead', key=lead.key) }}">
+      {%- if call and call.started %}Discovery {{ call.covered }}/{{ call.total }}{% else %}Discovery call{% endif -%}
+    </a>
+
     {% if lead.partner_id %}
       <a class="btn btn-quiet" href="{{ url_for('partner_email', pid=lead.partner_id) }}">Welcome email</a>
     {% else %}
@@ -247,6 +255,8 @@
   <strong>Draft reply</strong> opens the discovery-call email in Mail with the
   name, organisation and tier paragraph already filled, and moves the lead to
   Replied once Mail has it. It is always a draft, never a send.
+  <strong>Discovery call</strong> opens the twelve-question notes for that
+  lead; the count on the button is how many were covered.
   <strong>Hold until</strong> is for the times waiting is the right call — the
   lead stays open and keeps its age, but it stops counting as a broken promise
   until that date passes.

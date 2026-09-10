@@ -256,6 +256,41 @@ If a refresh fails, the previous data stays on screen with the failure noted —
 it never blanks.
 
 
+## The discovery call
+
+**Discovery** in the header, or the **Discovery call** button on any lead in
+**Pipeline**. Twelve questions in the order the conversation goes —
+understand them, build the line-up, make it real — each with a note box and a
+tick. It is the "Church store discovery" checklist that used to live as a
+standalone page on the iPad, moved in here so the notes stop living in one
+browser.
+
+- **Every note saves itself** a moment after you stop typing, one field at a
+  time. Writing a note ticks its question. The bar at the bottom says
+  *Saved* — or, if the connection drops in a church basement, that the edits
+  are being kept on the device and will send when it is back. Closing the tab
+  while offline loses nothing; the next open resends them.
+- **One set of notes per lead.** Opening it again resumes. The pipeline button
+  shows progress (*Discovery 7/12*).
+- **Walk-ins** — someone who never filled the form — start from the Discovery
+  page with just a name. They do not touch the pipeline.
+- **Mark call held** moves the lead to *Call held*, never backwards.
+- **Promote to partner** creates the record, and the *line-up* and *sizes*
+  answers become its **Launch product lineup** and **Size range** — only where
+  the record still has the blank or seed value. **Copy into partner** does the
+  same for a lead that was promoted another way. Call notes never overwrite
+  something typed on the partner form; tidy them into one sentence there.
+- **Write-up** copies a plain-text summary for an email or the partner's file.
+
+"What you can promise in the room" reads `discovery.json` (decoration,
+delivery, price points, sizes — checked against the live store on the date it
+carries) and the plan table reads `terms.json`, so the pitch in the room and
+the agreement can't disagree. Change shipping rates or the price ladder in the
+store → change `discovery.json` the same day.
+
+Notes live in `leads/discovery/`, which is live data: gitignored and covered by
+the nightly backup with the rest of `leads/`.
+
 ## The workflow, per partner
 
 1. **New partner** → fill the form → **Save**
@@ -366,6 +401,8 @@ onboarding/
   palette.py             palette sampling from the logo
   postcard.py            print-ready postcard PDF/PNG
   shopify_pull.py        optional live collection lookup
+  leads.py               discovery-call pipeline, from Shopify Forms
+  discovery.py           the twelve-question discovery call and its notes
   docx_tools.py          run-aware docx text replacement
 tools/
   build_templates.py     source_docs -> docx_templates
@@ -373,6 +410,8 @@ tools/
 source_docs/             your originals — the editable master copies
 docx_templates/          generated merge templates
 partners/                one JSON per partner (the real record)
+leads/discovery/         one JSON per discovery call
+discovery.json           what can be promised on a call (not pricing)
 assets/<partner>/        their logo
 output/<partner>/        everything generated for them
 ```
