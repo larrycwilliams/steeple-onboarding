@@ -1,0 +1,24 @@
+{
+  "_comment": "Single source of truth for commercial terms. The document pipeline and the portal both read this, so they cannot drift apart. Update here, nowhere else.",
+  "updated": "2026-09-10",
+  "plans": {
+    "Starter":      { "setup_fee": 299, "monthly_fee": 39,  "margin_pct": 30, "attendance": "Under 125 attendance",        "best_for": "Single store, up to 12 items" },
+    "Growth":       { "setup_fee": 399, "monthly_fee": 49,  "margin_pct": 30, "attendance": "125+ attendance",             "best_for": "Multiple ministries, quarterly drops" },
+    "Multi-Campus": { "setup_fee": 799, "monthly_fee": 129, "margin_pct": 30, "attendance": "1,000+, multiple campuses",   "best_for": "Multi-campus churches, bulk events" }
+  },
+  "giveback": {
+    "pct": 30,
+    "basis": "margin",
+    "spoken": "thirty percent of the profit on each item",
+    "example": "about $3.50 on a $20 shirt",
+    "note": "Same on every plan. No tiers."
+  },
+  "term": {
+    "minimum": "none",
+    "cadence": "month to month",
+    "notice_days": 90,
+    "rationale": "The ninety-day period matches the quarterly payout cycle, so the store can be wound down in an orderly way, orders already placed are fulfilled, and the final margin payment is issued on the normal schedule."
+  },
+  "payout": { "frequency": "Quarterly", "method": "Check", "statement": "line-item statement" },
+  "launch": { "weeks": "2–3" }
+}

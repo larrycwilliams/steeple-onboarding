@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Tools &amp; Documents — Steeple &amp; Stitch{% endblock %}
+{% block content %}
+
+{# ---------------------------------------------------------------- terms ----
+   The numbers sit at the top because they are the thing most likely to be
+   quoted wrong on a phone call. This panel reads terms.json directly, so if
+   it is right here it is right in every generated document. #}
+<h2>Current terms</h2>
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Plan</th>
+        <th>Setup</th>
+        <th>Monthly</th>
+        <th>Giveback</th>
+        <th class="phone-hide">Fits</th>
+        <th class="phone-hide">Best for</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for name, p in terms.plans.items() %}
+      <tr>
+        <td><strong>{{ name }}</strong></td>
+        <td>${{ p.setup_fee }}</td>
+        <td>${{ p.monthly_fee }}/mo</td>
+        <td>{{ p.margin_pct }}% of margin</td>
+        <td class="phone-hide">{{ p.attendance }}</td>
+        <td class="phone-hide" style="color:#5C6470">{{ p.best_for }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="note" style="margin-bottom:0">
+    <strong>Say it this way:</strong> {{ terms.giveback.spoken }} —
+    {{ terms.giveback.example }}. {{ terms.giveback.note }}<br>
+    <strong>Term:</strong> no long-term contract, {{ terms.term.cadence }},
+    {{ terms.term.notice_days }} days' notice to cancel.
+    <strong>Payout:</strong> {{ terms.payout.frequency }} by
+    {{ terms.payout.method }} with a {{ terms.payout.statement }}.
+    <strong>Launch:</strong> {{ terms.launch.weeks }} weeks.
+  </div>
+  <p class="help">
+    Single source of truth: <code>terms.json</code> — last updated
+    {{ terms.updated }}. Change it there and every document, default and
+    screen follows. Nothing else holds a copy of these numbers.
+  </p>
+</div>
+
+{% if library_missing %}
+<div class="card" style="border-color:#E3B7B1;background:#FDF6F5;margin-bottom:0">
+  <strong>{{ library_missing|length }} of the master documents are not where
+  this app expects them.</strong>
+  <p class="help" style="margin-bottom:0">
+    Reading from <code>{{ library_root }}</code>. If that is not your
+    20-Steeple-Stitch folder, set <code>SS_BUSINESS_ROOT</code> in the service
+    plist and restart — the code and the documents no longer live in the same
+    place, so the folder cannot be inferred from where the app is installed.
+    Not found: {{ library_missing|join(', ') }}.
+  </p>
+</div>
+{% endif %}
+
+{# ------------------------------------------------------------- documents ---
+   Grouped by who the document is for, because the mistake that matters is
+   handing a partner something internal. #}
+{% for group in groups %}
+  {% set items = library.get(group) or [] %}
+  {% if items %}
+  <h2>{{ group }}</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Document</th>
+          <th class="phone-hide">Type</th>
+          <th class="phone-hide">Updated</th>
+          <th style="text-align:right">&nbsp;</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>
+            <strong>{{ it.label }}</strong>
+            {% if not it.exists %}<span class="pill"
+              style="background:#F8E3E1;color:#8C332C;margin-left:6px">Missing</span>{% endif %}
+            {% if it.note %}<div class="help">{{ it.note }}</div>{% endif %}
+            <div class="help phone-hide-inline" style="font-family:ui-monospace,Menlo,monospace">{{ it.name }}</div>
+          </td>
+          <td class="phone-hide"><span class="pill">{{ it.ext }}</span></td>
+          <td class="phone-hide" style="color:#5C6470">
+            {% if it.exists %}{{ it.modified }}<div class="help">{{ it.kb }} KB</div>{% else %}—{% endif %}
+          </td>
+          <td style="text-align:right">
+            {% if it.exists %}
+              <a class="btn btn-quiet" href="{{ url_for('tools_doc', slug=it.slug) }}">Download</a>
+            {% else %}
+              <span class="btn" disabled>Download</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+{% endfor %}
+
+{# ------------------------------------------------------------ health ------- #}
+<h2>Records check</h2>
+<div class="card">
+  {% if audit.ok %}
+    <div class="flash ok" style="margin-bottom:0">
+      Every partner record lines up with its assets folder and its output
+      folder, and no folders are unaccounted for.
+    </div>
+  {% else %}
+    <p class="help" style="margin-top:0">
+      Assets are filed under the partner slug; generated documents are filed
+      under the readable folder name stored on the record. That split is
+      intentional, but nothing used to check the two actually matched — which
+      is how one folder ended up named for a different church. Nothing below
+      is renamed automatically.
+    </p>
+  {% endif %}
+
+  <table>
+    <thead>
+      <tr>
+        <th>Partner</th>
+        <th class="phone-hide">Plan</th>
+        <th class="phone-hide">Assets</th>
+        <th class="phone-hide">Files</th>
+        <th>Notes</th>
+        <th style="text-align:right">&nbsp;</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in audit.partners %}
+      <tr>
+        <td>
+          <strong>{{ r.org }}</strong>
+          <div class="help" style="font-family:ui-monospace,Menlo,monospace">{{ r.id }}</div>
+        </td>
+        <td class="phone-hide">{{ r.plan }}</td>
+        <td class="phone-hide">{{ r.assets or '—' }}</td>
+        <td class="phone-hide">{{ r.files or '—' }}</td>
+        <td>
+          {% if r.issues %}
+            {% for i in r.issues %}
+              <div><span class="pill" style="background:#F8E3E1;color:#8C332C">{{ i }}</span></div>
+            {% endfor %}
+          {% endif %}
+          {% if r.incomplete %}
+            <div class="help">Not generated: {{ r.incomplete|join(', ') }}</div>
+          {% endif %}
+          {% if not r.issues and not r.incomplete %}<span style="color:#3F7D5B">OK</span>{% endif %}
+        </td>
+        <td style="text-align:right">
+          <a class="btn btn-quiet" href="{{ url_for('partner_files', pid=r.id) }}">Files</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if audit.term_mismatches %}
+<h2>Terms that differ from the plan</h2>
+<div class="card">
+  <p class="help" style="margin-top:0">
+    A negotiated exception is legitimate, so these are reported and never
+    corrected for you. Fix the record on the partner's Edit screen, or leave it
+    and know it is deliberate.
+  </p>
+  <table>
+    <thead><tr><th>Partner</th><th class="phone-hide">Plan</th><th>Difference</th><th style="text-align:right">&nbsp;</th></tr></thead>
+    <tbody>
+      {% for m in audit.term_mismatches %}
+      <tr>
+        <td><strong>{{ m.org }}</strong></td>
+        <td class="phone-hide">{{ m.plan or '—' }}</td>
+        <td>{% for d in m.diffs %}<div>{{ d }}</div>{% endfor %}</td>
+        <td style="text-align:right">
+          <a class="btn btn-quiet" href="{{ url_for('edit_partner', pid=m.id) }}">Edit</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if audit.orphan_assets or audit.orphan_output %}
+<h2>Folders with no partner</h2>
+<div class="card">
+  {% if audit.orphan_assets %}
+    <div class="field"><label>Asset folders</label>
+      {% for d in audit.orphan_assets %}<span class="pill">{{ d }}</span> {% endfor %}
+    </div>
+  {% endif %}
+  {% if audit.orphan_output %}
+    <div class="field"><label>Output folders</label>
+      {% for d in audit.orphan_output %}<span class="pill">{{ d }}</span> {% endfor %}
+    </div>
+  {% endif %}
+  <p class="help">
+    Either a partner was renamed and the old folder stayed behind, or these are
+    test runs. Left in place — deleting a folder of generated documents is not
+    something a web page should decide.
+  </p>
+</div>
+{% endif %}
+
+<h2>Maintenance</h2>
+<div class="card">
+  <p style="margin-top:0">
+    <strong>Rewrite manifest paths.</strong> Each generated folder's
+    <code>manifest.json</code> recorded absolute paths that included the
+    directory the run happened in, so every reference broke on the next run.
+    This rewrites them relative to the partner's own folder. Safe to re-run;
+    it reports zero when there is nothing left to fix.
+  </p>
+  <form method="post" action="{{ url_for('tools_relativise') }}" class="actions" style="margin-top:0">
+    <button class="btn-quiet" type="submit">Rewrite manifest paths</button>
+  </form>
+</div>
+
+{% endblock %}

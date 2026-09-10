@@ -34,6 +34,7 @@
               style="color:var(--muted);font-size:12.5px">{{ (p.updated_at or '')[:10] }}</td>
           <td style="text-align:right;white-space:nowrap">
             <a class="btn btn-quiet" href="{{ url_for('edit_partner', pid=p.id) }}">Edit</a>
+            <a class="btn btn-quiet phone-hide-inline" href="{{ url_for('partner_files', pid=p.id) }}">Files</a>
             <a class="btn btn-gold" href="{{ url_for('generate', pid=p.id) }}">Generate</a>
           </td>
         </tr>

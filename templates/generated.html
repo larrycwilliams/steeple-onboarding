@@ -49,8 +49,9 @@
     field{{ 's' if manifest.incomplete|length != 1 }} still unset:</strong>
     {{ manifest.incomplete|join(', ') }}.
     <div class="help" style="margin-top:6px">
-      Blank fees fall back to the seed values ($0 setup, $0 monthly, 10% margin) and
-      print as real terms above the signature line.
+      A blank commercial field now falls back to the {{ record.plan }} plan's own
+      terms from <code>terms.json</code>, not to a seed value — but check it above
+      the signature line before this goes out.
     </div>
   </div>
   {% endif %}
@@ -85,6 +86,7 @@
   <a class="btn btn-gold" href="{{ url_for('partner_email', pid=manifest.partner_id) }}">
     Welcome email &rarr;</a>
   <a class="btn btn-primary" href="{{ url_for('edit_partner', pid=manifest.partner_id) }}">Back to partner</a>
+  <a class="btn btn-quiet" href="{{ url_for('partner_files', pid=manifest.partner_id) }}">All their files</a>
   <a class="btn btn-quiet" href="{{ url_for('index') }}">All partners</a>
 </div>
 

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{{ record.org_name }} — Files{% endblock %}
+{% block content %}
+
+<h2>{{ record.org_name }} — everything on file</h2>
+
+<div class="card">
+  <div class="grid">
+    <div>
+      <label>Plan</label>
+      <div>{{ record.plan or '—' }}
+        {% if record.status %}<span class="pill">{{ record.status }}</span>{% endif %}
+      </div>
+    </div>
+    <div>
+      <label>Terms on record</label>
+      <div>${{ record.setup_fee or '—' }} setup · ${{ record.monthly_fee or '—' }}/mo ·
+          {{ record.margin_pct or '—' }}% margin</div>
+    </div>
+    <div>
+      <label>Payout</label>
+      <div>{{ record.payout_frequency or '—' }} by {{ record.payout_method or '—' }}</div>
+    </div>
+    <div>
+      <label>Launch date</label>
+      <div>{{ record.launch_date or '—' }}</div>
+    </div>
+    <div>
+      <label>Contact</label>
+      <div>{{ record.poc_name or '—' }}<div class="help">{{ record.poc_email }}</div></div>
+    </div>
+    <div>
+      <label>Store</label>
+      <div>{{ record.collection_handle or '—' }}</div>
+    </div>
+  </div>
+
+  {% if mismatch %}
+  <div class="note">
+    <strong>These terms differ from the {{ record.plan }} plan:</strong>
+    {{ mismatch.diffs|join('; ') }}.
+    {% if plan_terms %}
+      Plan is ${{ plan_terms.setup_fee }} setup, ${{ plan_terms.monthly_fee }}/mo,
+      {{ plan_terms.margin_pct }}% of margin.
+    {% endif %}
+    Left as recorded — a negotiated exception is legitimate, and only you know
+    which this is.
+  </div>
+  {% endif %}
+
+  <div class="actions">
+    <a class="btn btn-quiet" href="{{ url_for('edit_partner', pid=pid) }}">Edit record</a>
+    <a class="btn btn-gold" href="{{ url_for('generate', pid=pid) }}">Regenerate documents</a>
+    <a class="btn btn-quiet" href="{{ url_for('tools_page') }}">Master documents</a>
+  </div>
+</div>
+
+{# ------------------------------------------------------- generated docs ---- #}
+<h2>Generated documents</h2>
+<div class="card">
+  {% if docs %}
+  <table>
+    <thead>
+      <tr><th>File</th><th class="phone-hide">Type</th><th class="phone-hide">Size</th><th style="text-align:right">&nbsp;</th></tr>
+    </thead>
+    <tbody>
+      {% for d in docs %}
+      <tr>
+        <td>{{ d.name }}</td>
+        <td class="phone-hide"><span class="pill">{{ d.ext }}</span></td>
+        <td class="phone-hide" style="color:#5C6470">{{ d.kb }} KB</td>
+        <td style="text-align:right">
+          <a class="btn btn-quiet" href="{{ url_for('download', path=d.path) }}">Download</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty">
+      Nothing generated yet.<br>
+      <a class="btn btn-gold" style="margin-top:14px"
+         href="{{ url_for('generate', pid=pid) }}">Generate documents</a>
+    </div>
+  {% endif %}
+
+  {% if manifest.incomplete %}
+    <div class="note">
+      <strong>Not produced on the last run:</strong>
+      {{ manifest.incomplete|join(', ') }}.
+      Usually a missing input — check the logo and palette on the record, then
+      regenerate.
+    </div>
+  {% endif %}
+  {% if manifest %}
+  <div class="derived" style="margin-top:16px">
+    <dl>
+      {% if manifest.store_url %}<dt>Store</dt><dd>{{ manifest.store_url }}</dd>{% endif %}
+      {% if manifest.redirect %}<dt>Redirect</dt><dd>{{ manifest.redirect }}</dd>{% endif %}
+      {% if manifest.qr_target %}<dt>QR points to</dt>
+        <dd>{{ manifest.qr_target }}
+          {% if manifest.qr_check %} — decoded back as {{ manifest.qr_check }}{% endif %}</dd>
+      {% endif %}
+      {% if manifest.agreement_template_version %}
+        <dt>Agreement template</dt><dd>{{ manifest.agreement_template_version }}</dd>{% endif %}
+      {% if manifest.pdf_fonts %}<dt>PDF fonts</dt><dd>{{ manifest.pdf_fonts }}</dd>{% endif %}
+    </dl>
+  </div>
+  <p class="help">
+    The QR line is worth reading. A QR printed against the wrong church's URL
+    is invisible until someone scans it, so the run records what it encoded and
+    what it decoded back to.
+  </p>
+  {% endif %}
+  <p class="help" style="font-family:ui-monospace,Menlo,monospace">{{ folder }}</p>
+</div>
+
+{# ------------------------------------------------------------- assets ------ #}
+<h2>Their brand assets</h2>
+<div class="card">
+  {% if assets %}
+  <table>
+    <thead>
+      <tr><th>File</th><th class="phone-hide">Type</th><th class="phone-hide">Size</th><th style="text-align:right">&nbsp;</th></tr>
+    </thead>
+    <tbody>
+      {% for a in assets %}
+      <tr>
+        <td>{{ a.name }}</td>
+        <td class="phone-hide"><span class="pill">{{ a.ext }}</span></td>
+        <td class="phone-hide" style="color:#5C6470">{{ a.kb }} KB</td>
+        <td style="text-align:right">
+          <a class="btn btn-quiet"
+             href="{{ url_for('partner_asset', pid=pid, name=a.name) }}">Download</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty">
+      No assets on file for {{ record.org_name }}.<br>
+      <span class="help">Their logo is uploaded on the record — that is what puts
+      a file here.</span>
+    </div>
+  {% endif %}
+
+  {% if record.palette %}
+    <div style="margin-top:18px">
+      <label>Palette on record</label>
+      {% for c in record.palette %}
+        <div class="swatch-row">
+          <span class="swatch" style="background:#{{ c.hex|replace('#','') }}"></span>
+          <span>{{ c.name }}<div class="help" style="font-family:ui-monospace,Menlo,monospace">#{{ c.hex|replace('#','') }}</div></span>
+          <span class="help">{{ c.role }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  <p class="help" style="font-family:ui-monospace,Menlo,monospace">{{ asset_dir }}</p>
+</div>
+
+{% endblock %}

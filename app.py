@@ -8,6 +8,7 @@ Launch Week Kit, Promo Templates, branded QR and print-ready postcards.
 from __future__ import annotations
 
 import io
+import json
 import os
 from datetime import datetime
 import webbrowser
@@ -24,7 +25,7 @@ import requests
 from flask import (Flask, abort, flash, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
 
-from onboarding import dashboard, discovery_reply, leads, mail_draft, package
+from onboarding import dashboard, discovery_reply, leads, mail_draft, package, library, reconcile, terms
 from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
 from onboarding import storefront, traveler
@@ -175,6 +176,97 @@ def shopify_collection():
     if not handle:
         return jsonify({"ok": False, "error": "No handle supplied"})
     return jsonify(fetch_collection(handle))
+
+
+@app.route("/tools")
+def tools_page():
+    """Tools & Documents: the canonical copy of everything, plus a health
+    check. One place that is authoritative, so nobody opens a stale copy out
+    of a Finder folder."""
+    return render_template(
+        "tools.html",
+        library=library.listing(),
+        groups=library.GROUPS,
+        terms=terms.load(),
+        audit=reconcile.audit(),
+        library_root=library.root(),
+        library_missing=library.missing(),
+    )
+
+
+@app.route("/tools/doc/<slug>")
+def tools_doc(slug):
+    """Serve one allowlisted master. No path parameter by design."""
+    path = library.resolve(slug)
+    if path is None:
+        abort(404)
+    return send_file(path, as_attachment=True)
+
+
+@app.route("/tools/manifests/relativise", methods=["POST"])
+def tools_relativise():
+    touched = reconcile.relativise_manifests(apply=True)
+    flash("Rewrote file paths in %d manifest(s)." % len(touched)
+          if touched else "All manifests already use relative paths.")
+    return redirect(url_for("tools_page"))
+
+
+@app.route("/partner/<pid>/files")
+def partner_files(pid):
+    """Everything on file for one partner: record, assets, generated output."""
+    record = store.load(pid)
+    if record is None:
+        abort(404)
+    folder = store.output_dir(record)
+    docs = sorted(
+        ({"name": f.name,
+          "kb": round(f.stat().st_size / 1024),
+          "ext": f.suffix.lstrip(".").upper(),
+          "path": str(f)}
+         for f in folder.glob("*") if f.is_file() and f.name != "manifest.json"),
+        key=lambda d: d["name"])
+    adir = store.ASSETS / store.partner_id(record)
+    assets = sorted(
+        ({"name": str(f.relative_to(adir)),
+          "kb": round(f.stat().st_size / 1024),
+          "ext": f.suffix.lstrip(".").upper(),
+          "path": str(f)}
+         for f in adir.rglob("*") if f.is_file()),
+        key=lambda d: d["name"]) if adir.exists() else []
+    manifest = {}
+    mpath = folder / "manifest.json"
+    if mpath.exists():
+        try:
+            manifest = json.loads(mpath.read_text())
+        except Exception:
+            manifest = {}
+    return render_template(
+        "partner_files.html",
+        record=record, pid=store.partner_id(record), docs=docs, assets=assets,
+        manifest=manifest, folder=folder, asset_dir=adir,
+        plan_terms=terms.plan(record.get("plan")),
+        mismatch=next(iter(terms.mismatches([record])), None),
+    )
+
+
+@app.route("/partner/<pid>/asset/<path:name>")
+def partner_asset(pid, name):
+    """Serve one of a partner's own uploaded assets.
+
+    Separate from /download rather than widening it: that route is guarded to
+    store.OUTPUT, and the guard is the only thing standing between a path
+    parameter and the whole disk. This one is guarded to that partner's asset
+    folder alone."""
+    base = (store.ASSETS / pid).resolve()
+    try:
+        path = (base / name).resolve()
+    except OSError:
+        abort(400)
+    if base != path.parent and base not in path.parents:
+        abort(403)
+    if not path.is_file():
+        abort(404)
+    return send_file(path, as_attachment=True)
 
 
 @app.route("/settings", methods=["GET", "POST"])

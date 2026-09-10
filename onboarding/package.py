@@ -129,7 +129,15 @@ def build(record: dict, want_postcards: bool = True) -> dict:
         },
         "files": files,
     }
-    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    # The manifest on disk stores bare file names, not the absolute paths that
+    # are still in `files` for this request's download links. An absolute path
+    # bakes in the directory the run happened in -- iCloud gives the container
+    # a different one each session -- so every stored reference broke on the
+    # next run. Names are stable and resolve against out_dir.
+    stored = dict(manifest)
+    stored["files"] = {label: (Path(path).name if isinstance(path, str) else path)
+                       for label, path in files.items()}
+    (out_dir / "manifest.json").write_text(json.dumps(stored, indent=2))
 
     bundle = out_dir / namer("Onboarding-Package", "zip")
     with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:

@@ -321,12 +321,27 @@ def default_record() -> dict:
     record = {f.key: f.default for f in FIELDS}
     record["palette"] = [dict(c) for c in DEFAULT_PALETTE]
     record["agreement_date"] = _dt.date.today().isoformat()
+    # Commercial fields come from terms.json for the default plan. The old
+    # hardcoded defaults (margin 10%, both fees 0) meant a partner created
+    # without touching those fields got terms nobody agreed to.
+    from . import terms as _terms
+    record.update(_terms.defaults_for(record.get("plan")))
+    record["payout_frequency"] = (_terms.load().get("payout", {}).get("frequency")
+                                  or record.get("payout_frequency"))
     return record
+
+
+def plan_defaults(plan_name: str | None) -> dict:
+    """Commercial fields for a plan, for the UI to offer when the plan changes."""
+    from . import terms as _terms
+    return _terms.defaults_for(plan_name)
 
 
 def derive(record: dict) -> dict:
     """Build the full merge context: entered fields + derived + vocabulary."""
     ctx = dict(record)
+    from . import terms as _terms
+    ctx.update(_terms.context())          # current terms, one source
     org_type = (record.get("org_type") or "church").lower()
     if org_type not in VOCAB:
         org_type = "church"
