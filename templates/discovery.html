@@ -14,6 +14,21 @@
   .dc-context a{color:#7A5C1C}
   .dc-head{display:grid;grid-template-columns:2fr 1fr 1.3fr;gap:12px;margin-top:14px}
   @media (max-width:699px){.dc-head{grid-template-columns:1fr}}
+  .dc-calls{margin-top:26px}
+  .dc-calls h2{font-size:15px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+  .dc-calllist{list-style:none;margin:0 0 14px;padding:0}
+  .dc-calllist li{border-top:1px solid #E2DDD2;padding:12px 0}
+  .dc-callhead{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .dc-when{font-size:13px;color:#3B4049}
+  .dc-logged{font-size:12px;color:var(--muted)}
+  .dc-del{margin-left:auto}
+  .dc-del .btn{padding:4px 10px;font-size:12px}
+  .dc-callnote{margin:6px 0 0;font-size:14px;line-height:1.5;white-space:pre-wrap}
+  .dc-addcall{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;
+    border-top:1px dashed #DAD4C8;padding-top:14px}
+  .dc-addcall .field{margin-bottom:0;flex:0 1 190px;min-width:0}
+  .dc-addcall .dc-callnotefield{flex:1 1 280px}
+  .dc-addcall textarea{min-height:44px}
   .dc-meet{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:14px}
   .dc-meet .field{flex:1 1 340px;margin-bottom:0;min-width:0}
   .dc-meet .btn{flex:0 0 auto}
@@ -116,6 +131,22 @@
     {% endif %}
   </div>
 
+  {# Where their logo, photos and brand files live. Carried onto the partner
+     record at promotion as asset_upload_link, which is what puts the "send
+     your brand assets" button in the welcome email. #}
+  <div class="dc-meet">
+    <div class="field">
+      <label for="drive_folder">Shared folder</label>
+      <input type="url" id="drive_folder" name="drive_folder" value="{{ s.drive_folder }}"
+             autocomplete="off" inputmode="url" spellcheck="false"
+             placeholder="https://drive.google.com/…">
+    </div>
+    {% if s.drive_folder %}
+      <a class="btn btn-quiet" href="{{ s.drive_folder }}"
+         target="_blank" rel="noopener noreferrer">Open folder</a>
+    {% endif %}
+  </div>
+
   {% if not lead %}
   {# A walk-in has nothing behind it but these three boxes, so they are
      editable here. A lead's name belongs to its Shopify company and is fixed
@@ -206,6 +237,56 @@
     <div class="actions"><button class="btn btn-primary" type="submit">Save notes</button></div>
   </noscript>
   </form>
+
+  {# The call log. One session per organisation holds the twelve answers --
+     they are a profile, not a transcript, and a follow-up refines them rather
+     than starting again. What differs per conversation is when, who and what
+     came of it, so that is what is logged here. Outside the notes form: this
+     posts and reloads rather than autosaving. #}
+  <section class="dc-calls">
+    <h2>Conversations</h2>
+    {% if s.calls %}
+    <ul class="dc-calllist">
+      {% for c in s.calls %}
+      <li>
+        <div class="dc-callhead">
+          <strong>{{ c.who or "Call" }}</strong>
+          {% if c.when %}<span class="dc-when">{{ c.when }}</span>{% endif %}
+          <span class="dc-logged">logged {{ c.at[:10] }}</span>
+          <form method="post" class="dc-del"
+                action="{{ url_for('discovery_remove_call', sid=s.id, index=loop.index0) }}"
+                onsubmit='return confirm({{ ("Remove this entry from the log? The twelve answers are not touched.")|tojson }})'>
+            <button class="btn btn-quiet" type="submit">Remove</button>
+          </form>
+        </div>
+        {% if c.note %}<p class="dc-callnote">{{ c.note }}</p>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+      <p class="help">Nothing logged yet. The discovery call itself, a follow-up
+        with a decision-maker, a phone call that moved things — each one here.</p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('discovery_add_call', sid=s.id) }}" class="dc-addcall">
+      <div class="field">
+        <label for="call_who">Who</label>
+        <input type="text" id="call_who" name="who" autocomplete="off"
+               placeholder="{{ lead.name if lead and lead.name else 'Name, role' }}">
+      </div>
+      <div class="field">
+        <label for="call_when">When</label>
+        <input type="text" id="call_when" name="when" autocomplete="off"
+               placeholder="Thu 18 Sep, 10am">
+      </div>
+      <div class="field dc-callnotefield">
+        <label for="call_note">What came of it</label>
+        <textarea id="call_note" name="note" rows="2"
+                  placeholder="What was decided, what changed, what to do next"></textarea>
+      </div>
+      <button class="btn btn-quiet" type="submit">Log it</button>
+    </form>
+  </section>
 
   <section class="dc-writeup" id="writeupBlock" hidden>
     <h2>Write-up</h2>

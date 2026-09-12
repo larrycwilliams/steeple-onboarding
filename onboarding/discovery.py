@@ -286,8 +286,10 @@ def load(sid: str) -> dict | None:
     answers.update({k: v for k, v in (session.get("answers") or {}).items()
                     if k in answers and isinstance(v, dict)})
     session["answers"] = answers
-    # Sessions written before the link existed simply have none.
-    session.setdefault("meet_link", "")
+    # Sessions written before these existed simply have none.
+    for field in LINK_FIELDS:
+        session.setdefault(field, "")
+    session.setdefault("calls", [])
     return session
 
 
@@ -357,6 +359,8 @@ def open_for_lead(lead: dict) -> dict:
             "held_at": "",
             "partner_id": lead.get("partner_id") or "",
             "meet_link": "",
+            "drive_folder": "",
+            "calls": [],
             "answers": _blank_answers(),
         }
         return _write(session)
@@ -387,6 +391,8 @@ def open_walkin(org_name: str, org_type: str = "") -> tuple[dict | None, str]:
             "held_at": "",
             "partner_id": "",
             "meet_link": "",
+            "drive_folder": "",
+            "calls": [],
             "answers": _blank_answers(),
         }
         return _write(session), f"Started notes for {org_name}."
@@ -403,12 +409,18 @@ EDITABLE_HEADER = ("org_name", "org_type", "contact")
 # files -- see claude/ops/26-discovery-call-screen.
 MEET_LINK_MAX = 500
 
+# Header fields holding a URL, and what to call each one in an error. The
+# Drive folder is where the organisation's logo, photos and brand files live;
+# it is carried onto the partner record at promotion as asset_upload_link,
+# which is what puts the "send your brand assets" button in the welcome email.
+LINK_FIELDS = {"meet_link": "meeting link", "drive_folder": "folder link"}
+
 
 # A calendar entry copied whole, with the link somewhere inside it.
 MEET_LINK_IN_TEXT = re.compile(r"https://\S+")
 
 
-def clean_meet_link(value) -> tuple[str, str]:
+def clean_link(value, label: str = "meeting link") -> tuple[str, str]:
     """(url, error). An empty value clears it.
 
     Accepts a pasted block as well as a bare URL. Copying the whole calendar
@@ -426,14 +438,14 @@ def clean_meet_link(value) -> tuple[str, str]:
             # Trailing punctuation belongs to the sentence, not the URL.
             url = found.group(0).rstrip(".,;:)]>\"'")
     if len(url) > MEET_LINK_MAX:
-        return "", f"That link is longer than {MEET_LINK_MAX} characters."
+        return "", f"That {label} is longer than {MEET_LINK_MAX} characters."
     # https only. A join link is pasted from a browser or a calendar invite, so
     # http:// is a typo worth catching -- and refusing everything that is not
     # https keeps javascript: and data: out of an href the template renders as
     # a button. Not restricted to meet.google.com: Zoom and Teams links are the
     # same kind of thing and there is no reason to make the field lie.
     if not url.lower().startswith("https://"):
-        return "", "A meeting link has to start with https://"
+        return "", f"A {label} has to start with https://"
     return url, ""
 
 
@@ -455,11 +467,11 @@ def save_field(sid: str, field: str, value) -> tuple[dict | None, str]:
                 session["answers"][qid]["note"] = str(value or "")[:5000]
             else:
                 session["answers"][qid]["covered"] = _truthy(value)
-        elif field == "meet_link":
-            url, error = clean_meet_link(value)
+        elif field in LINK_FIELDS:
+            url, error = clean_link(value, LINK_FIELDS[field])
             if error:
                 return None, error
-            session["meet_link"] = url
+            session[field] = url
         elif field in EDITABLE_HEADER:
             value = " ".join(str(value or "").split())[:200]
             if field == "org_type":
@@ -482,10 +494,11 @@ def save_form(sid: str, form) -> tuple[dict | None, str]:
             session, error = save_field(sid, field, form.get(field))
             if error:
                 return None, error
-    if "meet_link" in form:
-        session, error = save_field(sid, "meet_link", form.get("meet_link"))
-        if error:
-            return None, error
+    for field in LINK_FIELDS:
+        if field in form:
+            session, error = save_field(sid, field, form.get(field))
+            if error:
+                return None, error
     for q in QUESTIONS:
         if f"{q.id}.note" in form:
             save_field(sid, f"{q.id}.note", form.get(f"{q.id}.note"))
@@ -498,6 +511,43 @@ def _truthy(value) -> bool:
     if isinstance(value, bool):
         return value
     return str(value or "").strip().lower() in ("1", "true", "on", "yes")
+
+
+def add_call(sid: str, who: str, note: str, when: str = "") -> tuple[dict | None, str]:
+    """Log a conversation. (session, error).
+
+    A lead keeps ONE session, because the twelve answers are the
+    organisation's profile rather than a transcript: attendance, artwork and
+    the calendar do not reset for a follow-up, they get refined. Splitting
+    them across sessions would put the line-up in one and the launch date in
+    another, and promote() would have to guess which to carry. What actually
+    differs per call is when it was, who was on it and what came of it -- so
+    that is what this keeps.
+    """
+    who = " ".join(str(who or "").split())[:120]
+    note = str(note or "").strip()[:5000]
+    when = " ".join(str(when or "").split())[:40]
+    if not who and not note:
+        return None, "A call needs at least a name or a note."
+    with _locked(sid):
+        session = load(sid)
+        if session is None:
+            return None, "Those notes no longer exist."
+        session.setdefault("calls", []).append({
+            "at": _now(), "when": when, "who": who, "note": note})
+        return _write(session), ""
+
+
+def remove_call(sid: str, index: int) -> tuple[dict | None, str]:
+    with _locked(sid):
+        session = load(sid)
+        if session is None:
+            return None, "Those notes no longer exist."
+        calls = session.setdefault("calls", [])
+        if not 0 <= index < len(calls):
+            return None, "That call is not in the log."
+        calls.pop(index)
+        return _write(session), ""
 
 
 # Stages at or past "Call held". Marking a call held never drags a lead
@@ -556,6 +606,14 @@ def carry_to_partner(session: dict, record: dict) -> list[str]:
         if note and _is_seed(record, q.partner_field):
             record[q.partner_field] = note
             filled.append(FIELDS_BY_KEY[q.partner_field].label)
+    # The welcome email already reads a per-partner asset_upload_link and puts
+    # a "send your brand assets" button behind it, but nothing in the UI has
+    # ever written one -- it has only ever fallen back to the global setting.
+    # Not a schema field, so it is filled here rather than through a Question.
+    drive = (session.get("drive_folder") or "").strip()
+    if drive and not (record.get("asset_upload_link") or "").strip():
+        record["asset_upload_link"] = drive
+        filled.append("Brand asset folder")
     record["discovery_id"] = session["id"]
     return filled
 
