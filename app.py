@@ -40,7 +40,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.21"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.22"   # shown in the header so you can tell a stale process at a glance
 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"

@@ -111,16 +111,20 @@ def fields(session: dict, lead: dict | None = None,
     # pickup at all: omitting an extra option is never wrong, offering one
     # that does not exist for them is. So "unset" reads as shipped, which is
     # true for every partner -- pickup is an addition, not an alternative.
-    SHIPS = ("Everything ships straight to the person who ordered it — in-house "
-             "items $8 a shipment, free over $100, and print-on-demand items at "
-             "the vendor's rate. Nobody at your end handles a box or hands "
-             "anything out.")
+    # How something is fulfilled is not the partner's problem, and naming it
+    # invites "so you're not really printing it?" -- which argues against the
+    # thing that actually sells this: a real shop twenty minutes away. The
+    # rate genuinely varies by item, so "on most items" carries that honestly
+    # without turning a proposal into a supply-chain explanation. Answer it
+    # straight if anyone asks; see the pitch script's Q14.
+    SHIPS = ("Everything ships straight to the person who ordered it — $8 a "
+             "shipment on most items, free over $100. Nobody at your end "
+             "handles a box or hands anything out.")
     mode = session.get("delivery_mode") or ""
     if mode == "pickup":
         delivery = (
-            "Free pickup at your office on in-house items, or shipped straight "
-            "to the buyer for $8 a shipment, free over $100. Print-on-demand "
-            "items ship at the vendor's rate.")
+            "Free pickup at your office, or shipped straight to the person who "
+            "ordered it — $8 a shipment on most items, free over $100.")
     else:
         delivery = SHIPS
 
