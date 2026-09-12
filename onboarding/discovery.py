@@ -290,6 +290,11 @@ def load(sid: str) -> dict | None:
     for field in LINK_FIELDS:
         session.setdefault(field, "")
     session.setdefault("calls", [])
+    for call in session["calls"]:
+        # Entries logged before the date picker kept free text in "when".
+        call.setdefault("when_at", "")
+        call["label"] = when_label(call.get("when_at") or call.get("when", ""))
+    session["calls"].sort(key=_call_sort_key)
     return session
 
 
@@ -513,6 +518,70 @@ def _truthy(value) -> bool:
     return str(value or "").strip().lower() in ("1", "true", "on", "yes")
 
 
+# A datetime-local value: "2026-09-18T10:00". Local wall-clock, no zone --
+# the same convention a calendar invite uses when you read it off the screen.
+WHEN_AT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
+
+
+def parse_when(value) -> datetime | None:
+    value = str(value or "").strip()[:16]
+    if not WHEN_AT.match(value):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def when_label(value) -> str:
+    """'Thu 18 Sep, 10:00am', or the raw text for entries typed before dates."""
+    moment = parse_when(value)
+    if not moment:
+        return str(value or "")
+    return moment.strftime("%a %-d %b, %-I:%M%p").replace("AM", "am").replace("PM", "pm")
+
+
+def _call_sort_key(call: dict):
+    """Scheduled entries in time order; undated ones fall back to logged-at."""
+    moment = parse_when(call.get("when_at"))
+    return (moment.isoformat() if moment else "") or call.get("at", "")
+
+
+def next_call(session: dict, now: datetime | None = None) -> dict:
+    """The soonest entry still in the future, or {}.
+
+    "Next call" is not a separate field: a scheduled call IS a log entry with
+    a date on it, annotated after it happens. One mechanism, so a call cannot
+    be scheduled in one place and recorded in another.
+    """
+    now = now or datetime.now()
+    upcoming = []
+    for call in session.get("calls") or []:
+        moment = parse_when(call.get("when_at"))
+        if moment and moment >= now:
+            upcoming.append((moment, call))
+    if not upcoming:
+        return {}
+    moment, call = min(upcoming, key=lambda pair: pair[0])
+    return {"when_at": call["when_at"], "label": when_label(call["when_at"]),
+            "who": call.get("who", "")}
+
+
+def overdue_call(session: dict, now: datetime | None = None) -> dict:
+    """A scheduled call whose time has passed with nothing written about it."""
+    now = now or datetime.now()
+    past = []
+    for call in session.get("calls") or []:
+        moment = parse_when(call.get("when_at"))
+        if moment and moment < now and not (call.get("note") or "").strip():
+            past.append((moment, call))
+    if not past:
+        return {}
+    moment, call = max(past, key=lambda pair: pair[0])
+    return {"when_at": call["when_at"], "label": when_label(call["when_at"]),
+            "who": call.get("who", "")}
+
+
 def add_call(sid: str, who: str, note: str, when: str = "") -> tuple[dict | None, str]:
     """Log a conversation. (session, error).
 
@@ -526,15 +595,34 @@ def add_call(sid: str, who: str, note: str, when: str = "") -> tuple[dict | None
     """
     who = " ".join(str(who or "").split())[:120]
     note = str(note or "").strip()[:5000]
-    when = " ".join(str(when or "").split())[:40]
-    if not who and not note:
-        return None, "A call needs at least a name or a note."
+    when_at = str(when or "").strip()[:16]
+    if when_at and not parse_when(when_at):
+        return None, "That date and time could not be read."
+    # A dated entry is meaningful on its own -- it is a call in the diary.
+    if not who and not note and not when_at:
+        return None, "A call needs a name, a time, or a note."
     with _locked(sid):
         session = load(sid)
         if session is None:
             return None, "Those notes no longer exist."
         session.setdefault("calls", []).append({
-            "at": _now(), "when": when, "who": who, "note": note})
+            "at": _now(), "when_at": when_at, "who": who, "note": note})
+        session["calls"].sort(key=_call_sort_key)
+        return _write(session), ""
+
+
+def set_call_note(sid: str, index: int, note: str) -> tuple[dict | None, str]:
+    """Write up a call after it happens. Scheduling ahead is pointless without
+    it: the entry goes in with a date and nothing else, and is annotated once
+    the conversation has actually taken place."""
+    with _locked(sid):
+        session = load(sid)
+        if session is None:
+            return None, "Those notes no longer exist."
+        calls = session.setdefault("calls", [])
+        if not 0 <= index < len(calls):
+            return None, "That call is not in the log."
+        calls[index]["note"] = str(note or "").strip()[:5000]
         return _write(session), ""
 
 

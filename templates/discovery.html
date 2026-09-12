@@ -23,7 +23,8 @@
   .dc-logged{font-size:12px;color:var(--muted)}
   .dc-del{margin-left:auto}
   .dc-del .btn{padding:4px 10px;font-size:12px}
-  .dc-callnote{margin:6px 0 0;font-size:14px;line-height:1.5;white-space:pre-wrap}
+  .dc-noteform{display:flex;gap:10px;align-items:flex-end;margin-top:8px;flex-wrap:wrap}
+  .dc-noteform textarea{flex:1 1 320px;min-height:44px}
   .dc-addcall{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;
     border-top:1px dashed #DAD4C8;padding-top:14px}
   .dc-addcall .field{margin-bottom:0;flex:0 1 190px;min-width:0}
@@ -251,7 +252,7 @@
       <li>
         <div class="dc-callhead">
           <strong>{{ c.who or "Call" }}</strong>
-          {% if c.when %}<span class="dc-when">{{ c.when }}</span>{% endif %}
+          {% if c.label %}<span class="dc-when">{{ c.label }}</span>{% endif %}
           <span class="dc-logged">logged {{ c.at[:10] }}</span>
           <form method="post" class="dc-del"
                 action="{{ url_for('discovery_remove_call', sid=s.id, index=loop.index0) }}"
@@ -259,13 +260,21 @@
             <button class="btn btn-quiet" type="submit">Remove</button>
           </form>
         </div>
-        {% if c.note %}<p class="dc-callnote">{{ c.note }}</p>{% endif %}
+        {# A call put in the diary ahead of time arrives with no note. This is
+           where it gets written up afterwards. #}
+        <form method="post" class="dc-noteform"
+              action="{{ url_for('discovery_call_note', sid=s.id, index=loop.index0) }}">
+          <textarea name="note" rows="2"
+                    placeholder="What was decided, what changed, what to do next">{{ c.note }}</textarea>
+          <button class="btn btn-quiet" type="submit">{% if c.note %}Update{% else %}Write it up{% endif %}</button>
+        </form>
       </li>
       {% endfor %}
     </ul>
     {% else %}
       <p class="help">Nothing logged yet. The discovery call itself, a follow-up
-        with a decision-maker, a phone call that moved things — each one here.</p>
+        with a decision-maker, a phone call that moved things — each one here.
+        Put a future call in with its date and no note; write it up after.</p>
     {% endif %}
 
     <form method="post" action="{{ url_for('discovery_add_call', sid=s.id) }}" class="dc-addcall">
@@ -276,8 +285,7 @@
       </div>
       <div class="field">
         <label for="call_when">When</label>
-        <input type="text" id="call_when" name="when" autocomplete="off"
-               placeholder="Thu 18 Sep, 10am">
+        <input type="datetime-local" id="call_when" name="when" autocomplete="off">
       </div>
       <div class="field dc-callnotefield">
         <label for="call_note">What came of it</label>

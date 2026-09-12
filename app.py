@@ -40,7 +40,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.13"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.14"   # shown in the header so you can tell a stale process at a glance
 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"
@@ -419,7 +419,9 @@ def _pipeline_context(refresh: bool = False) -> dict:
         # progress() plus the join link, so a card can offer Join without the
         # pipeline loading every session twice.
         "calls": {key: dict(discovery.progress(s),
-                            meet_link=s.get("meet_link", ""))
+                            meet_link=s.get("meet_link", ""),
+                            next_call=discovery.next_call(s),
+                            overdue_call=discovery.overdue_call(s))
                   for key, s in discovery.by_lead_key().items()},
     }
 
@@ -650,6 +652,14 @@ def discovery_add_call(sid):
                                      request.form.get("note", ""),
                                      request.form.get("when", ""))
     flash(error or "Call logged.", "error" if error else "ok")
+    return redirect(url_for("discovery_page", sid=sid))
+
+
+@app.route("/discovery/<sid>/calls/<int:index>", methods=["POST"])
+def discovery_call_note(sid, index):
+    _discovery_or_404(sid)
+    call, error = discovery.set_call_note(sid, index, request.form.get("note", ""))
+    flash(error or "Written up.", "error" if error else "ok")
     return redirect(url_for("discovery_page", sid=sid))
 
 

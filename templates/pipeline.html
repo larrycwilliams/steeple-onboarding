@@ -21,6 +21,8 @@
   .meta a{color:#7A5C1C}
   .stage-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
   .stage-row select{width:auto;min-width:150px}
+  .next-call{font-size:13px;font-weight:600;color:#3B4049;align-self:center}
+  .next-call.late{color:var(--bad)}
   .inline-form{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;
                margin-top:12px;padding-top:12px;border-top:1px dashed #DAD4C8}
   .inline-form .field{margin:0;flex:1 1 180px}
@@ -176,6 +178,15 @@
     {% if call and call.meet_link %}
       <a class="btn btn-quiet" href="{{ call.meet_link }}"
          target="_blank" rel="noopener noreferrer">Join</a>
+    {% endif %}
+    {# The next conversation in the diary, or one whose time passed with
+       nothing written about it. A lead can be neither overdue nor healthy --
+       the ball is in their court and nothing was watching. #}
+    {% if call and call.next_call %}
+      <span class="next-call">Next: {{ call.next_call.label }}
+        {%- if call.next_call.who %} · {{ call.next_call.who }}{% endif %}</span>
+    {% elif call and call.overdue_call %}
+      <span class="next-call late">Call on {{ call.overdue_call.label }} — not written up</span>
     {% endif %}
 
     {% if lead.partner_id %}
