@@ -286,6 +286,8 @@ def load(sid: str) -> dict | None:
     answers.update({k: v for k, v in (session.get("answers") or {}).items()
                     if k in answers and isinstance(v, dict)})
     session["answers"] = answers
+    # Sessions written before the link existed simply have none.
+    session.setdefault("meet_link", "")
     return session
 
 
@@ -354,6 +356,7 @@ def open_for_lead(lead: dict) -> dict:
             "created_at": _now(),
             "held_at": "",
             "partner_id": lead.get("partner_id") or "",
+            "meet_link": "",
             "answers": _blank_answers(),
         }
         return _write(session)
@@ -383,6 +386,7 @@ def open_walkin(org_name: str, org_type: str = "") -> tuple[dict | None, str]:
             "created_at": _now(),
             "held_at": "",
             "partner_id": "",
+            "meet_link": "",
             "answers": _blank_answers(),
         }
         return _write(session), f"Started notes for {org_name}."
@@ -391,6 +395,30 @@ def open_walkin(org_name: str, org_type: str = "") -> tuple[dict | None, str]:
 # ------------------------------------------------------------------- edit --
 
 EDITABLE_HEADER = ("org_name", "org_type", "contact")
+
+# The video call's join link, kept out of EDITABLE_HEADER on purpose: it is
+# validated as a URL rather than squeezed into 200 characters of prose, and it
+# must never reach writeup(). A live meeting link is a door into a room, not a
+# fact about a partner, and the write-up is pasted into emails and partner
+# files -- see claude/ops/26-discovery-call-screen.
+MEET_LINK_MAX = 500
+
+
+def clean_meet_link(value) -> tuple[str, str]:
+    """(url, error). An empty value clears it."""
+    url = " ".join(str(value or "").split())
+    if not url:
+        return "", ""
+    if len(url) > MEET_LINK_MAX:
+        return "", f"That link is longer than {MEET_LINK_MAX} characters."
+    # https only. A join link is pasted from a browser or a calendar invite, so
+    # http:// is a typo worth catching -- and refusing everything that is not
+    # https keeps javascript: and data: out of an href the template renders as
+    # a button. Not restricted to meet.google.com: Zoom and Teams links are the
+    # same kind of thing and there is no reason to make the field lie.
+    if not url.lower().startswith("https://"):
+        return "", "A meeting link has to start with https://"
+    return url, ""
 
 
 def save_field(sid: str, field: str, value) -> tuple[dict | None, str]:
@@ -411,6 +439,11 @@ def save_field(sid: str, field: str, value) -> tuple[dict | None, str]:
                 session["answers"][qid]["note"] = str(value or "")[:5000]
             else:
                 session["answers"][qid]["covered"] = _truthy(value)
+        elif field == "meet_link":
+            url, error = clean_meet_link(value)
+            if error:
+                return None, error
+            session["meet_link"] = url
         elif field in EDITABLE_HEADER:
             value = " ".join(str(value or "").split())[:200]
             if field == "org_type":
@@ -433,6 +466,10 @@ def save_form(sid: str, form) -> tuple[dict | None, str]:
             session, error = save_field(sid, field, form.get(field))
             if error:
                 return None, error
+    if "meet_link" in form:
+        session, error = save_field(sid, "meet_link", form.get("meet_link"))
+        if error:
+            return None, error
     for q in QUESTIONS:
         if f"{q.id}.note" in form:
             save_field(sid, f"{q.id}.note", form.get(f"{q.id}.note"))

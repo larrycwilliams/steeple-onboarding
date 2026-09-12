@@ -173,6 +173,10 @@
        href="{{ url_for('discovery_for_lead', key=lead.key) }}">
       {%- if call and call.started %}Discovery {{ call.covered }}/{{ call.total }}{% else %}Discovery call{% endif -%}
     </a>
+    {% if call and call.meet_link %}
+      <a class="btn btn-quiet" href="{{ call.meet_link }}"
+         target="_blank" rel="noopener noreferrer">Join</a>
+    {% endif %}
 
     {% if lead.partner_id %}
       <a class="btn btn-quiet" href="{{ url_for('partner_email', pid=lead.partner_id) }}">Welcome email</a>

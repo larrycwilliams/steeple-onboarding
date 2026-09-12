@@ -416,7 +416,10 @@ def _pipeline_context(refresh: bool = False) -> dict:
         "pulled_at": (snap.get("pulled_at") or "").replace("T", " ").replace("+00:00", " UTC"),
         "error": "" if rows or source in ("live", "cache") else source,
         # {lead key: progress} so each card can say how far its call got.
-        "calls": {key: discovery.progress(s)
+        # progress() plus the join link, so a card can offer Join without the
+        # pipeline loading every session twice.
+        "calls": {key: dict(discovery.progress(s),
+                            meet_link=s.get("meet_link", ""))
                   for key, s in discovery.by_lead_key().items()},
     }
 

@@ -97,6 +97,25 @@
   <form id="notes" method="post" action="{{ url_for('discovery_save', sid=s.id) }}"
         data-sid="{{ s.id }}" data-writeup="{{ url_for('discovery_writeup', sid=s.id) }}">
 
+  {# The join link. Inside the notes form so it autosaves like every other
+     field -- the handler is delegated on el.name. Shown for leads and
+     walk-ins alike, and deliberately absent from the write-up. #}
+  <div class="dc-head">
+    <div class="field" style="flex:1 1 300px">
+      <label for="meet_link">Video call link</label>
+      <input type="url" id="meet_link" name="meet_link" value="{{ s.meet_link }}"
+             autocomplete="off" inputmode="url" spellcheck="false"
+             placeholder="https://meet.google.com/…">
+    </div>
+    {% if s.meet_link %}
+    <div class="field" style="flex:0 0 auto">
+      <label aria-hidden="true">&nbsp;</label>
+      <a class="btn btn-primary" href="{{ s.meet_link }}"
+         target="_blank" rel="noopener noreferrer">Join call</a>
+    </div>
+    {% endif %}
+  </div>
+
   {% if not lead %}
   {# A walk-in has nothing behind it but these three boxes, so they are
      editable here. A lead's name belongs to its Shopify company and is fixed
