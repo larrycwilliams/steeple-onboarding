@@ -404,11 +404,27 @@ EDITABLE_HEADER = ("org_name", "org_type", "contact")
 MEET_LINK_MAX = 500
 
 
+# A calendar entry copied whole, with the link somewhere inside it.
+MEET_LINK_IN_TEXT = re.compile(r"https://\S+")
+
+
 def clean_meet_link(value) -> tuple[str, str]:
-    """(url, error). An empty value clears it."""
+    """(url, error). An empty value clears it.
+
+    Accepts a pasted block as well as a bare URL. Copying the whole calendar
+    entry is the obvious thing to do -- the first real use of this field was
+    "Steeple & Stitch - Emerald Coast Church - Discovery Call Thursday,
+    September 10 - 10:00 - 10:30am ..." with the join link buried in it -- so
+    the link is pulled out of the text rather than the paste being refused.
+    """
     url = " ".join(str(value or "").split())
     if not url:
         return "", ""
+    if not url.lower().startswith("https://"):
+        found = MEET_LINK_IN_TEXT.search(url)
+        if found:
+            # Trailing punctuation belongs to the sentence, not the URL.
+            url = found.group(0).rstrip(".,;:)]>\"'")
     if len(url) > MEET_LINK_MAX:
         return "", f"That link is longer than {MEET_LINK_MAX} characters."
     # https only. A join link is pasted from a browser or a calendar invite, so
