@@ -173,7 +173,7 @@
     {% set call = calls.get(lead.key) %}
     <a class="btn {% if lead.stage in ('Call booked', 'Call held') %}btn-primary{% else %}btn-quiet{% endif %}"
        href="{{ url_for('discovery_for_lead', key=lead.key) }}">
-      {%- if call and call.started %}Discovery {{ call.covered }}/{{ call.total }}{% else %}Discovery call{% endif -%}
+      {%- if call and call.started %}Discovery {{ call.covered }} of {{ call.total }}{% else %}Discovery call{% endif -%}
     </a>
     {% if call and call.meet_link %}
       <a class="btn btn-quiet" href="{{ call.meet_link }}"
