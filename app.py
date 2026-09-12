@@ -30,7 +30,7 @@ from flask import (Flask, abort, flash, jsonify, redirect, render_template,
 from onboarding import dashboard, discovery, discovery_reply, leads, mail_draft, package, library, reconcile, terms
 from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
-from onboarding import storefront, traveler
+from onboarding import recommendation, storefront, traveler
 from onboarding import welcome_email
 from onboarding.palette import extract_palette
 from onboarding.schema import (DEFAULT_PALETTE, FIELDS, GROUPS, ORG_TYPES,
@@ -40,7 +40,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.16"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.17"   # shown in the header so you can tell a stale process at a glance
 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"
@@ -669,6 +669,39 @@ def discovery_remove_call(sid, index):
     _discovery_or_404(sid)
     call, error = discovery.remove_call(sid, index)
     flash(error or "Call removed from the log.", "error" if error else "ok")
+    return redirect(url_for("discovery_page", sid=sid))
+
+
+@app.route("/discovery/<sid>/recommendation")
+def discovery_recommendation_preview(sid):
+    """The written recommendation in the browser, before Mail sees it."""
+    call = _discovery_or_404(sid)
+    draft = recommendation.render(call, (leads.find_lead(call["lead_key"]) if call.get("lead_key") else None))
+    if draft["missing"]:
+        flash("Cannot build it yet — these are empty: "
+              + ", ".join(draft["missing"]) + ".", "error")
+        return redirect(url_for("discovery_page", sid=sid))
+    return draft["html"]
+
+
+@app.route("/discovery/<sid>/recommendation", methods=["POST"])
+def discovery_recommendation_draft(sid):
+    """Open it as a Mail draft. A draft, never a send -- this one goes to a
+    board, so the last read before it leaves is the whole point."""
+    call = _discovery_or_404(sid)
+    lead = (leads.find_lead(call["lead_key"]) if call.get("lead_key") else None)
+    if not (lead or {}).get("email"):
+        flash("That call has no email address on it, so there is nobody to "
+              "write to.", "error")
+        return redirect(url_for("discovery_page", sid=sid))
+    draft = recommendation.render(call, lead)
+    if draft["missing"]:
+        flash("Not drafted — these are empty: " + ", ".join(draft["missing"]) + ".",
+              "error")
+        return redirect(url_for("discovery_page", sid=sid))
+    result = mail_draft.create_draft(draft["subject"], draft["to"], draft["html"])
+    flash(result["error"] or f"Recommendation open in Mail for {draft['to_name'] or draft['to']}.",
+          "error" if not result["ok"] else "ok")
     return redirect(url_for("discovery_page", sid=sid))
 
 

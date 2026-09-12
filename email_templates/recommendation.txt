@@ -1,0 +1,106 @@
+{{ org_name }} — WHAT I'D RECOMMEND
+
+{{ contact_first_name }} — thanks for the time. Here's what I'd recommend, in
+writing, so you have something to {% if decider %}put in front of whoever signs off{% else %}take to your team{% endif %}.
+
+Nothing here is an invoice and nothing needs a decision this week. If any of
+it is wrong, tell me and I'll change it.
+{% if identity or history or calendar %}
+----------------------------------------------------------------------
+WHAT I HEARD
+----------------------------------------------------------------------
+{% if identity %}
+* You're known for {{ identity }}.
+{%- endif %}
+{%- if history %}
+* On merch so far: {{ history }}
+{%- endif %}
+{%- if calendar %}
+* Coming up: {{ calendar }}.
+{%- endif %}
+{% endif %}
+----------------------------------------------------------------------
+WHAT I'D RECOMMEND
+----------------------------------------------------------------------
+
+{{ tier }}{% if best_for %} — {{ best_for|lower }}{% endif %}
+
+{% if attendance_said %}At around {{ attendance_said }} people, this is the tier that fits — {{ tier_one_liner }}{% else %}{{ tier_one_liner }}{% endif %}
+
+  One-time setup   ${{ setup_fee }}
+  Monthly          ${{ monthly_fee }}/mo
+  Back to you      {{ giveback_pct }}% of margin
+
+That's {{ giveback_spoken }} — {{ giveback_example }}. Paid {{ payout_frequency|lower }},
+with a {{ payout_statement }} showing exactly what sold and what your share
+was. No long-term contract: {{ term_cadence }}, {{ term_notice_days }} days' notice, which is
+one payout cycle.
+
+I'd rather say this now than have your finance committee work it out in month
+eight: at your size, the giveback is not going to fund a mission trip. What it
+does is pay for most of the store. If your people really run with it, it
+covers itself and starts making money past that.
+{% if anchor or lineup or sizes %}
+----------------------------------------------------------------------
+WHAT WE'D LAUNCH WITH
+----------------------------------------------------------------------
+{% if lineup %}
+* {{ lineup }}
+{%- endif %}
+{%- if anchor and anchor != lineup %}
+* The piece everyone should own: {{ anchor }}
+{%- endif %}
+{%- if sizes %}
+* Sizes beyond the usual run: {{ sizes }}
+{%- endif %}
+
+Typical price points: {{ prices.tee }} tee (up to {{ prices.tee_top }} in 4XL) ·
+{{ prices.layer }} crewneck or hoodie · {{ prices.hat }} hat · {{ prices.toddler }} toddler tee.
+Nothing is printed until somebody orders it, so there's no inventory and no
+sizes to guess at.
+{% endif %}
+----------------------------------------------------------------------
+HOW LONG IT TAKES
+----------------------------------------------------------------------
+
+{{ launch_weeks }} weeks from final artwork to a live store. Week one I build it, week
+two you look at it and we fix whatever you don't like, week three it goes live
+with a launch kit — graphics, a QR code for the bulletin, sample posts and an
+email you can send to your list.
+{% if calendar %}
+With {{ calendar }} on the calendar, the artwork is the thing that sets the date.
+{%- endif %}
+
+----------------------------------------------------------------------
+WHAT I NEED FROM YOU
+----------------------------------------------------------------------
+
+1. Your logo, as good a file as you have. Vector is ideal; a large PNG works.
+   If all you have is a JPEG from years ago, that's normal — redrawing it
+   clean is part of the setup, and the file is yours afterwards.{% if drive_folder %}
+   There's a shared folder ready when you are.{% endif %}
+
+2. Your colors — hex codes if you have them, a photo of your signage if you
+   don't.
+
+3. A date to aim at, even a rough one. Everything sequences backwards from it.
+
+----------------------------------------------------------------------
+HOW ORDERS REACH PEOPLE
+----------------------------------------------------------------------
+
+{{ delivery_terms }}
+
+----------------------------------------------------------------------
+
+Any question your {% if decider %}leadership{% else %}team{% endif %} has that isn't answered here, send it
+over — I'd rather answer it before you decide than after.
+
+{{ signoff_name or point_of_contact_name }}
+{{ signoff_title or 'Founder' }} · Steeple & Stitch Co.
+{{ point_of_contact_email }} · {{ point_of_contact_phone }}
+
+Steeple & Stitch Co. — a division of The Williams Collective, Dayton, Ohio.
+{%- if company_address %}
+{{ company_address }}
+{%- endif %}

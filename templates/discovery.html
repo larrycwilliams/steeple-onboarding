@@ -314,6 +314,16 @@
       {% if s.updated_at %}Saved{% else %}Nothing saved yet{% endif %}</span>
     <div class="dc-acts">
     <a class="btn btn-quiet" id="build" href="{{ url_for('discovery_writeup', sid=s.id) }}" target="_blank" rel="noopener">Write-up</a>
+    {# The written recommendation. Preview reads it; the form opens it in Mail
+       as a draft -- this one is forwarded to whoever signs, so the last read
+       before it leaves matters more here than anywhere else. #}
+    <a class="btn btn-quiet" target="_blank" rel="noopener"
+       href="{{ url_for('discovery_recommendation_preview', sid=s.id) }}">Recommendation</a>
+    {% if lead and lead.email %}
+    <form method="post" action="{{ url_for('discovery_recommendation_draft', sid=s.id) }}">
+      <button class="btn btn-quiet" type="submit"><span class="dc-long">Draft recommendation</span><span class="dc-short">Draft it</span></button>
+    </form>
+    {% endif %}
     {% if not s.held_at or (lead and lead.stage in ('New', 'Replied', 'Call booked')) %}
     <form method="post" action="{{ url_for('discovery_held', sid=s.id) }}">
       <button class="btn btn-primary" type="submit"><span class="dc-long">Mark call held</span><span class="dc-short">Call held</span></button>

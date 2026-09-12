@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light">
+<title>{{ org_name }} &mdash; recommendation</title>
+<style>
+  body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
+  table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
+  img{-ms-interpolation-mode:bicubic;border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}
+  table{border-collapse:collapse!important;}
+  body{margin:0!important;padding:0!important;width:100%!important;background-color:#F6F1E6;}
+  a{color:#8A6420;}
+  @media screen and (max-width:600px){
+    .wrap{width:100%!important;}
+    .px{padding-left:24px!important;padding-right:24px!important;}
+    .h1{font-size:25px!important;line-height:31px!important;}
+  }
+  @media print{body{background:#fff}.wrap{width:100%!important}}
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#F6F1E6;">
+
+<div style="display:none;font-size:1px;color:#F6F1E6;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+  What we talked about, which tier fits {{ org_name }}, what it costs, and how long it takes.
+  &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F1E6;">
+<tr><td align="center" style="padding:24px 12px;">
+  <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+  <table role="presentation" class="wrap" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#FFFFFF;border-radius:6px;overflow:hidden;">
+
+    <tr>
+      <td align="center" bgcolor="#001739" style="background-color:#001739;padding:34px 32px 30px 32px;">
+        <img src="{{ logo_src }}" width="240" alt="Steeple &amp; Stitch Co." style="display:block;width:240px;max-width:240px;height:auto;margin:0 auto;">
+      </td>
+    </tr>
+    <tr><td bgcolor="#C9993F" style="background-color:#C9993F;font-size:0;line-height:0;height:4px;">&nbsp;</td></tr>
+
+    <!-- ============ OPENING ============ -->
+    <tr>
+      <td class="px" style="padding:34px 40px 6px 40px;">
+        <p style="margin:0 0 6px 0;font-family:Georgia,'Times New Roman',serif;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#C9993F;">Recommendation</p>
+        <h1 class="h1" style="margin:0 0 18px 0;font-family:Georgia,'Times New Roman',serif;font-size:29px;line-height:35px;font-weight:normal;color:#001739;">
+          {{ org_name }}
+        </h1>
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          {{ contact_first_name }} &mdash; thanks for the time. Here's what I'd recommend, in writing,
+{%- if decider %}
+          so you have something to put in front of whoever signs off.
+{%- else %}
+          so you have something to take to your team.
+{%- endif %}
+        </p>
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          Nothing here is an invoice and nothing needs a decision this week. If any of it
+          is wrong, tell me and I'll change it.
+        </p>
+      </td>
+    </tr>
+
+{%- if identity or history or calendar %}
+    <!-- ============ WHAT I HEARD ============ -->
+    <tr>
+      <td class="px" style="padding:14px 40px 0 40px;">
+        <p style="margin:0 0 12px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9993F;">What I heard</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-left:3px solid #E5DFD0;">
+{%- if identity %}
+          <tr><td style="padding:2px 0 10px 18px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">
+            You're known for <strong style="color:#001739;">{{ identity }}</strong>.</td></tr>
+{%- endif %}
+{%- if history %}
+          <tr><td style="padding:2px 0 10px 18px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">
+            On merch so far: {{ history }}</td></tr>
+{%- endif %}
+{%- if calendar %}
+          <tr><td style="padding:2px 0 10px 18px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">
+            Coming up: <strong style="color:#001739;">{{ calendar }}</strong>.</td></tr>
+{%- endif %}
+        </table>
+      </td>
+    </tr>
+{%- endif %}
+
+    <!-- ============ THE TIER ============ -->
+    <tr>
+      <td class="px" style="padding:26px 40px 0 40px;">
+        <p style="margin:0 0 12px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9993F;">What I'd recommend</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F1E6;border-radius:4px;">
+          <tr><td style="padding:20px 22px;">
+            <p style="margin:0 0 10px 0;font-family:Georgia,'Times New Roman',serif;font-size:22px;line-height:28px;color:#001739;">
+              {{ tier }}{% if best_for %} &mdash; <span style="font-size:16px;color:#5C6470;">{{ best_for|lower }}</span>{% endif %}
+            </p>
+            <p style="margin:0 0 14px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">
+{%- if attendance_said %}
+              At around {{ attendance_said }} people, this is the tier that fits &mdash; {{ tier_one_liner }}
+{%- else %}
+              {{ tier_one_liner }}
+{%- endif %}
+            </p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #E5DFD0;">
+              <tr>
+                <td width="150" style="padding:12px 0 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#5C6470;">One-time setup</td>
+                <td style="padding:12px 0 4px 0;font-family:Georgia,serif;font-size:18px;color:#001739;">${{ setup_fee }}</td>
+              </tr>
+              <tr>
+                <td width="150" style="padding:4px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#5C6470;">Monthly</td>
+                <td style="padding:4px 0;font-family:Georgia,serif;font-size:18px;color:#001739;">${{ monthly_fee }}/mo</td>
+              </tr>
+              <tr>
+                <td width="150" style="padding:4px 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#5C6470;">Back to you</td>
+                <td style="padding:4px 0 12px 0;font-family:Georgia,serif;font-size:18px;color:#001739;">{{ giveback_pct }}% of margin</td>
+              </tr>
+            </table>
+            <p style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:23px;color:#5C6470;">
+              That's {{ giveback_spoken }} &mdash; {{ giveback_example }}. Paid {{ payout_frequency|lower }},
+              with a {{ payout_statement }} showing exactly what sold and what your share was.
+              No long-term contract: {{ term_cadence }}, {{ term_notice_days }} days' notice, which is one payout cycle.
+            </p>
+          </td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- ============ HONEST ABOUT THE MONEY ============ -->
+    <tr>
+      <td class="px" style="padding:22px 40px 0 40px;">
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          I'd rather say this now than have your finance committee work it out in month eight:
+          at your size, <strong style="color:#001739;">the giveback is not going to fund a mission
+          trip.</strong> What it does is pay for most of the store. If your people really run with
+          it, it covers itself and starts making money past that. We can do the arithmetic together
+          on real numbers whenever you want.
+        </p>
+      </td>
+    </tr>
+
+{%- if anchor or lineup or sizes %}
+    <!-- ============ THE LINE-UP ============ -->
+    <tr>
+      <td class="px" style="padding:14px 40px 0 40px;">
+        <p style="margin:0 0 12px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9993F;">What we'd launch with</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{%- if lineup %}
+          <tr><td valign="top" width="22" style="padding:0 0 10px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">&#10022;</td>
+              <td style="padding:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">{{ lineup }}</td></tr>
+{%- endif %}
+{%- if anchor and anchor != lineup %}
+          <tr><td valign="top" width="22" style="padding:0 0 10px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">&#10022;</td>
+              <td style="padding:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">The piece everyone should own: {{ anchor }}</td></tr>
+{%- endif %}
+{%- if sizes %}
+          <tr><td valign="top" width="22" style="padding:0 0 10px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">&#10022;</td>
+              <td style="padding:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">Sizes beyond the usual run: {{ sizes }}</td></tr>
+{%- endif %}
+        </table>
+        <p style="margin:6px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:23px;color:#5C6470;">
+          Typical price points: {{ prices.tee }} tee (up to {{ prices.tee_top }} in 4XL) &middot;
+          {{ prices.layer }} crewneck or hoodie &middot; {{ prices.hat }} hat &middot; {{ prices.toddler }} toddler tee.
+          Nothing is printed until somebody orders it, so there's no inventory and no sizes to guess at.
+        </p>
+      </td>
+    </tr>
+{%- endif %}
+
+    <!-- ============ TIMELINE ============ -->
+    <tr>
+      <td class="px" style="padding:26px 40px 0 40px;">
+        <p style="margin:0 0 12px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9993F;">How long it takes</p>
+        <p style="margin:0 0 14px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          <strong style="color:#001739;">{{ launch_weeks }} weeks from final artwork to a live store.</strong>
+          Week one I build it, week two you look at it and we fix whatever you don't like, week three
+          it goes live with a launch kit &mdash; graphics, a QR code for the bulletin, sample posts and
+          an email you can send to your list.
+{%- if calendar %}
+          With {{ calendar }} on the calendar, the artwork is the thing that sets the date.
+{%- endif %}
+        </p>
+      </td>
+    </tr>
+
+    <!-- ============ WHAT I NEED ============ -->
+    <tr>
+      <td class="px" style="padding:14px 40px 0 40px;">
+        <p style="margin:0 0 12px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9993F;">What I need from you</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr><td valign="top" width="22" style="padding:0 0 10px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">1.</td>
+              <td style="padding:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">
+                <strong style="color:#001739;">Your logo, as good a file as you have.</strong>
+                Vector is ideal; a large PNG works. If all you have is a JPEG from years ago, that's
+                normal &mdash; redrawing it clean is part of the setup, and the file is yours afterwards.
+{%- if drive_folder %} There's a shared folder ready when you are.{% endif %}
+              </td></tr>
+          <tr><td valign="top" width="22" style="padding:0 0 10px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">2.</td>
+              <td style="padding:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">
+                <strong style="color:#001739;">Your colors</strong> &mdash; hex codes if you have them,
+                a photo of your signage if you don't.</td></tr>
+          <tr><td valign="top" width="22" style="padding:0 0 10px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">3.</td>
+              <td style="padding:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">
+                <strong style="color:#001739;">A date to aim at</strong>, even a rough one. Everything
+                sequences backwards from it.</td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- ============ DELIVERY, STATED PLAINLY ============ -->
+    <tr>
+      <td class="px" style="padding:22px 40px 0 40px;">
+        <p style="margin:0 0 12px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9993F;">How orders reach people</p>
+        <p style="margin:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">
+          {{ delivery_terms }}
+        </p>
+      </td>
+    </tr>
+
+    <!-- ============ SIGN-OFF ============ -->
+    <tr>
+      <td class="px" style="padding:26px 40px 32px 40px;">
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          Any question your {% if decider %}leadership{% else %}team{% endif %} has that isn't answered
+          here, send it over &mdash; I'd rather answer it before you decide than after.
+        </p>
+        <p style="margin:14px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#333333;">
+          <strong style="color:#001739;">{{ signoff_name or point_of_contact_name }}</strong><br>
+          {{ signoff_title or 'Founder' }} &middot; Steeple &amp; Stitch Co.<br>
+          <a href="mailto:{{ point_of_contact_email }}" style="color:#8A6420;">{{ point_of_contact_email }}</a>
+          &middot; <a href="tel:{{ point_of_contact_phone }}" style="color:#8A6420;">{{ point_of_contact_phone }}</a>
+        </p>
+      </td>
+    </tr>
+
+    <tr>
+      <td bgcolor="#001739" style="background-color:#001739;padding:18px 40px;">
+        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;color:#9FB0C6;text-align:center;">
+          Steeple &amp; Stitch Co. &mdash; branded merch for ministry. A division of The Williams Collective, Dayton, Ohio.
+{%- if company_address %}<br>{{ company_address }}{% endif %}
+        </p>
+      </td>
+    </tr>
+
+  </table>
+  <!--[if mso]></td></tr></table><![endif]-->
+</td></tr>
+</table>
+</body>
+</html>
