@@ -14,6 +14,10 @@
   .dc-context a{color:#7A5C1C}
   .dc-head{display:grid;grid-template-columns:2fr 1fr 1.3fr;gap:12px;margin-top:14px}
   @media (max-width:699px){.dc-head{grid-template-columns:1fr}}
+  .dc-meet{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:14px}
+  .dc-meet .field{flex:1 1 340px;margin-bottom:0;min-width:0}
+  .dc-meet input{width:100%}
+  .dc-meet .btn{flex:0 0 auto}
 
   .dc-ref{background:#fff;border:1px solid #E2DDD2;border-radius:10px;padding:18px 20px;margin:22px 0 6px}
   .dc-ref h3{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#8C6B2C;margin:0 0 12px}
@@ -100,19 +104,16 @@
   {# The join link. Inside the notes form so it autosaves like every other
      field -- the handler is delegated on el.name. Shown for leads and
      walk-ins alike, and deliberately absent from the write-up. #}
-  <div class="dc-head">
-    <div class="field" style="flex:1 1 300px">
+  <div class="dc-meet">
+    <div class="field">
       <label for="meet_link">Video call link</label>
       <input type="url" id="meet_link" name="meet_link" value="{{ s.meet_link }}"
              autocomplete="off" inputmode="url" spellcheck="false"
              placeholder="https://meet.google.com/…">
     </div>
     {% if s.meet_link %}
-    <div class="field" style="flex:0 0 auto">
-      <label aria-hidden="true">&nbsp;</label>
       <a class="btn btn-primary" href="{{ s.meet_link }}"
          target="_blank" rel="noopener noreferrer">Join call</a>
-    </div>
     {% endif %}
   </div>
 
