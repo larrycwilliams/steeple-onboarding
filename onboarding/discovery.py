@@ -518,12 +518,19 @@ def _truthy(value) -> bool:
     return str(value or "").strip().lower() in ("1", "true", "on", "yes")
 
 
-# A datetime-local value: "2026-09-18T10:00". Local wall-clock, no zone --
-# the same convention a calendar invite uses when you read it off the screen.
-WHEN_AT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
+# "2026-09-18" or "2026-09-18T10:00". Local wall-clock, no zone -- the same
+# convention a calendar invite uses when you read it off the screen.
+#
+# The time is OPTIONAL and that is the point. A datetime-local field was tried
+# first and was wrong twice over: it refuses to submit until every segment is
+# filled, so a half-entered time blocks the form with "Invalid value", and it
+# cannot express "some time next Thursday" -- which is exactly what you know
+# when a follow-up is agreed but not yet booked.
+WHEN_AT = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$")
 
 
 def parse_when(value) -> datetime | None:
+    """Midnight when only a date was given, so ordering still works."""
     value = str(value or "").strip()[:16]
     if not WHEN_AT.match(value):
         return None
@@ -533,11 +540,38 @@ def parse_when(value) -> datetime | None:
         return None
 
 
+def _has_time(value) -> bool:
+    return "T" in str(value or "")
+
+
+def _end_of(value) -> datetime | None:
+    """When a dated entry stops being in the future.
+
+    A date with no time covers the whole day: a call pencilled in for Friday
+    is not late at one minute past midnight.
+    """
+    moment = parse_when(value)
+    if not moment:
+        return None
+    return moment if _has_time(value) else moment.replace(hour=23, minute=59)
+
+
+def combine_when(date_part, time_part) -> str:
+    """The two form fields into one stored value. '' when no date was given."""
+    date_part = str(date_part or "").strip()[:10]
+    time_part = str(time_part or "").strip()[:5]
+    if not date_part:
+        return ""
+    return f"{date_part}T{time_part}" if time_part else date_part
+
+
 def when_label(value) -> str:
-    """'Thu 18 Sep, 10:00am', or the raw text for entries typed before dates."""
+    """'Fri 18 Sep, 10:00am', 'Fri 18 Sep', or raw text for pre-picker entries."""
     moment = parse_when(value)
     if not moment:
         return str(value or "")
+    if not _has_time(value):
+        return moment.strftime("%a %-d %b")
     return moment.strftime("%a %-d %b, %-I:%M%p").replace("AM", "am").replace("PM", "pm")
 
 
@@ -557,8 +591,8 @@ def next_call(session: dict, now: datetime | None = None) -> dict:
     now = now or datetime.now()
     upcoming = []
     for call in session.get("calls") or []:
-        moment = parse_when(call.get("when_at"))
-        if moment and moment >= now:
+        moment, ends = parse_when(call.get("when_at")), _end_of(call.get("when_at"))
+        if moment and ends and ends >= now:
             upcoming.append((moment, call))
     if not upcoming:
         return {}
@@ -572,8 +606,8 @@ def overdue_call(session: dict, now: datetime | None = None) -> dict:
     now = now or datetime.now()
     past = []
     for call in session.get("calls") or []:
-        moment = parse_when(call.get("when_at"))
-        if moment and moment < now and not (call.get("note") or "").strip():
+        moment, ends = parse_when(call.get("when_at")), _end_of(call.get("when_at"))
+        if moment and ends and ends < now and not (call.get("note") or "").strip():
             past.append((moment, call))
     if not past:
         return {}

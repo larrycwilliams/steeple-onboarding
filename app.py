@@ -40,7 +40,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.14"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.15"   # shown in the header so you can tell a stale process at a glance
 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"
@@ -648,9 +648,10 @@ def discovery_save(sid):
 @app.route("/discovery/<sid>/calls", methods=["POST"])
 def discovery_add_call(sid):
     _discovery_or_404(sid)
-    call, error = discovery.add_call(sid, request.form.get("who", ""),
-                                     request.form.get("note", ""),
-                                     request.form.get("when", ""))
+    call, error = discovery.add_call(
+        sid, request.form.get("who", ""), request.form.get("note", ""),
+        discovery.combine_when(request.form.get("when_date", ""),
+                               request.form.get("when_time", "")))
     flash(error or "Call logged.", "error" if error else "ok")
     return redirect(url_for("discovery_page", sid=sid))
 

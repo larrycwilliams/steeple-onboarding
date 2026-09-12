@@ -27,7 +27,9 @@
   .dc-noteform textarea{flex:1 1 320px;min-height:44px}
   .dc-addcall{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;
     border-top:1px dashed #DAD4C8;padding-top:14px}
-  .dc-addcall .field{margin-bottom:0;flex:0 1 190px;min-width:0}
+  .dc-addcall .field{margin-bottom:0;flex:0 1 200px;min-width:0}
+  .dc-addcall .dc-timefield{flex:0 1 140px}
+  .dc-addcall label .help{font-weight:400;text-transform:none;letter-spacing:0}
   .dc-addcall .dc-callnotefield{flex:1 1 280px}
   .dc-addcall textarea{min-height:44px}
   .dc-meet{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:14px}
@@ -284,8 +286,12 @@
                placeholder="{{ lead.name if lead and lead.name else 'Name, role' }}">
       </div>
       <div class="field">
-        <label for="call_when">When</label>
-        <input type="datetime-local" id="call_when" name="when" autocomplete="off">
+        <label for="call_when">Date</label>
+        <input type="date" id="call_when" name="when_date" autocomplete="off">
+      </div>
+      <div class="field dc-timefield">
+        <label for="call_time">Time <span class="help">optional</span></label>
+        <input type="time" id="call_time" name="when_time" autocomplete="off">
       </div>
       <div class="field dc-callnotefield">
         <label for="call_note">What came of it</label>
