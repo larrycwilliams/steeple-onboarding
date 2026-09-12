@@ -13,12 +13,15 @@ WHAT I HEARD
 * You're known for {{ identity }}.
 {%- endif %}
 {%- if history %}
-* On merch so far: {{ history }}
+* What you've run into before: {{ history }}
 {%- endif %}
 {%- if calendar %}
 * Coming up: {{ calendar }}.
 {%- endif %}
-{% endif %}
+{% if history %}
+Running the merch side is the part this is meant to take off your plate —
+nobody on your staff should have to do it on top of everything else.
+{% endif %}{% endif %}
 ----------------------------------------------------------------------
 WHAT I'D RECOMMEND
 ----------------------------------------------------------------------

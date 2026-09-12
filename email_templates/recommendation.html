@@ -74,13 +74,19 @@
 {%- endif %}
 {%- if history %}
           <tr><td style="padding:2px 0 10px 18px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">
-            On merch so far: {{ history }}</td></tr>
+            What you've run into before: {{ history }}</td></tr>
 {%- endif %}
 {%- if calendar %}
           <tr><td style="padding:2px 0 10px 18px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#333333;">
             Coming up: <strong style="color:#001739;">{{ calendar }}</strong>.</td></tr>
 {%- endif %}
         </table>
+{%- if history %}
+        <p style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;color:#5C6470;">
+          Running the merch side is the part this is meant to take off your plate &mdash;
+          nobody on your staff should have to do it on top of everything else.
+        </p>
+{%- endif %}
       </td>
     </tr>
 {%- endif %}
