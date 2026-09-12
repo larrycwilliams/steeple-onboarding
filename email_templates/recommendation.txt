@@ -36,10 +36,12 @@ with a {{ payout_statement }} showing exactly what sold and what your share
 was. No long-term contract: {{ term_cadence }}, {{ term_notice_days }} days' notice, which is
 one payout cycle.
 
-I'd rather say this now than have your finance committee work it out in month
-eight: at your size, the giveback is not going to fund a mission trip. What it
-does is pay for most of the store. If your people really run with it, it
-covers itself and starts making money past that.
+Worth being clear about what the giveback does, because it's usually the first
+thing a finance committee asks. It's built to carry the store rather than to be
+a fundraiser. At your size it covers most of what the store costs to run, and if
+your {{ vocab_people }} take to it, it covers the rest and starts adding from
+there. It becomes a real income line at higher volumes — that's a function of
+how much sells, not of which plan you're on.
 {% if anchor or lineup or sizes %}
 ----------------------------------------------------------------------
 WHAT WE'D LAUNCH WITH
