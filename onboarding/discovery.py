@@ -289,6 +289,7 @@ def load(sid: str) -> dict | None:
     # Sessions written before these existed simply have none.
     for field in LINK_FIELDS:
         session.setdefault(field, "")
+    session.setdefault("delivery_mode", "")
     session.setdefault("calls", [])
     for call in session["calls"]:
         # Entries logged before the date picker kept free text in "when".
@@ -365,6 +366,7 @@ def open_for_lead(lead: dict) -> dict:
             "partner_id": lead.get("partner_id") or "",
             "meet_link": "",
             "drive_folder": "",
+            "delivery_mode": "",
             "calls": [],
             "answers": _blank_answers(),
         }
@@ -397,6 +399,7 @@ def open_walkin(org_name: str, org_type: str = "") -> tuple[dict | None, str]:
             "partner_id": "",
             "meet_link": "",
             "drive_folder": "",
+            "delivery_mode": "",
             "calls": [],
             "answers": _blank_answers(),
         }
@@ -405,7 +408,20 @@ def open_walkin(org_name: str, org_type: str = "") -> tuple[dict | None, str]:
 
 # ------------------------------------------------------------------- edit --
 
-EDITABLE_HEADER = ("org_name", "org_type", "contact")
+EDITABLE_HEADER = ("org_name", "org_type", "contact", "delivery_mode")
+
+# How orders reach this organisation's people. discovery.json states BOTH
+# cases because the call screen is Larry's own reference and he needs both in
+# front of him. A document sent to a partner needs only theirs: leading a
+# Florida church with "free pickup in the Dayton area" offers something they
+# cannot use and reads as though nobody thought about them.
+#
+# Unset renders the both-cases wording, which is accurate for anyone.
+DELIVERY_MODES = {
+    "": "Not established yet",
+    "ship": "Everything ships to the buyer",
+    "pickup": "Church-office pickup available",
+}
 
 # The video call's join link, kept out of EDITABLE_HEADER on purpose: it is
 # validated as a URL rather than squeezed into 200 characters of prose, and it
@@ -481,6 +497,8 @@ def save_field(sid: str, field: str, value) -> tuple[dict | None, str]:
             value = " ".join(str(value or "").split())[:200]
             if field == "org_type":
                 value = leads.normalise_org_type(value)
+            if field == "delivery_mode" and value not in DELIVERY_MODES:
+                return None, f"{value!r} is not a delivery option."
             if field == "org_name" and session.get("kind") == "lead" and not value:
                 return None, "A lead's organisation name can't be blank."
             session[field] = value

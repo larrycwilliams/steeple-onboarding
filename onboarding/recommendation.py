@@ -102,8 +102,25 @@ def fields(session: dict, lead: dict | None = None,
         session.get("org_type") or lead.get("org_type") or "")
     vocab = VOCAB.get(org_type or "nonprofit", VOCAB["nonprofit"])
 
-    delivery = next((item["text"] for item in ref.get("items") or []
-                     if item.get("label") == "Delivery"), "")
+    # Their case, not both cases. The generic string is written for the call
+    # screen, where Larry needs to see every option; a document sent to a
+    # partner in Florida that opens with free pickup in Dayton offers
+    # something they cannot use.
+    mode = session.get("delivery_mode") or ""
+    if mode == "ship":
+        delivery = (
+            "Everything ships straight to the person who ordered it — in-house "
+            "items $8 a shipment, free over $100, and print-on-demand items at "
+            "the vendor's rate. Nobody at your end handles a box or hands "
+            "anything out.")
+    elif mode == "pickup":
+        delivery = (
+            "Free pickup at your office on in-house items, or shipped straight "
+            "to the buyer for $8 a shipment, free over $100. Print-on-demand "
+            "items ship at the vendor's rate.")
+    else:
+        delivery = next((item["text"] for item in ref.get("items") or []
+                         if item.get("label") == "Delivery"), "")
 
     return {
         "contact_first_name": contact,

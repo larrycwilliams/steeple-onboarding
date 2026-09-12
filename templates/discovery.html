@@ -148,6 +148,16 @@
       <a class="btn btn-quiet" href="{{ s.drive_folder }}"
          target="_blank" rel="noopener noreferrer">Open folder</a>
     {% endif %}
+    {# Question 11 asks this out loud. Recording it as a field means the
+       recommendation states their case rather than both cases. #}
+    <div class="field" style="flex:0 1 240px">
+      <label for="delivery_mode">How orders reach them</label>
+      <select id="delivery_mode" name="delivery_mode">
+        {% for value, label in delivery_modes %}
+          <option value="{{ value }}"{% if s.delivery_mode == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
   </div>
 
   {% if not lead %}

@@ -40,7 +40,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.19"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.20"   # shown in the header so you can tell a stale process at a glance
 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"
@@ -627,6 +627,7 @@ def discovery_page(sid):
         progress=discovery.progress(call),
         partner=partner,
         org_types=[("church", "Church"), ("school", "School"), ("nonprofit", "Non-Profit")],
+        delivery_modes=list(discovery.DELIVERY_MODES.items()),
     )
 
 
