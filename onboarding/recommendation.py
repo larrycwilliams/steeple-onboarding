@@ -106,21 +106,23 @@ def fields(session: dict, lead: dict | None = None,
     # screen, where Larry needs to see every option; a document sent to a
     # partner in Florida that opens with free pickup in Dayton offers
     # something they cannot use.
+    # Pickup is named ONLY when we know they can use it. Offering a Florida
+    # church free collection from Dayton is worse than saying nothing about
+    # pickup at all: omitting an extra option is never wrong, offering one
+    # that does not exist for them is. So "unset" reads as shipped, which is
+    # true for every partner -- pickup is an addition, not an alternative.
+    SHIPS = ("Everything ships straight to the person who ordered it — in-house "
+             "items $8 a shipment, free over $100, and print-on-demand items at "
+             "the vendor's rate. Nobody at your end handles a box or hands "
+             "anything out.")
     mode = session.get("delivery_mode") or ""
-    if mode == "ship":
-        delivery = (
-            "Everything ships straight to the person who ordered it — in-house "
-            "items $8 a shipment, free over $100, and print-on-demand items at "
-            "the vendor's rate. Nobody at your end handles a box or hands "
-            "anything out.")
-    elif mode == "pickup":
+    if mode == "pickup":
         delivery = (
             "Free pickup at your office on in-house items, or shipped straight "
             "to the buyer for $8 a shipment, free over $100. Print-on-demand "
             "items ship at the vendor's rate.")
     else:
-        delivery = next((item["text"] for item in ref.get("items") or []
-                         if item.get("label") == "Delivery"), "")
+        delivery = SHIPS
 
     return {
         "contact_first_name": contact,

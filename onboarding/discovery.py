@@ -418,8 +418,8 @@ EDITABLE_HEADER = ("org_name", "org_type", "contact", "delivery_mode")
 #
 # Unset renders the both-cases wording, which is accurate for anyone.
 DELIVERY_MODES = {
-    "": "Not established yet",
-    "ship": "Everything ships to the buyer",
+    "": "Shipped to the buyer (default)",
+    "ship": "Shipped to the buyer",
     "pickup": "Church-office pickup available",
 }
 
