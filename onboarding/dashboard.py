@@ -364,6 +364,16 @@ def _margin_pct(record: dict | None) -> float | None:
     return value if value > 0 else None
 
 
+def negotiated_pct(record: dict | None) -> float | None:
+    """The public name for `_margin_pct`.
+
+    `statement.py` needs the identical rule -- a 0% seed is not a rate -- and
+    reaching into a private name to get it is how two copies of a rule start.
+    One function, two callers.
+    """
+    return _margin_pct(record)
+
+
 def _totals(partners: list[dict], unmatched: list[dict],
             order_count: int) -> dict:
     def add(rows, field):

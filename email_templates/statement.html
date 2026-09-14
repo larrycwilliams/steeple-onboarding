@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>{{ quarter }} margin payout</title>
+<!--[if mso]>
+<noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+<![endif]-->
+<style>
+  body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
+  table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
+  img{-ms-interpolation-mode:bicubic;border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}
+  table{border-collapse:collapse!important;}
+  body{margin:0!important;padding:0!important;width:100%!important;background-color:#F6F1E6;}
+  a{color:#8A6420;}
+  @media screen and (max-width:600px){
+    .wrap{width:100%!important;}
+    .px{padding-left:24px!important;padding-right:24px!important;}
+    .h1{font-size:26px!important;line-height:32px!important;}
+    .amount{font-size:38px!important;line-height:44px!important;}
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#F6F1E6;">
+
+<!-- PREHEADER. The number is the whole message, so it belongs in the inbox
+     preview: this is an email people open on a phone to see one figure. -->
+<div style="display:none;font-size:1px;color:#F6F1E6;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+  {{ payout }} for {{ quarter }} &mdash; {{ orders }} {{ order_word }}, {{ units }} {{ unit_word }}. Full statement attached.
+  &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F1E6;">
+<tr>
+<td align="center" style="padding:24px 12px;">
+
+  <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+  <table role="presentation" class="wrap" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#FFFFFF;border-radius:6px;overflow:hidden;">
+
+    <!-- ============ HEADER ============ -->
+    <tr>
+      <!-- The navy field and gold rule are baked into this image, not painted
+           with CSS. Apple Mail's compose editor rebuilds inserted HTML and
+           drops background colours; the lockup is a white knockout, so on the
+           resulting white cell it vanishes. See welcome.html. -->
+      <td align="center" bgcolor="#001739" style="background-color:#001739;font-size:0;line-height:0;">
+        <img src="{{ header_src }}" width="600"
+             alt="Steeple &amp; Stitch Co. — Where Ministry Meets Merch"
+             style="display:block;width:100%;max-width:600px;height:auto;border:0;">
+      </td>
+    </tr>
+
+    <!-- ============ OPENING ============ -->
+    <tr>
+      <td class="px" style="padding:36px 40px 4px 40px;">
+        <h1 class="h1" style="margin:0 0 18px 0;font-family:Georgia,'Times New Roman',serif;font-size:28px;line-height:34px;font-weight:normal;color:#001739;">
+          {{ contact_first_name }}, here&rsquo;s your {{ quarter }} payout.
+        </h1>
+        <p style="margin:0 0 22px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          Your store took <strong style="color:#001739;">{{ orders }} {{ order_word }}</strong> for
+          <strong style="color:#001739;">{{ units }} {{ unit_word }}</strong> from {{ period }}.
+          Here is {{ org_possessive }} share of the margin on them.
+        </p>
+      </td>
+    </tr>
+
+    <!-- ============ THE NUMBER ============ -->
+    <tr>
+      <td class="px" style="padding:0 40px 8px 40px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="background-color:#FBF3DF;border:1px solid #C9993F;border-radius:6px;">
+          <tr>
+            <td align="center" style="padding:22px 20px 20px 20px;">
+              <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8A6420;font-weight:bold;">
+                Your payout for {{ quarter }}
+              </div>
+              <div class="amount" style="font-family:Georgia,'Times New Roman',serif;font-size:44px;line-height:52px;color:#001739;padding:8px 0 4px 0;">
+                {{ payout }}
+              </div>
+              <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#5A5A5A;">
+                {{ rate }} of {{ margin }} margin &middot; {{ revenue }} in sales
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- ============ WHAT SOLD ============ -->
+    {% if sellers %}
+    <tr>
+      <td class="px" style="padding:28px 40px 0 40px;">
+        <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8A6420;font-weight:bold;padding-bottom:12px;">
+          What sold, by quantity
+        </div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#333333;">
+          {% for item in sellers %}
+          <tr>
+            <td style="padding:9px 0;border-bottom:1px solid #EDE7DA;">{{ item.title }}</td>
+            <td align="right" style="padding:9px 0 9px 10px;border-bottom:1px solid #EDE7DA;white-space:nowrap;color:#001739;font-weight:bold;">
+              {{ item.units }}
+            </td>
+            <td align="right" style="padding:9px 0 9px 16px;border-bottom:1px solid #EDE7DA;white-space:nowrap;color:#5A5A5A;">
+              {{ item.revenue }}
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+        {% if more_items %}
+        <p style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#5A5A5A;">
+          Plus {{ more_items }} more item{{ '' if more_items == 1 else 's' }} &mdash; every line is on the attached statement.
+        </p>
+        {% endif %}
+      </td>
+    </tr>
+    {% endif %}
+
+    <!-- ============ THE ATTACHMENT ============ -->
+    <tr>
+      <td class="px" style="padding:26px 40px 0 40px;">
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          The statement attached to this email
+          (<span style="color:#001739;">{{ statement_number }}</span>) shows every item and every
+          order in the period, what each one cost to produce, and how the figure above was reached.
+          {% if has_estimates or has_uncosted %}
+          Some lines are marked &mdash; those notes explain why they are not in the total.
+          {% endif %}
+        </p>
+        <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          Your check is on its way. If any line looks wrong, reply to this email and we will go
+          through it together &mdash; the numbers come straight from your store&rsquo;s order records,
+          so anything that looks off is worth a second look.
+        </p>
+        <p style="margin:0 0 28px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
+          Thank you for another quarter.
+        </p>
+      </td>
+    </tr>
+
+    <!-- ============ SIGN-OFF ============ -->
+    <tr>
+      <td class="px" style="padding:0 40px 32px 40px;">
+        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#333333;">
+          <strong style="color:#001739;">{{ signoff_name }}</strong><br>
+          <span style="color:#5A5A5A;">{{ signoff_title }}</span><br>
+          <a href="mailto:{{ point_of_contact_email }}" style="color:#8A6420;">{{ point_of_contact_email }}</a>
+          {% if point_of_contact_phone %}<span style="color:#5A5A5A;"> &middot; {{ point_of_contact_phone }}</span>{% endif %}
+        </p>
+      </td>
+    </tr>
+
+    <!-- ============ FOOTER ============ -->
+    <!-- Dark text on a light band, deliberately. A client that drops the
+         background turns light-on-navy into light-on-white; this survives it.
+         See welcome.html. -->
+    <tr>
+      <td align="center" bgcolor="#F6F1E6" style="background-color:#F6F1E6;padding:26px 40px;border-top:3px solid #C9993F;">
+        <p style="margin:0 0 10px 0;font-family:Georgia,'Times New Roman',serif;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#8A6420;">
+          Steeple &amp; Stitch Co.
+        </p>
+        <p style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:21px;color:#4A4A4A;">
+          <a href="https://www.steepleandstitch.com" style="color:#8A6420;text-decoration:underline;">steepleandstitch.com</a>
+          &nbsp;&middot;&nbsp; Dayton, Ohio
+        </p>
+        {% if company_address %}
+        <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:18px;color:#6B6B6B;">
+          {{ company_address }}
+        </p>
+        {% endif %}
+      </td>
+    </tr>
+
+  </table>
+  <!--[if mso]></td></tr></table><![endif]-->
+
+</td>
+</tr>
+</table>
+</body>
+</html>

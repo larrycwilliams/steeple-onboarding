@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}{{ s.org_name }} — {{ s.quarter }} statement{% endblock %}
+{% block content %}
+<style>
+  .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .bad{color:var(--bad);font-weight:600}
+  .stmt-head{display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between;
+             align-items:flex-start}
+  .payout{background:#FBF3DF;border:1px solid var(--gold);border-radius:10px;
+          padding:20px 24px;text-align:center;min-width:250px}
+  .payout .label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+                 color:#8A6420;font-weight:700}
+  .payout .value{font-size:38px;font-weight:700;letter-spacing:-.02em;margin:4px 0 2px}
+  .payout .sub{font-size:12px;color:var(--muted)}
+  .workings td{padding:9px 10px}
+  .workings tr:last-child td{border-top:2px solid var(--ink);font-weight:700;
+                             border-bottom:0}
+  .mark{color:#8A6420;font-weight:700}
+  tr.excluded td:not(:first-child){color:var(--muted)}
+  .totals td{font-weight:700;border-top:2px solid var(--ink)}
+  @media print{
+    header,nav,.actions,.internal{display:none!important}
+    main{padding:0}
+    .card{border:0;padding:0}
+  }
+</style>
+
+<div class="stmt-head">
+  <div>
+    <h2 style="margin-top:0">{{ s.org_name }}</h2>
+    <div class="help">
+      {{ s.quarter }} · {{ s.period }}<br>
+      Statement {{ s.number }}{% if s.plan %} · {{ s.plan }} plan{% endif %}
+      {%- if s.margin_pct is not none %} · {{ '%g'|format(s.margin_pct) }}% of margin{% endif %}
+      {%- if s.poc_email %} · to {{ s.poc_name or s.poc_email }}{% endif %}
+    </div>
+  </div>
+  <div class="payout">
+    <div class="label">Payout for {{ s.quarter }}</div>
+    <div class="value">
+      {% if s.payout is not none %}${{ '%.2f'|format(s.payout) }}
+      {% else %}<span class="bad">—</span>{% endif %}
+    </div>
+    <div class="sub">{{ s.orders }} order{{ '' if s.orders == 1 else 's' }} ·
+      {{ s.units }} item{{ '' if s.units == 1 else 's' }}</div>
+  </div>
+</div>
+
+<div class="internal">
+  {% for reason in s.blockers %}
+    <div class="flash error"><strong>Cannot be sent.</strong> {{ reason }}</div>
+  {% endfor %}
+  {% if not s.checked.agrees %}
+    <div class="flash error"><strong>This statement disagrees with the Dashboard.</strong>
+      {{ s.checked.differences|join('; ') }}. Do not send it — the two are computed from
+      the same functions, so a difference means something upstream has changed shape.</div>
+  {% endif %}
+  {% for note in s.warnings %}
+    <div class="note">{{ note }}</div>
+  {% endfor %}
+  {% if email_missing and not s.blockers %}
+    <div class="note"><strong>The email is not ready:</strong>
+      {{ email_missing|join('; ') }}.</div>
+  {% endif %}
+</div>
+
+<h2>How this figure was reached</h2>
+<div class="card">
+  <table class="workings">
+    <tbody>
+      <tr><td>Gross sales</td>
+          <td class="help">after every discount, excluding refunded items</td>
+          <td class="num">${{ '%.2f'|format(s.revenue) }}</td></tr>
+      <tr><td>Cost of goods</td>
+          <td class="help">what was paid to produce the items sold</td>
+          <td class="num">(${{ '%.2f'|format(s.cost) }})</td></tr>
+      <tr><td>Margin</td>
+          <td class="help">gross sales less cost of goods</td>
+          <td class="num">${{ '%.2f'|format(s.margin) }}</td></tr>
+      <tr><td>Their share{% if s.margin_pct is not none %} at {{ '%g'|format(s.margin_pct) }}%{% endif %}</td>
+          <td class="help">the amount of this payout</td>
+          <td class="num">
+            {% if s.payout is not none %}${{ '%.2f'|format(s.payout) }}
+            {% else %}<span class="bad">—</span>{% endif %}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2>What sold this quarter</h2>
+<div class="card">
+  {% if s.lines %}
+  <table>
+    <thead>
+      <tr><th>Item</th><th class="num">Qty</th><th class="num phone-hide">Orders</th>
+        <th class="num">Sales</th><th class="num phone-hide">Cost of goods</th>
+        <th class="num">Margin</th></tr>
+    </thead>
+    <tbody>
+    {% for row in s.lines %}
+      <tr{% if row.basis in ('uncosted', 'estimated', 'partial') %} class="excluded"{% endif %}>
+        <td>{{ row.title }}
+          {%- if row.basis == 'estimated' %} <span class="mark" title="variant deleted — cost estimated">*</span>
+          {%- elif row.basis in ('uncosted', 'partial') %} <span class="mark" title="no cost recorded">&dagger;</span>
+          {%- endif %}</td>
+        <td class="num">{{ row.units }}</td>
+        <td class="num phone-hide">{{ row.orders }}</td>
+        <td class="num">${{ '%.2f'|format(row.revenue) }}</td>
+        <td class="num phone-hide">
+          {% if row.cost is not none %}${{ '%.2f'|format(row.cost) }}{% else %}—{% endif %}</td>
+        <td class="num">
+          {% if row.margin is not none %}${{ '%.2f'|format(row.margin) }}{% else %}—{% endif %}</td>
+      </tr>
+    {% endfor %}
+      <tr class="totals">
+        <td>Total</td>
+        <td class="num">{{ s.units }}</td>
+        <td class="num phone-hide">{{ s.orders }}</td>
+        <td class="num">${{ '%.2f'|format(s.revenue) }}</td>
+        <td class="num phone-hide">${{ '%.2f'|format(s.cost) }}</td>
+        <td class="num">${{ '%.2f'|format(s.margin) }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  {% if s.estimated_revenue %}
+    <div class="help" style="margin-top:12px">
+      <span class="mark">*</span> ${{ '%.2f'|format(s.estimated_revenue) }} sold on
+      variants since deleted from Shopify, priced from the median of the product's
+      surviving variants. Not in the payout above; including them would make it
+      ${{ '%.2f'|format(s.payout_with_estimates) }}.
+    </div>
+  {% endif %}
+  {% if s.uncosted_revenue %}
+    <div class="help" style="margin-top:8px">
+      <span class="mark">&dagger;</span> ${{ '%.2f'|format(s.uncosted_revenue) }} with no
+      cost recorded, so no margin can be stated and it earns nothing here.
+    </div>
+  {% endif %}
+  {% else %}
+    <div class="help">No orders for this partner in {{ s.quarter }}.</div>
+  {% endif %}
+</div>
+
+{% if s.order_rows %}
+<h2>Orders in this period</h2>
+<div class="card">
+  <table>
+    <thead><tr><th>Order</th><th class="num">Date</th><th class="num">Items</th>
+      <th class="num">Sales</th></tr></thead>
+    <tbody>
+    {% for row in s.order_rows %}
+      <tr><td>{{ row.name }}</td>
+          <td class="num">{{ row.date.strftime('%-d %b %Y') }}</td>
+          <td class="num">{{ row.units }}</td>
+          <td class="num">${{ '%.2f'|format(row.revenue) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="actions">
+  {% if s.blockers %}
+    <a class="btn btn-gold" href="{{ url_for('edit_partner', pid=s.partner_id) }}">Fix the record</a>
+    <button class="btn" disabled>Download PDF</button>
+    <button class="btn" disabled>Open email draft</button>
+  {% else %}
+    <a class="btn btn-primary"
+       href="{{ url_for('partner_statement_pdf', pid=s.partner_id, qslug=s.quarter_slug) }}">Download PDF</a>
+    <form method="post" style="margin:0"
+          action="{{ url_for('partner_statement_email', pid=s.partner_id, qslug=s.quarter_slug) }}">
+      <button class="btn btn-gold" type="submit"
+              {% if email_missing or not mail_available %}disabled{% endif %}>
+        Open email draft</button>
+    </form>
+    {% if not mail_available %}
+      <span class="help">Apple Mail was not found on this Mac, so a draft cannot be
+        opened here. Download the PDF instead.</span>
+    {% endif %}
+  {% endif %}
+  <a class="btn btn-quiet"
+     href="{{ url_for('statements_page', quarter=s.quarter_slug) }}">All partners</a>
+</div>
+{% endblock %}

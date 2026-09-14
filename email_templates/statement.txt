@@ -1,0 +1,33 @@
+{{ contact_first_name }},
+
+Here is {{ org_possessive }} margin payout for {{ quarter }}.
+
+    YOUR PAYOUT: {{ payout }}
+    {{ rate }} of {{ margin }} margin on {{ revenue }} in sales
+
+Your store took {{ orders }} {{ order_word }} for {{ units }} {{ unit_word }}
+from {{ period }}.
+
+{% if sellers %}WHAT SOLD, BY QUANTITY
+{% for item in sellers %}  {{ item.units }} x {{ item.title }} — {{ item.revenue }}
+{% endfor %}{% if more_items %}  ...plus {{ more_items }} more item{{ '' if more_items == 1 else 's' }}, all listed on the attached statement.
+{% endif %}
+{% endif %}
+The attached statement ({{ statement_number }}) lists every item and every
+order in the period, what each one cost to produce, and how the figure above
+was reached.{% if has_estimates or has_uncosted %} Some lines carry a note explaining why they are
+not in the total.{% endif %}
+
+Your check is on its way. If any line looks wrong, reply to this email and we
+will go through it together — these numbers come straight from your store's
+order records, so anything that looks off is worth a second look.
+
+Thank you for another quarter.
+
+{{ signoff_name }}
+{{ signoff_title }}
+{{ point_of_contact_email }}{% if point_of_contact_phone %} · {{ point_of_contact_phone }}{% endif %}
+
+Steeple & Stitch Co. · steepleandstitch.com · Dayton, Ohio
+{% if company_address %}{{ company_address }}
+{% endif %}

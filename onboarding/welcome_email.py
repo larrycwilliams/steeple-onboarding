@@ -96,6 +96,16 @@ def _logo_src(config: dict) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
+def header_src(config: dict) -> str:
+    """The public name for `_header_src`.
+
+    The payout email uses the same letterhead band, and for the same reasons
+    (see the comment on the header cell in welcome.html). Two copies of the
+    "hosted URL, else data URI" rule would be two places to fix it.
+    """
+    return _header_src(config)
+
+
 def fields(record: dict, config: dict | None = None) -> dict:
     """Every merge field, resolved."""
     config = config or settings.load()

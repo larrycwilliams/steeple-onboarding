@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Quarterly statements — Steeple &amp; Stitch{% endblock %}
+{% block content %}
+<style>
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+         gap:14px;margin-bottom:20px}
+  .tile{background:#fff;border:1px solid #E2DDD2;border-radius:10px;padding:16px 18px}
+  .tile-gold{border-color:var(--gold);box-shadow:inset 3px 0 0 var(--gold)}
+  .tile-warn{border-color:#E0C7A0;background:#FDFAF4}
+  .tile-label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+              color:var(--muted);font-weight:700}
+  .tile-value{font-size:26px;font-weight:700;margin:6px 0 2px;letter-spacing:-.02em}
+  .tile-note{font-size:12px;color:var(--muted);line-height:1.4}
+  .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .bad{color:var(--bad);font-weight:600}
+  .quarters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .qpill{display:inline-block;padding:7px 14px;border-radius:99px;font-size:13px;
+         font-weight:600;text-decoration:none;background:#E8E3D8;color:#3B4049}
+  .qpill.on{background:var(--ink);color:var(--paper)}
+  tr.quiet td{color:var(--muted)}
+  td.acts{white-space:nowrap;text-align:right}
+  td.acts .btn{padding:7px 12px;font-size:13px;margin-left:6px}
+</style>
+
+<h2 style="margin-top:0">Quarterly payout statements</h2>
+
+<div class="card">
+  <div class="quarters">
+    {% for q in quarters %}
+      <a class="qpill{% if q == quarter %} on{% endif %}"
+         href="{{ url_for('statements_page', quarter=q|replace(' ', '-')) }}">{{ q }}</a>
+    {% endfor %}
+    {% if current_quarter == quarter %}
+      <span class="help">This quarter is still open — sales are still arriving.</span>
+    {% endif %}
+  </div>
+  <div class="help" style="margin-top:10px">
+    Figures are {{ source }}{% if pulled_at %}, pulled {{ pulled_at }}{% endif %}.
+    A statement is built from the same order records as the Dashboard, so the two
+    always agree.
+  </div>
+</div>
+
+<div class="tiles">
+  <div class="tile tile-gold">
+    <div class="tile-label">To pay out</div>
+    <div class="tile-value">${{ '%.2f'|format(totals.payout) }}</div>
+    <div class="tile-note">{{ totals.paying }} partner{{ '' if totals.paying == 1 else 's' }} earned something this quarter</div>
+  </div>
+  <div class="tile">
+    <div class="tile-label">Orders</div>
+    <div class="tile-value">{{ totals.orders }}</div>
+    <div class="tile-note">{{ totals.units }} items across the store</div>
+  </div>
+  <div class="tile">
+    <div class="tile-label">Margin</div>
+    <div class="tile-value">${{ '%.2f'|format(totals.margin) }}</div>
+    <div class="tile-note">on ${{ '%.2f'|format(totals.revenue) }} of sales</div>
+  </div>
+  <div class="tile{% if totals.blocked or totals.uncosted_revenue %} tile-warn{% endif %}">
+    <div class="tile-label">Needs attention</div>
+    <div class="tile-value">{{ totals.blocked }}</div>
+    <div class="tile-note">
+      {% if totals.blocked %}partner{{ '' if totals.blocked == 1 else 's' }} with no negotiated rate — cannot be sent
+      {% elif totals.uncosted_revenue %}every rate is set; ${{ '%.2f'|format(totals.uncosted_revenue) }} of sales still has no cost
+      {% else %}nothing blocking a send{% endif %}
+    </div>
+  </div>
+</div>
+
+{% if totals.uncosted_revenue %}
+<div class="note">
+  <strong>${{ '%.2f'|format(totals.uncosted_revenue) }} of this quarter's sales has no
+  cost of goods recorded</strong>, so it earns partners nothing and the payouts below
+  are floors. Enter the missing costs in Shopify and
+  <a href="{{ url_for('statements_page', quarter=quarter|replace(' ', '-'), refresh=1) }}">refresh</a>
+  <em>before</em> sending — a statement that has already gone out is the wrong place to
+  discover it.
+</div>
+{% endif %}
+
+<h2>By partner</h2>
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Partner</th>
+        <th class="num phone-hide">Orders</th>
+        <th class="num phone-hide">Items</th>
+        <th class="num phone-hide">Sales</th>
+        <th class="num phone-hide">Margin</th>
+        <th class="num">Payout</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+      <tr{% if not row.revenue %} class="quiet"{% endif %}>
+        <td>
+          <strong>{{ row.org_name }}</strong>
+          {% if row.margin_pct is not none %}
+            <span class="pill">{{ '%g'|format(row.margin_pct) }}%</span>{% endif %}
+          {% for reason in row.blockers %}
+            <div class="help bad">{{ reason }}</div>
+          {% endfor %}
+          {% if not row.checked.agrees %}
+            <div class="help bad">Disagrees with the Dashboard:
+              {{ row.checked.differences|join('; ') }}</div>
+          {% endif %}
+          {% if row.uncosted_revenue %}
+            <div class="help">${{ '%.2f'|format(row.uncosted_revenue) }} of these sales
+              has no cost on file and earns nothing</div>
+          {% endif %}
+          {% if row.estimated_revenue %}
+            <div class="help">${{ '%.2f'|format(row.estimated_revenue) }} priced from
+              surviving variants — ${{ '%.2f'|format(row.payout_with_estimates) }} if included</div>
+          {% endif %}
+        </td>
+        <td class="num phone-hide">{{ row.orders }}</td>
+        <td class="num phone-hide">{{ row.units }}</td>
+        <td class="num phone-hide">${{ '%.2f'|format(row.revenue) }}</td>
+        <td class="num phone-hide">${{ '%.2f'|format(row.margin) }}</td>
+        <td class="num">
+          {% if row.payout is not none %}<strong>${{ '%.2f'|format(row.payout) }}</strong>
+          {% else %}<span class="bad" title="No negotiated rate on the record">—</span>{% endif %}
+        </td>
+        <td class="acts">
+          <a class="btn btn-quiet"
+             href="{{ url_for('partner_statement', pid=row.partner_id, qslug=row.quarter_slug) }}">Open</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="actions">
+  <form method="post"
+        action="{{ url_for('statements_build_all', qslug=quarter|replace(' ', '-')) }}"
+        style="margin:0">
+    <button class="btn btn-primary" type="submit"
+            {% if not totals.paying %}disabled{% endif %}>
+      Build every PDF for {{ quarter }}
+    </button>
+  </form>
+  <a class="btn btn-quiet" href="{{ url_for('statements_page', quarter=quarter|replace(' ', '-'), refresh=1) }}">Refresh from Shopify</a>
+  <a class="btn btn-quiet" href="{{ url_for('dashboard_page') }}">Dashboard</a>
+  <span class="help">PDFs land in each partner's output folder. Emails are opened as
+    drafts from the partner's own statement, one at a time, so nothing sends itself.</span>
+</div>
+{% endblock %}

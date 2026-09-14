@@ -31,6 +31,7 @@ from onboarding import dashboard, discovery, discovery_reply, leads, mail_draft,
 from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
 from onboarding import recommendation, storefront, traveler
+from onboarding import statement, statement_email, statement_pdf
 from onboarding import welcome_email
 from onboarding.palette import extract_palette
 from onboarding.schema import (DEFAULT_PALETTE, FIELDS, GROUPS, ORG_TYPES,
@@ -40,7 +41,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.22"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.23"   # shown in the header so you can tell a stale process at a glance
 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"
@@ -753,11 +754,17 @@ def _dashboard_context(refresh: bool = False) -> dict:
     records = store.list_partners()
     if snap is None:
         return {"data": None, "source": source, "pulled_at": "",
+                "snapshot": None, "records": records,
                 "configured": shopify_sales.configured(),
                 "scopes": shopify_sales.SCOPES,
                 "ready_to_connect": False}
     return {
         "data": dashboard.rollup(snap, records),
+        # The rollup sums the quarter away; a statement needs the line items
+        # back, and re-pulling for that would be a second answer to the same
+        # question. Unused by the dashboard templates, which name their vars.
+        "snapshot": snap,
+        "records": records,
         "source": source,
         "pulled_at": (snap.get("pulled_at") or "").replace("T", " ").replace("+00:00", " UTC"),
         "configured": shopify_sales.configured(),
@@ -804,6 +811,180 @@ def dashboard_snapshot():
     flash(f"Snapshot saved to output/Dashboard/{DASHBOARD_FILE.name} — "
           "it syncs to your iPad and phone through iCloud.", "ok")
     return redirect(url_for("dashboard_page"))
+
+# --------------------------------------------- quarterly payout statements
+#
+# The dashboard answers "what do I owe everyone". These routes produce the
+# document that goes out with the check: orders, items by quantity, and how the
+# figure was reached. Same arithmetic, from the same functions -- see
+# onboarding/statement.py, which imports the dashboard's own rules rather than
+# restating them.
+#
+# Nothing here sends anything. The email route opens a Mail draft, exactly like
+# the welcome email does, because the last look before a payout leaves the
+# building is the point and not an obstacle.
+
+def _statement_or_404(pid: str, qslug: str, refresh: bool = False):
+    """(record, quarter, statement, context). Aborts on an unknown partner or
+    a quarter that is not a quarter -- this value reaches a filename."""
+    record = store.load(pid)
+    quarter = statement.unslug(qslug)
+    if record is None or not quarter:
+        abort(404)
+    context = _dashboard_context(refresh)
+    if context["data"] is None:
+        return record, quarter, None, context
+    row = next((entry
+                for partner in context["data"]["partners"]
+                if partner["partner_id"] == pid
+                for entry in partner["quarters"]
+                if entry["quarter"] == quarter), None)
+    built = statement.build(context["snapshot"], context["records"],
+                            record, quarter, cross_check=row)
+    return record, quarter, built, context
+
+
+def _write_statement_pdf(record: dict, built: dict) -> Path:
+    """Into the partner's own output folder, on the house naming convention.
+
+    Raises ValueError when the statement carries blockers -- the guard lives in
+    statement_pdf.build_statement_pdf so that an unsendable statement can never
+    exist as a file sitting in a folder Larry attaches things from.
+    """
+    name = store.output_filename(
+        record, f"Payout-Statement-{built['quarter_slug']}", "pdf")
+    return statement_pdf.build_statement_pdf(
+        built, store.output_dir(record) / name, company_settings.load())
+
+
+@app.route("/statements")
+def statements_page():
+    refresh = request.args.get("refresh") == "1"
+    context = _dashboard_context(refresh)
+    if context["data"] is None:
+        flash(context["source"], "error")
+        return redirect(url_for("index"))
+    if refresh:
+        flash(f"Shopify data: {context['source']}.",
+              "ok" if context["source"] == "live" else "error")
+
+    snap = context["snapshot"]
+    # Defaults to the last CLOSED quarter: the current one cannot be paid out
+    # yet, because the money is still arriving.
+    quarter = (statement.unslug(request.args.get("quarter", ""))
+               or statement.default_quarter(snap))
+    rows = statement.overview(snap, context["records"], quarter, context["data"])
+    return render_template(
+        "statements.html",
+        quarter=quarter,
+        quarters=statement.quarters_with_sales(snap) or [quarter],
+        current_quarter=dashboard.current_quarter(),
+        rows=rows,
+        totals=statement.totals(rows),
+        source=context["source"],
+        pulled_at=context["pulled_at"],
+    )
+
+
+@app.route("/partner/<pid>/statement/<qslug>")
+def partner_statement(pid, qslug):
+    record, quarter, built, context = _statement_or_404(pid, qslug)
+    if built is None:
+        flash(context["source"], "error")
+        return redirect(url_for("index"))
+    return render_template(
+        "partner_statement.html",
+        s=built,
+        record=record,
+        email_missing=statement_email.missing(built, record),
+        mail_available=mail_draft.available(),
+    )
+
+
+@app.route("/partner/<pid>/statement/<qslug>/pdf")
+def partner_statement_pdf(pid, qslug):
+    record, quarter, built, context = _statement_or_404(pid, qslug)
+    if built is None:
+        flash(context["source"], "error")
+        return redirect(url_for("index"))
+    try:
+        path = _write_statement_pdf(record, built)
+    except ValueError as exc:
+        flash(f"Not built — {exc}", "error")
+        return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
+    return send_file(path, as_attachment=True)
+
+
+@app.route("/partner/<pid>/statement/<qslug>/email", methods=["POST"])
+def partner_statement_email(pid, qslug):
+    record, quarter, built, context = _statement_or_404(pid, qslug)
+    if built is None:
+        flash(context["source"], "error")
+        return redirect(url_for("index"))
+
+    mail = statement_email.render(built, record)
+    # The guard is the whole point: never hand Mail a payout email with an
+    # unresolved field or an unstateable figure, because at that stage the next
+    # click sends it.
+    if mail["missing"]:
+        flash("Not drafted — still unset: " + "; ".join(mail["missing"]), "error")
+        return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
+    try:
+        path = _write_statement_pdf(record, built)
+    except ValueError as exc:
+        flash(f"Not drafted — {exc}", "error")
+        return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
+
+    result = mail_draft.create_draft(
+        subject=mail["subject"], recipient=mail["to"],
+        html=mail["html"], attachments=[str(path)],
+    )
+    if result["ok"]:
+        flash(f"Draft open in Mail to {mail['to']} with {path.name} attached. "
+              "Read it, then send.", "ok")
+    else:
+        flash("Could not open a Mail draft: " + result["error"], "error")
+    return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
+
+
+@app.route("/statements/<qslug>/build", methods=["POST"])
+def statements_build_all(qslug):
+    """Every sendable statement for one quarter, in one pass.
+
+    Skips rather than fails on a blocked partner, and says which ones were
+    skipped: a payout run that stops on the first bad record leaves the other
+    eight partners waiting on a field that has nothing to do with them.
+    """
+    quarter = statement.unslug(qslug)
+    if not quarter:
+        abort(404)
+    context = _dashboard_context(False)
+    if context["data"] is None:
+        flash(context["source"], "error")
+        return redirect(url_for("index"))
+
+    built, skipped = [], []
+    for row in statement.overview(context["snapshot"], context["records"],
+                                  quarter, context["data"]):
+        record = store.load(row["partner_id"])
+        if record is None:
+            continue
+        if row["blockers"] or not row["orders"]:
+            skipped.append(row["org_name"])
+            continue
+        try:
+            built.append(_write_statement_pdf(record, row).name)
+        except (ValueError, OSError) as exc:
+            skipped.append(f"{row['org_name']} ({exc})")
+
+    if built:
+        flash(f"Built {len(built)} statement{'' if len(built) == 1 else 's'} "
+              f"for {quarter}, in each partner's output folder.", "ok")
+    if skipped:
+        flash("Skipped: " + "; ".join(skipped) + ".",
+              "error" if built else "ok")
+    return redirect(url_for("statements_page", quarter=qslug))
+
 
 PORT = 5000
 URL = f"http://127.0.0.1:{PORT}"
