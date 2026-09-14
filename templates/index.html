@@ -1,6 +1,44 @@
 {% extends "base.html" %}
 {% block content %}
 
+{# The queue, before the list. Everything below is a record you might edit;
+   this is the only thing on the page with a clock running on it. #}
+{% if outstanding %}
+<div class="card" style="border-color:{{ '#B4472F' if outstanding[0].overdue else '#E2DDD2' }};
+     {% if outstanding[0].overdue %}box-shadow:inset 3px 0 0 var(--bad){% endif %}">
+  <h2 style="margin:0 0 4px 0;font-size:17px">
+    Waiting on a signed agreement — {{ outstanding|length }}</h2>
+  <div class="help" style="margin-bottom:10px">
+    Nothing after the agreement starts until it is back: no storefront, no
+    products, no launch. Oldest first.
+  </div>
+  <table>
+    <tbody>
+    {% for row in outstanding %}
+      <tr>
+        <td><strong>{{ row.org_name }}</strong>
+          {% if row.holding %}
+            <div class="help">holding until {{ row.chase_label }}{% if row.chase_reason %}
+              — {{ row.chase_reason }}{% endif %}</div>
+          {% endif %}
+        </td>
+        <td style="white-space:nowrap;font-weight:700;
+                   {% if row.overdue %}color:var(--bad){% endif %}">
+          {{ row.days }} day{{ '' if row.days == 1 else 's' }}
+          {%- if row.overdue %} · chase it{% endif %}
+        </td>
+        <td class="phone-hide" style="color:var(--muted);font-size:12.5px">
+          sent {{ row.sent_label }}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <a class="btn btn-quiet" href="{{ url_for('edit_partner', pid=row.pid) }}">Open</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {% if not partners %}
   <div class="card empty">
     <p style="font-size:16px;margin:0 0 18px">No partners yet.</p>

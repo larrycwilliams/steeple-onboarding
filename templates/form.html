@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 
+{# Stage 10 first, above the record. A partner waiting five weeks on a
+   signature is the most important thing about them, and it used to be the one
+   thing this screen could not tell you. #}
+{% if not is_new %}
+  {% include "_agreement.html" %}
+{% endif %}
+
 <form method="post" enctype="multipart/form-data">
 
 {% for group in GROUPS %}

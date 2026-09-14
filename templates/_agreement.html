@@ -1,0 +1,143 @@
+{# The signed agreement — runbook step 10, the one stop with nothing watching it.
+
+   Needs: `agreement` (onboarding.agreement.state) and `record`.
+
+   Three states and no more: not sent, waiting, returned. The date is usually
+   not typed in -- the agreement rides on the welcome email, so a ticked
+   welcome dates this too, and the screen says so rather than presenting an
+   inference as a fact. #}
+
+<style>
+  .agr{border:1px solid var(--line);border-radius:10px;background:#fff;
+       padding:16px 18px;margin:0 0 22px}
+  .agr.late{border-color:var(--bad);box-shadow:inset 3px 0 0 var(--bad)}
+  .agr.done{border-color:#7FA98F;background:#F3F8F4}
+  .agr h3{margin:0 0 4px 0;font-size:15px}
+  .agr .age{font-weight:700}
+  .agr .age.late{color:var(--bad)}
+  .agr .mark{color:#265B41;font-weight:700}
+  .agr form{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px}
+  .agr .field{margin:0}
+  .agr .field.when{flex:0 1 165px}
+  .agr .field.why{flex:1 1 200px}
+  .agr details{margin-top:12px;border-top:1px dashed #DAD4C8;padding-top:10px}
+  .agr summary{cursor:pointer;font-size:13px;color:var(--muted)}
+</style>
+
+<div class="agr{% if agreement.overdue %} late{% elif agreement.returned %} done{% endif %}">
+
+  {% if agreement.stage == 'returned' %}
+    <h3><span class="mark">&check; Signed agreement received</span> — {{ agreement.returned_label }}</h3>
+    <div class="help">
+      Out {{ agreement.sent_label }}{% if agreement.turnaround is not none %},
+      back in {{ agreement.turnaround }} day{{ '' if agreement.turnaround == 1 else 's' }}{% endif %}.
+      {% if agreement.returned_note %}{{ agreement.returned_note }}{% endif %}
+      Everything after this point — storefront, products, launch — is unblocked.
+    </div>
+
+  {% elif agreement.stage == 'waiting' %}
+    <h3>Waiting on the signed agreement —
+      <span class="age{% if agreement.overdue %} late{% endif %}">{{ agreement.days }}
+        day{{ '' if agreement.days == 1 else 's' }}</span></h3>
+    <div class="help">
+      Sent {{ agreement.sent_label }}{% if agreement.sent_source == 'welcome' %}
+        with the welcome email{% elif agreement.sent_note %} — {{ agreement.sent_note }}{% endif %}.
+      {% if agreement.overdue %}
+        <strong>Past {{ chase_after }} days.</strong> This is where deals go quiet —
+        chase it, or set a date below and it will stop asking until then.
+      {% elif agreement.holding %}
+        Holding until {{ agreement.chase_label }}{% if agreement.chase_reason %}
+          — {{ agreement.chase_reason }}{% endif %}.
+      {% endif %}
+      Nothing after this point should start until it is back.
+    </div>
+
+    <form method="post" action="{{ url_for('partner_agreement', pid=record.id) }}">
+      <input type="hidden" name="action" value="returned">
+      <div class="field when">
+        <label for="agr-back">Signed copy received</label>
+        <input type="date" id="agr-back" name="when" value="{{ today() }}">
+      </div>
+      <div class="field why">
+        <label for="agr-note">Note (optional)</label>
+        <input type="text" id="agr-note" name="note" placeholder="signed by the board chair">
+      </div>
+      <button class="btn btn-gold" type="submit">Mark returned</button>
+    </form>
+
+    <details>
+      <summary>Not yet — set a date to chase, or fix the send date</summary>
+      <form method="post" action="{{ url_for('partner_agreement', pid=record.id) }}">
+        <input type="hidden" name="action" value="chase">
+        <div class="field when">
+          <label for="agr-chase">Chase on</label>
+          <input type="date" id="agr-chase" name="when" value="{{ agreement.chase_on }}">
+        </div>
+        <div class="field why">
+          <label for="agr-chase-why">Why</label>
+          <input type="text" id="agr-chase-why" name="note"
+                 value="{{ agreement.chase_reason }}"
+                 placeholder="their board meets on the 20th">
+        </div>
+        <button class="btn btn-quiet" type="submit">
+          {% if agreement.holding %}Update{% else %}Hold the chase{% endif %}</button>
+      </form>
+      <div class="help" style="margin-top:6px">
+        A chase date stops the red, not the clock. The age keeps counting,
+        because how long this has really been out is the number that matters
+        when it finally comes up.
+      </div>
+      <form method="post" action="{{ url_for('partner_agreement', pid=record.id) }}">
+        <input type="hidden" name="action" value="sent">
+        <div class="field when">
+          <label for="agr-sent">Actually sent on</label>
+          <input type="date" id="agr-sent" name="when" value="{{ agreement.sent_date }}">
+        </div>
+        <div class="field why">
+          <label for="agr-sent-why">How</label>
+          <input type="text" id="agr-sent-why" name="note"
+                 value="{{ agreement.sent_note }}" placeholder="posted it">
+        </div>
+        <button class="btn btn-quiet" type="submit">Set the send date</button>
+      </form>
+    </details>
+
+  {% else %}
+    <h3>No agreement out yet</h3>
+    <div class="help">
+      Nothing is recorded as sent. Normally you do not fill this in: the
+      agreement travels as the attachment on the welcome email, so ticking that
+      email as sent dates this too. Use the form below only if it went out some
+      other way — posted, handed over at a meeting, sent from your own Mail.
+    </div>
+    <form method="post" action="{{ url_for('partner_agreement', pid=record.id) }}">
+      <input type="hidden" name="action" value="sent">
+      <div class="field when">
+        <label for="agr-sent">Sent on</label>
+        <input type="date" id="agr-sent" name="when" value="{{ today() }}">
+      </div>
+      <div class="field why">
+        <label for="agr-sent-why">How</label>
+        <input type="text" id="agr-sent-why" name="note" placeholder="posted it">
+      </div>
+      <button class="btn btn-quiet" type="submit">Record it as sent</button>
+    </form>
+  {% endif %}
+
+  {% if agreement.returned or agreement.sent %}
+    <details>
+      <summary>Correct this</summary>
+      <form method="post" action="{{ url_for('partner_agreement', pid=record.id) }}">
+        <input type="hidden" name="action"
+               value="clear-{{ 'returned' if agreement.returned else 'sent' }}">
+        <button class="btn btn-quiet" type="submit">
+          {% if agreement.returned %}It has not actually come back
+          {% else %}It never went out{% endif %}</button>
+      </form>
+      <div class="help" style="margin-top:6px">
+        Clearing a mark leaves the history behind — the record keeps what it
+        used to say and when it changed.
+      </div>
+    </details>
+  {% endif %}
+</div>

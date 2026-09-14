@@ -33,6 +33,7 @@ from onboarding import settings as company_settings, shopify_sales, store
 from onboarding import recommendation, storefront, traveler
 from onboarding import statement, statement_email, statement_pdf
 from onboarding import sent as sent_log
+from onboarding import agreement
 from onboarding import welcome_email
 from onboarding.palette import extract_palette
 from onboarding.schema import (DEFAULT_PALETTE, FIELDS, GROUPS, ORG_TYPES,
@@ -42,7 +43,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.31"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.32"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -58,6 +59,8 @@ app.jinja_env.globals.update(
 app.jinja_env.globals["today"] = lambda: datetime.now().strftime("%Y-%m-%d")
 # The draft-helper version the screens expect; see onboarding/mail_draft.py.
 app.jinja_env.globals["HELPER_VERSION"] = mail_draft.EXPECTED_HELPER_VERSION
+# How long an unsigned agreement may sit before the screens turn red.
+app.jinja_env.globals["chase_after"] = agreement.CHASE_AFTER_DAYS
 
 
 @app.after_request
@@ -113,6 +116,7 @@ def _form_to_record(form, files, existing: dict | None = None) -> dict:
 def index():
     partners = store.list_partners()
     return render_template("index.html", partners=partners,
+                           outstanding=agreement.outstanding(partners),
                            shopify_ready=shopify_configured())
 
 
@@ -173,9 +177,40 @@ def edit_partner(pid):
             if action == "generate":
                 return redirect(url_for("generate", pid=record["id"]))
         return render_template("form.html", record=record, ctx=derive(record),
-                               is_new=False, shopify_ready=shopify_configured())
+                               is_new=False, shopify_ready=shopify_configured(),
+                               agreement=agreement.state(pid))
     return render_template("form.html", record=existing, ctx=derive(existing),
-                           is_new=False, shopify_ready=shopify_configured())
+                           is_new=False, shopify_ready=shopify_configured(),
+                           agreement=agreement.state(pid))
+
+
+@app.route("/partner/<pid>/agreement", methods=["POST"])
+def partner_agreement(pid):
+    """Sent, back, or chase me later. Stage 10 of the runbook, made visible.
+
+    "Stop until the signed agreement comes back" was the one step in the whole
+    path with nothing watching it: a partner unsigned for five weeks looked
+    exactly like one signed yesterday.
+    """
+    record = store.load(pid)
+    if record is None:
+        abort(404)
+    action = request.form.get("action", "")
+    when = request.form.get("when", "")
+    note = request.form.get("note", "")
+
+    if action == "returned":
+        ok, message = agreement.mark_returned(pid, when, note)
+    elif action == "sent":
+        ok, message = agreement.mark_sent(pid, when, note)
+    elif action == "chase":
+        ok, message = agreement.set_chase(pid, when, note)
+    elif action in ("clear-sent", "clear-returned"):
+        ok, message = agreement.clear(pid, action.split("-", 1)[1], note)
+    else:
+        ok, message = False, f"{action!r} is not something this does."
+    flash(message, "ok" if ok else "error")
+    return redirect(url_for("edit_partner", pid=pid))
 
 
 @app.route("/partner/<pid>/generate")
