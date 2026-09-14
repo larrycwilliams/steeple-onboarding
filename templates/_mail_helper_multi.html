@@ -1,0 +1,106 @@
+{# The local-draft path for a page with MANY messages on it.
+
+   _mail_where.html handles a screen showing one message: one card, one button,
+   fixed element ids. The Pipeline shows every open lead at once, so that
+   partial cannot be included per card -- duplicated ids would leave one card
+   driving another's button. This is the same mechanism with the state moved
+   onto the buttons themselves.
+
+   Each button carries:
+     data-eml    -- where to fetch the built message from the hub
+     data-stage  -- where to POST the stage change once Mail really has it
+
+   The buttons start hidden and are revealed only if the helper answers, so a
+   Mac that has not been set up sees Download .eml and nothing broken. #}
+
+<script>
+(function () {
+  var HELPER = 'http://127.0.0.1:5055';
+  var buttons = document.querySelectorAll('.mw-draft');
+  if (!buttons.length) return;
+  var host = document.querySelector('[data-helper-want]');
+  var WANT = Number(host ? host.getAttribute('data-helper-want') : 0);
+
+  function ready(info) {
+    document.querySelectorAll('.mw-hostname').forEach(function (el) {
+      el.textContent = info.host;
+    });
+    // Same staleness check as the single-message card: an old helper reports
+    // no version at all, which reads as 0.
+    if (Number(info.version || 0) < WANT) {
+      document.querySelectorAll('.mw-stale').forEach(function (el) {
+        el.hidden = false;
+      });
+    }
+    buttons.forEach(function (button) {
+      button.hidden = false;
+      button.addEventListener('click', function () { draft(button); });
+    });
+    document.querySelectorAll('.mw-noHelper').forEach(function (el) {
+      el.hidden = true;
+    });
+  }
+
+  function say(button, text, bad) {
+    var status = button.parentNode.querySelector('.mw-status');
+    if (!status) return;
+    status.textContent = text;
+    status.style.color = bad ? 'var(--bad)' : 'var(--muted)';
+  }
+
+  function draft(button) {
+    // Drafting again for a lead already marked answered opens a second copy
+    // in somebody's inbox, so it asks first. Same guard the old server-side
+    // button carried, moved onto the button that replaced it.
+    var ask = button.getAttribute('data-confirm');
+    if (ask && !window.confirm(ask)) return;
+    button.disabled = true;
+    say(button, 'Building the reply…');
+    fetch(button.getAttribute('data-eml'), { credentials: 'same-origin' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('the app could not build it (' + r.status + ')');
+        return r.blob();
+      })
+      .then(function (blob) {
+        say(button, 'Handing it to Mail…');
+        return fetch(HELPER + '/draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'message/rfc822' },
+          body: blob
+        });
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (result) {
+        if (!result.ok) throw new Error(result.error || 'the helper could not open it');
+        // Only now does the stage move. The whole point of the Replied stage
+        // is that it means a reply exists -- moving it because a button was
+        // pressed would be the dashboard lying in the one direction that
+        // matters.
+        say(button, 'Draft open in Mail. Read it, then send.');
+        var stage = button.getAttribute('data-stage');
+        if (!stage) return;
+        return fetch(stage, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'stage=Replied'
+        }).then(function () { window.location.reload(); });
+      })
+      .catch(function (err) {
+        say(button, (err && err.message ? err.message : 'could not reach the helper')
+            + ' — use Download .eml instead.', true);
+        button.disabled = false;
+      });
+  }
+
+  var stop = new AbortController();
+  var timer = setTimeout(function () { stop.abort(); }, 1500);
+  fetch(HELPER + '/ping', { signal: stop.signal })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (info) {
+      clearTimeout(timer);
+      if (info && info.ok) ready(info);
+    })
+    .catch(function () { clearTimeout(timer); });
+})();
+</script>

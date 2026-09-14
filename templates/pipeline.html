@@ -149,23 +149,26 @@
       <noscript><button class="btn btn-quiet" type="submit">Set stage</button></noscript>
     </form>
 
-    {% if not lead.answered and lead.email %}
-      <form method="post" action="{{ url_for('pipeline_reply', key=lead.key) }}">
-        <button class="btn btn-primary" type="submit">Draft reply</button>
-      </form>
-    {% elif lead.email %}
-      {# An answered lead used to lose the draft button AND the preview link
-         together, so there was no way to re-read what had gone out. Drafting
-         again is right to hide -- it would open a second copy in Mail -- but
-         previewing is read-only and stays available. #}
-      <form method="post" action="{{ url_for('pipeline_reply', key=lead.key) }}"
-            onsubmit="return confirm('This lead is already marked answered. Open another copy of the discovery-call email in Mail?')">
-        <button class="btn btn-quiet" type="submit">Draft again</button>
-      </form>
-    {% endif %}
+    {# The draft opens on the Mac you are sitting at, not on the hub. This was
+       the last screen still drafting through the server -- the window opened
+       on the iMac while whoever pressed the button watched nothing happen.
+       The button stays hidden until the local helper answers; the .eml
+       download is what works on a Mac without one. #}
     {% if lead.email %}
+      <button class="btn {% if lead.answered %}btn-quiet{% else %}btn-primary{% endif %} mw-draft"
+              type="button" hidden
+              data-eml="{{ url_for('pipeline_reply_eml', key=lead.key) }}"
+              {% if not lead.answered %}data-stage="{{ url_for('pipeline_stage', key=lead.key) }}"{% endif %}
+              {% if lead.answered %}data-confirm="This lead is already marked answered. Open another copy of the discovery-call email in Mail?"{% endif %}>
+        {% if lead.answered %}Draft again{% else %}Draft reply{% endif %}
+        in Mail on <span class="mw-hostname">this Mac</span></button>
+      <a class="btn btn-quiet"
+         href="{{ url_for('pipeline_reply_eml', key=lead.key) }}">Download .eml</a>
+      {# Previewing is read-only, so it stays available on an answered lead --
+         re-reading what went out is exactly what you want then. #}
       <a class="btn btn-quiet" target="_blank" rel="noopener"
          href="{{ url_for('pipeline_reply_preview', key=lead.key) }}">Preview</a>
+      <span class="help mw-status"></span>
     {% endif %}
 
     {# The call itself. Shows how far the notes got, so a half-finished call
@@ -255,7 +258,7 @@
 </div>
 {% endfor %}
 
-<div class="help" style="margin-top:18px">
+<div class="help" style="margin-top:18px" data-helper-want="{{ HELPER_VERSION }}">
   Leads come from the Shopify Forms submissions on the Book a Discovery Call
   page. Your own test submissions are filtered out by email address, so testing
   the form never adds a lead. Stage is stored here, not written back to Shopify.
@@ -267,13 +270,25 @@
   the moment you set the stage here, not to when you actually sent the reply,
   so log it when you send it and the number stays honest.
   <br><br>
-  <strong>Draft reply</strong> opens the discovery-call email in Mail with the
-  name, organisation and tier paragraph already filled, and moves the lead to
-  Replied once Mail has it. It is always a draft, never a send.
+  <strong>Draft reply</strong> opens the discovery-call email in Mail
+  <em>on the Mac you are sitting at</em>, with the name, organisation and tier
+  paragraph already filled, and moves the lead to Replied once Mail has
+  actually taken it. It is always a draft, never a send.
+  <span class="mw-noHelper">The button appears once the draft helper is
+  installed on this Mac — run <code>bash tools/install_draft_helper.command</code>
+  from the app folder.</span>
+  <span class="mw-stale" hidden style="color:#8C6B2C;font-weight:600">This Mac's
+  draft helper is out of date — re-run
+  <code>bash tools/install_draft_helper.command</code> here.</span>
+  <strong>Download .eml</strong> works from any Mac: open it, then
+  <strong>Message ▸ Send Again</strong>. It does not move the stage, so set
+  that yourself when you send.
   <strong>Discovery call</strong> opens the twelve-question notes for that
   lead; the count on the button is how many were covered.
   <strong>Hold until</strong> is for the times waiting is the right call — the
   lead stays open and keeps its age, but it stops counting as a broken promise
   until that date passes.
 </div>
+
+{% include "_mail_helper_multi.html" %}
 {% endblock %}

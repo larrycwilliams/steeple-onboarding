@@ -43,7 +43,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.32"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.33"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -592,6 +592,41 @@ def pipeline_reply(key):
     flash(f"Draft open in Mail for {draft['to_name'] or draft['to']}. "
           f"{lead.get('org_name') or 'Lead'} → Replied.", "ok")
     return redirect(url_for("pipeline_page"))
+
+
+@app.route("/pipeline/<key>/reply/eml")
+def pipeline_reply_eml(key):
+    """The discovery reply as a file, so it can become a draft on ANY Mac.
+
+    The Pipeline was the last screen still drafting only through the server:
+    `mail_draft.create_draft` runs osascript inside the app, so the window
+    opened on the hub while the person who pressed the button sat at a laptop
+    watching nothing happen. Docs 29 and 30 solved that for the statement and
+    welcome screens and this one was missed -- found the hard way, on a real
+    lead, with the clock running.
+    """
+    lead = leads.find_lead(key)
+    if not lead:
+        flash("That lead is no longer in the pipeline.", "error")
+        return redirect(url_for("pipeline_page"))
+    if not lead.get("email"):
+        flash("That lead has no email address on its contact.", "error")
+        return redirect(url_for("pipeline_page"))
+
+    draft = discovery_reply.render(lead)
+    if draft["missing"]:
+        flash("Not built — these are still empty: "
+              + ", ".join(draft["missing"]) + ".", "error")
+        return redirect(url_for("pipeline_page"))
+
+    raw = mail_draft.build_eml(
+        draft["subject"], draft["to"], draft["html"], draft.get("text", ""),
+        [], company_settings.load().get("point_of_contact_email", ""))
+    token = _re.sub(r"[^A-Za-z0-9]+", "-",
+                    (lead.get("org_name") or lead.get("name") or "lead")).strip("-")
+    return send_file(io.BytesIO(raw), as_attachment=True,
+                     download_name=f"{token}_Discovery-Reply.eml",
+                     mimetype="message/rfc822")
 
 
 @app.route("/pipeline/<key>/reply/preview")
