@@ -163,24 +163,24 @@
   {% if s.blockers %}
     <a class="btn btn-gold" href="{{ url_for('edit_partner', pid=s.partner_id) }}">Fix the record</a>
     <button class="btn" disabled>Download PDF</button>
-    <button class="btn" disabled>Open email draft</button>
   {% else %}
     {# The PDF stays available either way. Downloading it sends nothing, and
        the most common reason to want it after the fact is that somebody asked
        for their copy again. #}
     <a class="btn btn-primary"
        href="{{ url_for('partner_statement_pdf', pid=s.partner_id, qslug=s.quarter_slug) }}">Download PDF</a>
-    {% if not sent.sent %}
-      <form method="post" style="margin:0"
-            action="{{ url_for('partner_statement_email', pid=s.partner_id, qslug=s.quarter_slug) }}">
-        <button class="btn btn-gold" type="submit"
-                {% if email_missing or not mail_available %}disabled{% endif %}>
-          Open draft on {{ mail_host }}</button>
-      </form>
-    {% endif %}
     <a class="btn btn-quiet"
        href="{{ url_for('partner_statement_email_preview', pid=s.partner_id, qslug=s.quarter_slug) }}">
       Preview email</a>
+    {# The one control that works on any Mac, set up or not. The draft button
+       lives in the helper card below, because it only exists when the helper
+       answers -- and once this quarter is ticked, both move behind the
+       disclosure. #}
+    {% if not sent.sent %}
+      <a class="btn btn-quiet"
+         href="{{ url_for('partner_statement_eml', pid=s.partner_id, qslug=s.quarter_slug) }}">
+        Download .eml</a>
+    {% endif %}
   {% endif %}
   <a class="btn btn-quiet"
      href="{{ url_for('statements_page', quarter=s.quarter_slug) }}">All partners</a>
@@ -207,14 +207,7 @@
         second copy of a payout statement reads as a second payout.
       </p>
       <div class="actions">
-        <form method="post" style="margin:0"
-              action="{{ url_for('partner_statement_email', pid=s.partner_id, qslug=s.quarter_slug) }}">
-          <input type="hidden" name="again" value="1">
-          <button class="btn btn-gold" type="submit"
-                  {% if email_missing or not mail_available %}disabled{% endif %}>
-            Draft it anyway on {{ mail_host }}</button>
-        </form>
-        <a class="btn btn-quiet"
+        <a class="btn btn-primary"
            href="{{ url_for('partner_statement_eml', pid=s.partner_id, qslug=s.quarter_slug, again=1) }}">
           Download .eml anyway</a>
       </div>

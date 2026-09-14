@@ -41,14 +41,7 @@
 
   <div class="actions" style="margin-bottom:6px">
     {% if not sent.sent %}
-      <form method="post" action="{{ url_for('partner_email_draft', pid=record.id) }}"
-            style="display:inline">
-        <button class="btn btn-gold" type="submit"
-                {% if email.missing or not mail_available %}disabled{% endif %}>
-          Create draft on {{ mail_host }}
-        </button>
-      </form>
-      <a class="btn btn-quiet"
+      <a class="btn btn-primary"
          href="{{ url_for('partner_email_eml', pid=record.id) }}">
         Download .eml
       </a>
@@ -63,9 +56,9 @@
   </div>
   {% if not sent.sent %}
     <p class="help">
-      Opens a draft with the recipient, subject, body and attachments in place.
-      It is never sent for you — read it, then hit send. The first time, macOS
-      will ask permission to control Mail.
+      The draft carries the recipient, subject, body and attachments. It is never
+      sent for you — read it, then hit send. The first time, macOS will ask
+      permission to control Mail.
     </p>
     {% set eml_url = url_for('partner_email_eml', pid=record.id) %}
     {% include "_mail_where.html" %}
@@ -86,15 +79,7 @@
         one bounced or went to the wrong address; worth not doing otherwise.
       </p>
       <div class="actions" style="margin-bottom:6px">
-        <form method="post" action="{{ url_for('partner_email_draft', pid=record.id) }}"
-              style="display:inline">
-          <input type="hidden" name="again" value="1">
-          <button class="btn btn-gold" type="submit"
-                  {% if email.missing or not mail_available %}disabled{% endif %}>
-            Draft it anyway on {{ mail_host }}
-          </button>
-        </form>
-        <a class="btn btn-quiet"
+        <a class="btn btn-primary"
            href="{{ url_for('partner_email_eml', pid=record.id, again=1) }}">
           Download .eml anyway
         </a>

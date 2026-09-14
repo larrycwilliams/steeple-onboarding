@@ -124,18 +124,16 @@ def available() -> bool:
 
 
 def host_label() -> str:
-    """The Mac this process is running on, for the screens to name out loud.
+    """The Mac this process is running on, as a person would name it.
 
-    The portal is installed as a web app with no address bar, so there is
-    nothing on screen telling you whether you are looking at the hub or at a
-    copy running on the Mac in front of you -- and the two behave differently
-    the moment a button reaches for Mail. A button that opens a window on
-    another machine with no warning reads as a button that does nothing.
+    Just the first label of the hostname. macOS appends whatever the network
+    hands it -- `.local` on Bonjour, `.localdomain` behind a router that serves
+    no search domain, sometimes a real domain -- and "TWC-iMac.localdomain" on
+    a button reads like a fault rather than a machine. Stripping a fixed list of
+    suffixes was the first attempt and it missed `.localdomain` on the day it
+    shipped; taking the first label cannot miss.
     """
-    name = socket.gethostname().strip()
-    for suffix in (".local", ".lan", ".home"):
-        if name.lower().endswith(suffix):
-            name = name[: -len(suffix)]
+    name = socket.gethostname().strip().split(".")[0]
     return name or "this Mac"
 
 

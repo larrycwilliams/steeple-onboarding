@@ -132,10 +132,16 @@ end run
 
 
 def host_label() -> str:
-    name = socket.gethostname().strip()
-    for suffix in (".local", ".lan", ".home"):
-        if name.lower().endswith(suffix):
-            name = name[: -len(suffix)]
+    """The Mac this process is running on, as a person would name it.
+
+    Just the first label of the hostname. macOS appends whatever the network
+    hands it -- `.local` on Bonjour, `.localdomain` behind a router that serves
+    no search domain, sometimes a real domain -- and "TWC-iMac.localdomain" on
+    a button reads like a fault rather than a machine. Stripping a fixed list of
+    suffixes was the first attempt and it missed `.localdomain` on the day it
+    shipped; taking the first label cannot miss.
+    """
+    name = socket.gethostname().strip().split(".")[0]
     return name or "this Mac"
 
 
