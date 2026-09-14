@@ -21,6 +21,14 @@ Calibri body, the gold rule) through `agreement_pdf._register_family`, so the
 two documents a partner receives look like they came from the same company.
 Font resolution is reported, not assumed -- see `font_report()` there.
 
+This document deliberately carries **no footnotes about estimated or uncosted
+lines**. It used to, and Larry had them taken out: a church reading a thank-you
+does not need a paragraph about deleted Shopify variants, and a document that
+explains its own soft spots invites a conversation about them. The distinction
+has not gone anywhere -- it is on the statement screen, where the decision to
+send is actually made, and it still keeps those lines out of the total. The
+partner sees what sold and what was given back.
+
 Nothing in here decides anything. Every figure arrives from
 `statement.build()`; this file only lays it out. A number that is wrong on the
 page is wrong in the statement, which is the only place to fix it.
@@ -58,9 +66,6 @@ RULE = colors.HexColor("#DCD6C8")
 PANEL = colors.HexColor("#FBF3DF")
 PAPER = colors.HexColor("#F5F2EC")
 WARN = colors.HexColor("#8C6A1F")
-
-BASIS_MARK = {"estimated": "*", "uncosted": "†", "partial": "†"}
-
 
 def money(value) -> str:
     """'—' for a figure that is genuinely absent.
@@ -272,10 +277,12 @@ def _items(statement: dict, styles: dict) -> Table:
              for index, text in enumerate(header)]]
 
     for row in statement["lines"]:
-        mark = BASIS_MARK.get(row["basis"], "")
-        title = row["title"] + (f' <font color="#8C6A1F">{mark}</font>' if mark else "")
+        # No basis marker. The partner-facing document names the item and
+        # nothing else; the estimated/uncosted distinction is Larry's problem to
+        # solve before sending, not the partner's to read about. It is still on
+        # the statement screen, where it belongs.
         data.append([
-            Paragraph(title, styles["cell"]),
+            Paragraph(row["title"], styles["cell"]),
             Paragraph(str(row["units"]), styles["num"]),
             Paragraph(str(row["orders"]), styles["num"]),
             Paragraph(money(row["revenue"]), styles["num"]),
@@ -331,35 +338,6 @@ def _orders(statement: dict, styles: dict) -> Table:
         ("RIGHTPADDING", (-1, 0), (-1, -1), 0),
     ]))
     return table
-
-
-def _footnotes(statement: dict, styles: dict) -> list:
-    """The two ways a line can fail to be a fact, said plainly.
-
-    A partner who is told only the total has no way to ask a useful question
-    about it. A partner who is told which items could not be costed, and why,
-    can look at their own order history and see the same thing.
-    """
-    notes = []
-    if statement["estimated_revenue"]:
-        notes.append(Paragraph(
-            f'<font color="#8C6A1F">*</font> {money(statement["estimated_revenue"])} '
-            f'of these sales were made on product options that have since been '
-            f'removed from the store, so their exact cost can no longer be read '
-            f'back. They are <b>not</b> included in the donation above. Priced '
-            f'from the middle cost of that product&rsquo;s remaining options, they '
-            f'would add {money(round((statement["payout_with_estimates"] or 0) - (statement["payout"] or 0), 2))} '
-            f'to this quarter. Say the word and we will include them.',
-            styles["small"]))
-    if statement["uncosted_revenue"]:
-        notes.append(Paragraph(
-            f'<font color="#8C6A1F">†</font> {money(statement["uncosted_revenue"])} '
-            f'of these sales have no production cost recorded against them, so no '
-            f'margin can be stated and they add nothing to this donation. They '
-            f'are listed because they are real sales and they appear in your store '
-            f'history; leaving them out would make this page disagree with it.',
-            styles["small"]))
-    return notes
 
 
 def _closing(statement: dict, company: dict, styles: dict) -> list:
@@ -452,8 +430,6 @@ def build_statement_pdf(statement: dict, out_path: str | Path,
 
     if statement["lines"]:
         story.append(_items(statement, styles))
-        for note in _footnotes(statement, styles):
-            story += [Spacer(1, 8), note]
     else:
         story.append(Paragraph(
             "No orders were placed for your store in this period.",
