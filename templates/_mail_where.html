@@ -1,0 +1,28 @@
+{# Which Mac the Mail button reaches, said out loud.
+
+   The portal is installed as a web app with no address bar, so nothing on
+   screen tells you whether you are looking at the hub or at a copy running on
+   the Mac in front of you. The AppleScript runs in the server process, so the
+   draft window opens on the server's Mac -- and when that is not the Mac you
+   are sitting at, the button looks like it did nothing at all.
+
+   Shared by the statement screen and the welcome-email screen, because both
+   buttons go through mail_draft.create_draft and both surprise people the same
+   way. `mail_host` comes from mail_draft.host_label(). #}
+<div class="note" style="margin-top:18px">
+  <strong>Where the draft opens.</strong>
+  “Open draft” runs Mail on <strong>{{ mail_host }}</strong> — the Mac running
+  this app, which is not necessarily the one you are sitting at. If you are
+  browsing the portal from another Mac, the window opens over there and nothing
+  appears here.
+  {% if not mail_available %}
+    Apple Mail was not found on {{ mail_host }}, so that button is off entirely.
+  {% endif %}
+  <div class="help" style="margin-top:6px">
+    <strong>Download .eml</strong> is the way to send from whichever Mac you are
+    on: it is the complete message — recipient, subject, letterhead and
+    attachments. Open it, then <strong>Message&nbsp;▸ Send Again</strong>
+    (⇧⌘D) to turn it into a sendable copy. Mail shows an .eml as a received
+    message until you do that.
+  </div>
+</div>

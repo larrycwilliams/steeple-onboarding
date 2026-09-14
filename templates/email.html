@@ -44,9 +44,13 @@
           style="display:inline">
       <button class="btn btn-gold" type="submit"
               {% if email.missing or not mail_available %}disabled{% endif %}>
-        Create draft in Mail
+        Create draft on {{ mail_host }}
       </button>
     </form>
+    <a class="btn btn-quiet"
+       href="{{ url_for('partner_email_eml', pid=record.id) }}">
+      Download .eml
+    </a>
     <a class="btn btn-quiet"
        href="{{ url_for('partner_email_preview', pid=record.id, download=1) }}">
       Download .html
@@ -56,14 +60,11 @@
     </a>
   </div>
   <p class="help">
-    {% if not mail_available %}
-      Apple Mail was not found on this Mac, so the draft button is off.
-    {% else %}
-      Opens a draft with the recipient, subject, body and attachments in place.
-      It is never sent for you — read it, then hit send. The first time, macOS
-      will ask permission to control Mail.
-    {% endif %}
+    Opens a draft with the recipient, subject, body and attachments in place.
+    It is never sent for you — read it, then hit send. The first time, macOS
+    will ask permission to control Mail.
   </p>
+  {% include "_mail_where.html" %}
 </div>
 
 <div class="card">

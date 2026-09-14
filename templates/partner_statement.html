@@ -171,14 +171,15 @@
           action="{{ url_for('partner_statement_email', pid=s.partner_id, qslug=s.quarter_slug) }}">
       <button class="btn btn-gold" type="submit"
               {% if email_missing or not mail_available %}disabled{% endif %}>
-        Open email draft</button>
+        Open draft on {{ mail_host }}</button>
     </form>
-    {% if not mail_available %}
-      <span class="help">Apple Mail was not found on this Mac, so a draft cannot be
-        opened here. Download the PDF instead.</span>
-    {% endif %}
+    <a class="btn btn-quiet"
+       href="{{ url_for('partner_statement_eml', pid=s.partner_id, qslug=s.quarter_slug) }}">
+      Download .eml</a>
   {% endif %}
   <a class="btn btn-quiet"
      href="{{ url_for('statements_page', quarter=s.quarter_slug) }}">All partners</a>
 </div>
+
+{% include "_mail_where.html" %}
 {% endblock %}

@@ -41,7 +41,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.23"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.24"   # shown in the header so you can tell a stale process at a glance
 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"
@@ -320,6 +320,7 @@ def partner_email(pid):
         record=record,
         email=welcome_email.render(record),
         mail_available=mail_draft.available(),
+        mail_host=mail_draft.host_label(),
     )
 
 
@@ -898,6 +899,7 @@ def partner_statement(pid, qslug):
         record=record,
         email_missing=statement_email.missing(built, record),
         mail_available=mail_draft.available(),
+        mail_host=mail_draft.host_label(),
     )
 
 
@@ -945,6 +947,63 @@ def partner_statement_email(pid, qslug):
     else:
         flash("Could not open a Mail draft: " + result["error"], "error")
     return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
+
+
+@app.route("/partner/<pid>/statement/<qslug>/eml")
+def partner_statement_eml(pid, qslug):
+    """The whole message as a file, for opening in Mail on THIS Mac.
+
+    `create_draft` runs osascript inside the server process, so it opens Mail
+    on whichever machine is running the app -- the hub, normally, not the Mac
+    whose browser pressed the button. Nothing served to a browser can reach
+    Mail on the browser's own machine, so the file is the answer: download it,
+    open it, Message -> Send Again.
+
+    Guarded exactly like the draft route. A file is one double-click from a
+    send, so it gets the same refusals.
+    """
+    record, quarter, built, context = _statement_or_404(pid, qslug)
+    if built is None:
+        flash(context["source"], "error")
+        return redirect(url_for("index"))
+
+    mail = statement_email.render(built, record)
+    if mail["missing"]:
+        flash("Not built — still unset: " + "; ".join(mail["missing"]), "error")
+        return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
+    try:
+        path = _write_statement_pdf(record, built)
+    except ValueError as exc:
+        flash(f"Not built — {exc}", "error")
+        return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
+
+    raw = mail_draft.build_eml(
+        mail["subject"], mail["to"], mail["html"], mail["text"],
+        [str(path)], company_settings.load().get("point_of_contact_email", ""))
+    name = store.output_filename(
+        record, f"Payout-Statement-{built['quarter_slug']}", "eml")
+    return send_file(io.BytesIO(raw), as_attachment=True, download_name=name,
+                     mimetype="message/rfc822")
+
+
+@app.route("/partner/<pid>/email/eml")
+def partner_email_eml(pid):
+    """The welcome email as a file, for the same reason as the statement."""
+    record = store.load(pid)
+    if record is None:
+        abort(404)
+    email = welcome_email.render(record)
+    if email["missing"]:
+        flash("Not built — still unset: " + ", ".join(email["missing"]), "error")
+        return redirect(url_for("partner_email", pid=pid))
+
+    raw = mail_draft.build_eml(
+        email["subject"], email["to"], email["html"], email["text"],
+        [a["path"] for a in email["attachments"]],
+        company_settings.load().get("point_of_contact_email", ""))
+    name = f"{store.name_token(record)}_Welcome-Email.eml"
+    return send_file(io.BytesIO(raw), as_attachment=True, download_name=name,
+                     mimetype="message/rfc822")
 
 
 @app.route("/statements/<qslug>/build", methods=["POST"])

@@ -8,12 +8,31 @@ customer-facing files, and then hands the window over.
 Apple Mail rather than the Gmail API: Larry sends these from Mail on the Mac,
 and AppleScript needs no OAuth, no client secret and no token to expire in six
 months. The cost is one macOS Automation permission prompt the first time.
+
+**`create_draft` opens Mail on the machine running this app, which is the iMac
+hub -- not the Mac whose browser clicked the button.** The AppleScript runs in
+the server process; a browser on the Neo cannot reach Mail on the Neo. That is
+not a bug and cannot be fixed from the web page, but it surprised everyone the
+first time, so `build_eml` exists as the answer: a complete message as a file,
+downloaded to whichever Mac you are actually sitting at, opened there.
+
+An .eml opens in Apple Mail as a *received* message, not an editable draft.
+**Message -> Send Again (Shift-Cmd-D)** turns it into a sendable copy with the
+recipient, subject, body and attachments intact. Every screen offering the
+download says so, because a file that opens read-only with no explanation
+reads as broken.
 """
 from __future__ import annotations
 
+import mimetypes
+import re
 import shutil
+import socket
 import subprocess
 import tempfile
+from base64 import b64decode
+from email.message import EmailMessage
+from email.utils import formatdate
 from pathlib import Path
 
 TIMEOUT = 90
@@ -104,6 +123,22 @@ def available() -> bool:
     return bool(shutil.which("osascript")) and bool(_found_at())
 
 
+def host_label() -> str:
+    """The Mac this process is running on, for the screens to name out loud.
+
+    The portal is installed as a web app with no address bar, so there is
+    nothing on screen telling you whether you are looking at the hub or at a
+    copy running on the Mac in front of you -- and the two behave differently
+    the moment a button reaches for Mail. A button that opens a window on
+    another machine with no warning reads as a button that does nothing.
+    """
+    name = socket.gethostname().strip()
+    for suffix in (".local", ".lan", ".home"):
+        if name.lower().endswith(suffix):
+            name = name[: -len(suffix)]
+    return name or "this Mac"
+
+
 def create_draft(subject: str, recipient: str, html: str,
                  attachments: list[str] | None = None) -> dict:
     """Open a Mail draft. Returns {ok, error}; never raises."""
@@ -144,3 +179,77 @@ def create_draft(subject: str, recipient: str, html: str,
     finally:
         # Leave the body file alone until Mail has read it, then clean up.
         shutil.rmtree(workdir, ignore_errors=True)
+
+
+# ------------------------------------------------------------ .eml download --
+
+# The house email templates embed the letterhead as a data: URI, because that
+# is what survives the AppleScript path into Mail's composer. Inside a real
+# message file it has to become a proper inline part instead: mail clients
+# routinely refuse to render data: URIs, and a statement that arrives without
+# its letterhead looks like a phishing attempt rather than an invoice.
+DATA_URI = re.compile(
+    r'src="data:(image/[a-z+]+);base64,([A-Za-z0-9+/=\s]+)"', re.IGNORECASE)
+
+
+def _inline_images(html: str) -> tuple[str, list[tuple[str, str, bytes]]]:
+    """(html with cid: references, [(cid, mime, bytes)])."""
+    found: list[tuple[str, str, bytes]] = []
+
+    def swap(match: re.Match) -> str:
+        mime = match.group(1).lower()
+        try:
+            raw = b64decode("".join(match.group(2).split()))
+        except Exception:
+            return match.group(0)      # leave it alone rather than break the body
+        cid = f"img{len(found) + 1}@steepleandstitch"
+        found.append((cid, mime, raw))
+        return f'src="cid:{cid}"'
+
+    return DATA_URI.sub(swap, html), found
+
+
+def build_eml(subject: str, recipient: str, html: str, text: str = "",
+              attachments: list[str] | None = None,
+              sender: str = "") -> bytes:
+    """A complete message as bytes, for downloading and opening in Mail.
+
+    Machine-independent by design -- this is the path that works when the app
+    is running on one Mac and you are sitting at another. Never raises on a
+    missing attachment; a message that arrives without its PDF is recoverable,
+    a 500 at payout time is not, and the caller has already checked the file it
+    just wrote.
+    """
+    body, images = _inline_images(html)
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    if recipient:
+        message["To"] = recipient
+    if sender:
+        message["From"] = sender
+    message["Date"] = formatdate(localtime=True)
+    # Outlook reads this as "this is a draft". Apple Mail ignores it, which is
+    # why the screens tell you to use Send Again instead.
+    message["X-Unsent"] = "1"
+
+    message.set_content(text or "This message is best viewed as HTML.")
+    message.add_alternative(body, subtype="html")
+
+    html_part = message.get_payload()[-1]
+    for cid, mime, raw in images:
+        maintype, _, subtype = mime.partition("/")
+        html_part.add_related(raw, maintype=maintype, subtype=subtype or "png",
+                              cid=f"<{cid}>", disposition="inline")
+
+    for path in attachments or []:
+        item = Path(path)
+        if not item.exists():
+            continue
+        guess = mimetypes.guess_type(item.name)[0] or "application/octet-stream"
+        maintype, _, subtype = guess.partition("/")
+        message.add_attachment(item.read_bytes(), maintype=maintype,
+                               subtype=subtype or "octet-stream",
+                               filename=item.name)
+
+    return message.as_bytes()
