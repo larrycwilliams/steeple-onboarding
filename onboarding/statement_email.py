@@ -12,6 +12,10 @@ also refuses to go out while the statement itself carries blockers -- and the
 figure in the body is read from the statement rather than restated, so the
 email and the attached PDF cannot disagree.
 
+The 30% is **a charitable donation from Steeple & Stitch back to the partner**,
+not the partner's cut of a joint venture -- Larry's wording, and the reason
+nothing in here says "your share". See statement_pdf.py.
+
 The body carries the headline figure, the order count and the five best
 sellers by quantity. Everything else is in the attachment. A partner who wants
 the detail opens the PDF; a partner who wants the number sees it without
@@ -28,7 +32,7 @@ from . import settings, welcome_email
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = ROOT / "email_templates"
 
-SUBJECT = "{{ org_name }} — your {{ quarter }} margin payout"
+SUBJECT = "{{ org_name }} — your {{ quarter }} donation from Steeple & Stitch"
 
 # How many sellers to name in the body. Five fits a phone screen without
 # scrolling; the attachment carries every line.

@@ -1,4 +1,11 @@
-"""The quarterly payout statement as a PDF, for emailing with the check.
+"""The quarterly donation statement as a PDF, for emailing with the check.
+
+The 30% is **a charitable donation from Steeple & Stitch back to the partner**,
+not the partner's cut of a joint venture. Larry's wording, and the document has
+to carry it: "your share" frames the partner as a party to the trade, which is
+neither what the agreement says nor how he wants the relationship read. Every
+partner-facing string here says *donation*, and the arithmetic is shown only to
+make the figure checkable.
 
 Hand-built in ReportLab rather than converted from a .docx, and the reason is
 narrower than it looks. The Launch Week Kit is converted because it has a
@@ -132,7 +139,7 @@ def _band(canvas, doc, statement: dict, styles: dict, first: bool) -> None:
         canvas.setFont(styles["sans"], 8.5)
         canvas.setFillColor(GOLD)
         canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 0.44 * inch,
-                               "QUARTERLY MARGIN STATEMENT")
+                               "QUARTERLY DONATION STATEMENT")
         canvas.setFillColor(colors.HexColor("#9AA3B2"))
         canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 0.62 * inch,
                                statement["number"])
@@ -201,13 +208,15 @@ def _headline(statement: dict, styles: dict) -> Table:
     """The number the envelope is about, and the sentence that explains it."""
     payout = money(statement["payout"])
     sentence = (
-        f"{_rate(statement)} of {money(statement['margin'])} margin earned on "
+        f"Steeple &amp; Stitch Co. donates {_rate(statement)} of the margin "
+        f"earned on your merchandise. This quarter that is "
+        f"{_rate(statement)} of {money(statement['margin'])} in margin, on "
         f"{statement['units']} item{'s' if statement['units'] != 1 else ''} "
         f"across {statement['orders']} order"
         f"{'s' if statement['orders'] != 1 else ''}."
     )
     inner = [
-        Paragraph("YOUR PAYOUT FOR THIS QUARTER", styles["bigLabel"]),
+        Paragraph("THIS QUARTER&rsquo;S DONATION", styles["bigLabel"]),
         Spacer(1, 4),
         Paragraph(f"<b>{payout}</b>", styles["big"]),
         Spacer(1, 3),
@@ -231,8 +240,8 @@ def _workings(statement: dict, styles: dict) -> Table:
         ("Cost of goods", f"({money(statement['cost'])})",
          "blanks, garments, decoration and shipping paid to produce them"),
         ("Margin", money(statement["margin"]), "gross sales less cost of goods"),
-        (f"Your share at {_rate(statement)}", money(statement["payout"]),
-         "the amount of this payout"),
+        (f"Donation at {_rate(statement)}", money(statement["payout"]),
+         "the amount given back to you this quarter"),
     ]
     data = [[Paragraph(f"<b>{label}</b>" if index == len(rows) - 1 else label,
                        styles["cell"]),
@@ -337,16 +346,16 @@ def _footnotes(statement: dict, styles: dict) -> list:
             f'<font color="#8C6A1F">*</font> {money(statement["estimated_revenue"])} '
             f'of these sales were made on product options that have since been '
             f'removed from the store, so their exact cost can no longer be read '
-            f'back. They are <b>not</b> included in the payout above. Priced from '
-            f'the middle cost of that product&rsquo;s remaining options, they would '
-            f'add {money(round((statement["payout_with_estimates"] or 0) - (statement["payout"] or 0), 2))} '
+            f'back. They are <b>not</b> included in the donation above. Priced '
+            f'from the middle cost of that product&rsquo;s remaining options, they '
+            f'would add {money(round((statement["payout_with_estimates"] or 0) - (statement["payout"] or 0), 2))} '
             f'to this quarter. Say the word and we will include them.',
             styles["small"]))
     if statement["uncosted_revenue"]:
         notes.append(Paragraph(
             f'<font color="#8C6A1F">†</font> {money(statement["uncosted_revenue"])} '
             f'of these sales have no production cost recorded against them, so no '
-            f'margin can be stated and they earn nothing in this statement. They '
+            f'margin can be stated and they add nothing to this donation. They '
             f'are listed because they are real sales and they appear in your store '
             f'history; leaving them out would make this page disagree with it.',
             styles["small"]))
@@ -360,11 +369,14 @@ def _closing(statement: dict, company: dict, styles: dict) -> list:
     contact = " · ".join(part for part in (email, phone) if part)
     return [
         Paragraph(
-            "Payouts are issued quarterly by check. Margin is what remains after "
-            "the cost of producing each item, and your share of it is set by your "
-            "agreement — it does not change with volume or with the plan you are "
-            "on. Every figure above comes from the store&rsquo;s own order "
-            "records for this period.", styles["small"]),
+            "Steeple &amp; Stitch Co. gives back a share of the margin on "
+            "everything your store sells, as a donation to your organization, "
+            "issued quarterly by check. Margin is what remains after the cost of "
+            "producing each item. The percentage is set by your agreement and "
+            "does not change with volume or with the plan you are on. Every "
+            "figure above comes from the store&rsquo;s own order records for "
+            "this period, and is shown so that the donation can be checked "
+            "line by line.", styles["small"]),
         Spacer(1, 8),
         Paragraph(
             f"Questions about any line on this statement are welcome — "
@@ -396,7 +408,7 @@ def build_statement_pdf(statement: dict, out_path: str | Path,
         str(out_path), pagesize=LETTER,
         leftMargin=MARGIN, rightMargin=MARGIN,
         topMargin=BAND_H + 0.34 * inch, bottomMargin=0.8 * inch,
-        title=f"{statement['org_name']} — {statement['quarter']} margin statement",
+        title=f"{statement['org_name']} — {statement['quarter']} donation statement",
         author="Steeple & Stitch Co.", subject=statement["number"],
     )
     first_frame = Frame(MARGIN, doc.bottomMargin, CONTENT_W,
@@ -419,7 +431,7 @@ def build_statement_pdf(statement: dict, out_path: str | Path,
         # slim running head. Without this the first template repeats and every
         # page arrives with a three-quarter-inch banner on it.
         NextPageTemplate("later"),
-        Paragraph("Quarterly Margin Statement", styles["title"]),
+        Paragraph("Quarterly Donation Statement", styles["title"]),
         Paragraph(f"{statement['quarter']} &nbsp;·&nbsp; {statement['period']}",
                   styles["subtitle"]),
         _facts(statement, styles),

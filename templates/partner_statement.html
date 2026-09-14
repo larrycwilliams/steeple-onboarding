@@ -36,7 +36,7 @@
     </div>
   </div>
   <div class="payout">
-    <div class="label">Payout for {{ s.quarter }}</div>
+    <div class="label">Donation for {{ s.quarter }}</div>
     <div class="value">
       {% if s.payout is not none %}${{ '%.2f'|format(s.payout) }}
       {% else %}<span class="bad">—</span>{% endif %}
@@ -77,8 +77,8 @@
       <tr><td>Margin</td>
           <td class="help">gross sales less cost of goods</td>
           <td class="num">${{ '%.2f'|format(s.margin) }}</td></tr>
-      <tr><td>Their share{% if s.margin_pct is not none %} at {{ '%g'|format(s.margin_pct) }}%{% endif %}</td>
-          <td class="help">the amount of this payout</td>
+      <tr><td>Donation{% if s.margin_pct is not none %} at {{ '%g'|format(s.margin_pct) }}%{% endif %}</td>
+          <td class="help">the amount given back to them this quarter</td>
           <td class="num">
             {% if s.payout is not none %}${{ '%.2f'|format(s.payout) }}
             {% else %}<span class="bad">—</span>{% endif %}</td></tr>
@@ -126,7 +126,7 @@
     <div class="help" style="margin-top:12px">
       <span class="mark">*</span> ${{ '%.2f'|format(s.estimated_revenue) }} sold on
       variants since deleted from Shopify, priced from the median of the product's
-      surviving variants. Not in the payout above; including them would make it
+      surviving variants. Not in the donation above; including them would make it
       ${{ '%.2f'|format(s.payout_with_estimates) }}.
     </div>
   {% endif %}

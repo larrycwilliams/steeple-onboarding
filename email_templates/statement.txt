@@ -1,8 +1,9 @@
 {{ contact_first_name }},
 
-Here is {{ org_possessive }} margin payout for {{ quarter }}.
+Here is the donation Steeple & Stitch is making back to {{ org_name }}
+for {{ quarter }}.
 
-    YOUR PAYOUT: {{ payout }}
+    DONATION: {{ payout }}
     {{ rate }} of {{ margin }} margin on {{ revenue }} in sales
 
 Your store took {{ orders }} {{ order_word }} for {{ units }} {{ unit_word }}

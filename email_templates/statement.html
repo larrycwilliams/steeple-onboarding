@@ -6,7 +6,7 @@
 <meta name="x-apple-disable-message-reformatting">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
-<title>{{ quarter }} margin payout</title>
+<title>{{ quarter }} donation</title>
 <!--[if mso]>
 <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
 <![endif]-->
@@ -30,7 +30,7 @@
 <!-- PREHEADER. The number is the whole message, so it belongs in the inbox
      preview: this is an email people open on a phone to see one figure. -->
 <div style="display:none;font-size:1px;color:#F6F1E6;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
-  {{ payout }} for {{ quarter }} &mdash; {{ orders }} {{ order_word }}, {{ units }} {{ unit_word }}. Full statement attached.
+  {{ payout }} donated for {{ quarter }} &mdash; {{ orders }} {{ order_word }}, {{ units }} {{ unit_word }}. Full statement attached.
   &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
 </div>
 
@@ -58,12 +58,13 @@
     <tr>
       <td class="px" style="padding:36px 40px 4px 40px;">
         <h1 class="h1" style="margin:0 0 18px 0;font-family:Georgia,'Times New Roman',serif;font-size:28px;line-height:34px;font-weight:normal;color:#001739;">
-          {{ contact_first_name }}, here&rsquo;s your {{ quarter }} payout.
+          {{ contact_first_name }}, here&rsquo;s your {{ quarter }} donation.
         </h1>
         <p style="margin:0 0 22px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;">
           Your store took <strong style="color:#001739;">{{ orders }} {{ order_word }}</strong> for
           <strong style="color:#001739;">{{ units }} {{ unit_word }}</strong> from {{ period }}.
-          Here is {{ org_possessive }} share of the margin on them.
+          Here is the donation Steeple &amp; Stitch is making back to {{ org_name }}
+          out of the margin on them.
         </p>
       </td>
     </tr>
@@ -76,7 +77,7 @@
           <tr>
             <td align="center" style="padding:22px 20px 20px 20px;">
               <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8A6420;font-weight:bold;">
-                Your payout for {{ quarter }}
+                Donation for {{ quarter }}
               </div>
               <div class="amount" style="font-family:Georgia,'Times New Roman',serif;font-size:44px;line-height:52px;color:#001739;padding:8px 0 4px 0;">
                 {{ payout }}

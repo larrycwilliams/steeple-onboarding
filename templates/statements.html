@@ -22,7 +22,7 @@
   td.acts .btn{padding:7px 12px;font-size:13px;margin-left:6px}
 </style>
 
-<h2 style="margin-top:0">Quarterly payout statements</h2>
+<h2 style="margin-top:0">Quarterly donation statements</h2>
 
 <div class="card">
   <div class="quarters">
@@ -43,9 +43,9 @@
 
 <div class="tiles">
   <div class="tile tile-gold">
-    <div class="tile-label">To pay out</div>
+    <div class="tile-label">To donate</div>
     <div class="tile-value">${{ '%.2f'|format(totals.payout) }}</div>
-    <div class="tile-note">{{ totals.paying }} partner{{ '' if totals.paying == 1 else 's' }} earned something this quarter</div>
+    <div class="tile-note">{{ totals.paying }} partner{{ '' if totals.paying == 1 else 's' }} with a donation due this quarter</div>
   </div>
   <div class="tile">
     <div class="tile-label">Orders</div>
@@ -89,7 +89,7 @@
         <th class="num phone-hide">Items</th>
         <th class="num phone-hide">Sales</th>
         <th class="num phone-hide">Margin</th>
-        <th class="num">Payout</th>
+        <th class="num">Donation</th>
         <th></th>
       </tr>
     </thead>
