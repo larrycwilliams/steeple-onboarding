@@ -23,6 +23,17 @@ Check it:    curl http://127.0.0.1:5055/ping
 """
 from __future__ import annotations
 
+# Bumped whenever this file changes in a way a Mac running an older copy would
+# get wrong. The installer COPIES this out of the repo, so a fix here does not
+# reach a Mac until somebody re-runs the installer there -- and nothing used to
+# say so. /ping now reports this number and the page compares it to the version
+# the app expects, which turns a silent stale copy into a visible one.
+#
+#   1  the original
+#   2  host_label() takes the first hostname label (".localdomain" slipped
+#      through the old suffix list)
+HELPER_VERSION = 2
+
 import ipaddress
 import json
 import os
@@ -294,6 +305,7 @@ class Handler(BaseHTTPRequestHandler):
         # then say "Open draft in Mail on Larrys-Air" rather than promising
         # something vague.
         self._json(200, {"ok": True, "host": host_label(),
+                         "version": HELPER_VERSION,
                          "mail": bool(shutil.which("osascript"))})
 
     def do_POST(self):

@@ -42,7 +42,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.30"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.31"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -56,6 +56,8 @@ app.jinja_env.globals.update(
 # A function, not a value: a global evaluated at import would freeze the date
 # at whenever gunicorn last restarted, which on the hub can be weeks.
 app.jinja_env.globals["today"] = lambda: datetime.now().strftime("%Y-%m-%d")
+# The draft-helper version the screens expect; see onboarding/mail_draft.py.
+app.jinja_env.globals["HELPER_VERSION"] = mail_draft.EXPECTED_HELPER_VERSION
 
 
 @app.after_request

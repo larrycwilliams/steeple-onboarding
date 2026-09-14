@@ -123,6 +123,13 @@ def available() -> bool:
     return bool(shutil.which("osascript")) and bool(_found_at())
 
 
+# The draft-helper version this app expects on the Macs talking to it. Bump it
+# in the same commit as tools/draft_helper.py's own HELPER_VERSION -- they are
+# two copies of one number, because the helper is stdlib-only and cannot import
+# from this package.
+EXPECTED_HELPER_VERSION = 2
+
+
 def host_label() -> str:
     """The Mac this process is running on, as a person would name it.
 

@@ -22,7 +22,8 @@
    Included by the statement screen and the welcome-email screen. Both must set
    `eml_url` first. #}
 
-<div class="card" id="mw" data-eml="{{ eml_url }}" style="margin-top:18px">
+<div class="card" id="mw" data-eml="{{ eml_url }}"
+     data-want="{{ HELPER_VERSION }}" style="margin-top:18px">
 
   {# Shown only once the helper has answered. #}
   <div id="mw-local" hidden>
@@ -34,6 +35,19 @@
     <div class="help" style="margin-top:10px">
       The draft opens here, on this Mac, with the letterhead and the attachment
       in place — read it, then send. Nothing is ever sent for you.
+    </div>
+    {# The helper is a COPY of tools/draft_helper.py, installed per Mac, so a
+       fix in the repo does not reach it until the installer is re-run there.
+       Nothing used to say so, which is how a Mac ends up running months-old
+       code that still answers cheerfully. It reports its version now; this
+       line appears when the copy is behind. The button still works -- an old
+       helper is stale, not broken. #}
+    <div class="help" id="mw-stale" hidden
+         style="margin-top:8px;color:#8C6B2C;font-weight:600">
+      This Mac's draft helper is out of date (<span id="mw-have"></span>,
+      expected v{{ HELPER_VERSION }}). Re-run
+      <code>bash tools/install_draft_helper.command</code> from the app folder
+      on this Mac to update it.
     </div>
   </div>
 
@@ -62,6 +76,7 @@
   var status = document.getElementById('mw-status');
   var button = document.getElementById('mw-open');
   var emlUrl = card.getAttribute('data-eml');
+  var wantVersion = Number(card.getAttribute('data-want') || 0);
 
   function say(text, bad) {
     status.textContent = text;
@@ -80,6 +95,14 @@
       clearTimeout(timer);
       if (!info || !info.ok) return;
       document.getElementById('mw-host').textContent = info.host;
+      // A helper old enough to predate this check reports no version at all,
+      // which reads as 0 and is exactly the case worth flagging.
+      var have = Number(info.version || 0);
+      if (have < wantVersion) {
+        document.getElementById('mw-have').textContent =
+          have ? 'v' + have : 'no version reported';
+        document.getElementById('mw-stale').hidden = false;
+      }
       local.hidden = false;
       remote.hidden = true;
     })
