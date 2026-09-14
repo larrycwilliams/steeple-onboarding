@@ -1,28 +1,136 @@
-{# Which Mac the Mail button reaches, said out loud.
+{# Open a Mail draft on the Mac the person is actually sitting at.
 
-   The portal is installed as a web app with no address bar, so nothing on
-   screen tells you whether you are looking at the hub or at a copy running on
-   the Mac in front of you. The AppleScript runs in the server process, so the
-   draft window opens on the server's Mac -- and when that is not the Mac you
-   are sitting at, the button looks like it did nothing at all.
+   The app runs on the hub, so mail_draft.create_draft opens Mail on the hub --
+   useless when Larry is travelling, which is most of the reason the tailnet
+   exists. See claude/ops/29-where-mail-drafts-open.md.
 
-   Shared by the statement screen and the welcome-email screen, because both
-   buttons go through mail_draft.create_draft and both surprise people the same
-   way. `mail_host` comes from mail_draft.host_label(). #}
-<div class="note" style="margin-top:18px">
-  <strong>Where the draft opens.</strong>
-  “Open draft” runs Mail on <strong>{{ mail_host }}</strong> — the Mac running
-  this app, which is not necessarily the one you are sitting at. If you are
-  browsing the portal from another Mac, the window opens over there and nothing
-  appears here.
-  {% if not mail_available %}
-    Apple Mail was not found on {{ mail_host }}, so that button is off entirely.
-  {% endif %}
-  <div class="help" style="margin-top:6px">
-    <strong>Download .eml</strong> is the way to send from whichever Mac you are
-    on: it is the complete message — recipient, subject, letterhead and
-    attachments. Open it, then <strong>Message&nbsp;▸ Send Again</strong>
-    (⇧⌘D) to turn it into a sendable copy. Mail shows an .eml as a received
-    message until you do that.
+   The browser is the way across. It is served by the hub but it is running on
+   THIS Mac, so it can pull the message from the hub and hand it to a small
+   local service (tools/draft_helper.py, 127.0.0.1:5055). The message crosses
+   as data and becomes a real editable draft here.
+
+   Progressive enhancement, deliberately: the page asks whether the helper is
+   there and only then offers the local button. With no helper it degrades to
+   exactly what it did before -- the hub button and the .eml download -- so a
+   Mac that has not been set up is never left with a dead control.
+
+   Included by the statement screen and the welcome-email screen. Both must set
+   `eml_url` first; `mail_host` is the server's own hostname. #}
+
+<div class="card" id="mw" data-eml="{{ eml_url }}" data-server="{{ mail_host }}"
+     style="margin-top:18px">
+
+  {# Shown only once the helper has answered. #}
+  <div id="mw-local" hidden>
+    <div class="actions" style="margin-top:0">
+      <button class="btn btn-gold" id="mw-open" type="button">
+        Open draft in Mail on <span id="mw-host"></span></button>
+      <a class="btn btn-quiet" href="{{ eml_url }}">Download .eml</a>
+      <span class="help" id="mw-status"></span>
+    </div>
+    <div class="help" style="margin-top:10px">
+      The draft opens here, on this Mac, with the letterhead and the attachment
+      in place — read it, then send. Nothing is ever sent for you.
+      <span id="mw-alsoserver" hidden>The other button, “Open draft on
+        {{ mail_host }}”, opens one on the Mac running the app instead.</span>
+    </div>
+  </div>
+
+  {# The no-helper state. Also what every Mac sees before the ping returns. #}
+  <div id="mw-remote">
+    <strong>Where the draft opens.</strong>
+    “Open draft” runs Mail on <strong>{{ mail_host }}</strong> — the Mac running
+    this app, which is not necessarily the one you are sitting at. If you are
+    browsing the portal from another Mac, the window opens over there and
+    nothing appears here.
+    {% if not mail_available %}
+      Apple Mail was not found on {{ mail_host }}, so that button is off
+      entirely.
+    {% endif %}
+    <div class="help" style="margin-top:6px">
+      <strong>Download .eml</strong> works from any Mac: it is the complete
+      message. Open it, then <strong>Message&nbsp;▸ Send Again</strong> (⇧⌘D) to
+      turn it into a sendable copy — Mail shows an .eml as a received message
+      until you do.
+    </div>
+    <div class="help" style="margin-top:6px">
+      To get a real draft on <em>this</em> Mac instead, install the draft helper
+      once: run <code>tools/install_draft_helper.command</code> from the app
+      folder. This page picks it up on its own afterwards.
+    </div>
   </div>
 </div>
+
+<script>
+(function () {
+  var card = document.getElementById('mw');
+  if (!card) return;
+  var HELPER = 'http://127.0.0.1:5055';
+  var local = document.getElementById('mw-local');
+  var remote = document.getElementById('mw-remote');
+  var status = document.getElementById('mw-status');
+  var button = document.getElementById('mw-open');
+  var emlUrl = card.getAttribute('data-eml');
+  var serverHost = card.getAttribute('data-server');
+
+  function say(text, bad) {
+    status.textContent = text;
+    status.style.color = bad ? 'var(--bad)' : 'var(--muted)';
+  }
+
+  // Short timeout on purpose. On a Mac with no helper this is a connection
+  // refused in milliseconds, but a firewall can turn it into a hang, and a
+  // page that takes ten seconds to show its buttons reads as broken.
+  var stop = new AbortController();
+  var timer = setTimeout(function () { stop.abort(); }, 1500);
+
+  fetch(HELPER + '/ping', { signal: stop.signal })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (info) {
+      clearTimeout(timer);
+      if (!info || !info.ok) return;
+      document.getElementById('mw-host').textContent = info.host;
+      // Only worth mentioning the other button when it is a different Mac.
+      if (info.host !== serverHost) {
+        document.getElementById('mw-alsoserver').hidden = false;
+      }
+      local.hidden = false;
+      remote.hidden = true;
+    })
+    .catch(function () { clearTimeout(timer); });   // no helper: leave as-is
+
+  button.addEventListener('click', function () {
+    button.disabled = true;
+    say('Building the statement…');
+    // Fetched from the hub, posted to this Mac. The hub builds the message and
+    // the PDF exactly as it does for its own button, so the two paths cannot
+    // produce different documents.
+    fetch(emlUrl, { credentials: 'same-origin' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('the app could not build it (' + r.status + ')');
+        return r.blob();
+      })
+      .then(function (blob) {
+        say('Handing it to Mail…');
+        return fetch(HELPER + '/draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'message/rfc822' },
+          body: blob
+        });
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (result) {
+        if (result.ok) {
+          say('Draft open in Mail. Read it, then send.');
+        } else {
+          say(result.error || 'the helper could not open it', true);
+        }
+      })
+      .catch(function (err) {
+        say((err && err.message ? err.message : 'could not reach the helper')
+            + ' — use Download .eml instead.', true);
+      })
+      .finally(function () { button.disabled = false; });
+  });
+})();
+</script>

@@ -41,7 +41,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.24"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.25"   # shown in the header so you can tell a stale process at a glance
 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"
@@ -984,6 +984,32 @@ def partner_statement_eml(pid, qslug):
         record, f"Payout-Statement-{built['quarter_slug']}", "eml")
     return send_file(io.BytesIO(raw), as_attachment=True, download_name=name,
                      mimetype="message/rfc822")
+
+
+@app.route("/partner/<pid>/statement/<qslug>/email/preview")
+def partner_statement_email_preview(pid, qslug):
+    """The covering email itself, rendered, for reading before drafting it.
+
+    Same shape as the pipeline's reply Preview and the welcome email's frame.
+    The statement screen shows the *statement*; this shows the message the
+    partner actually opens, which is a different document and the one with the
+    tone in it.
+    """
+    record, quarter, built, context = _statement_or_404(pid, qslug)
+    if built is None:
+        flash(context["source"], "error")
+        return redirect(url_for("index"))
+    mail = statement_email.render(built, record)
+    if mail["missing"]:
+        flash("Cannot preview — still unset: " + "; ".join(mail["missing"]),
+              "error")
+        return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
+    if request.args.get("download"):
+        name = f"{store.name_token(record)}_{built['quarter_slug']}_Statement-Email.html"
+        return send_file(io.BytesIO(mail["html"].encode("utf8")),
+                         as_attachment=True, download_name=name,
+                         mimetype="text/html")
+    return mail["html"]
 
 
 @app.route("/partner/<pid>/email/eml")

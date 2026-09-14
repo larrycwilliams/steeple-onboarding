@@ -174,12 +174,15 @@
         Open draft on {{ mail_host }}</button>
     </form>
     <a class="btn btn-quiet"
-       href="{{ url_for('partner_statement_eml', pid=s.partner_id, qslug=s.quarter_slug) }}">
-      Download .eml</a>
+       href="{{ url_for('partner_statement_email_preview', pid=s.partner_id, qslug=s.quarter_slug) }}">
+      Preview email</a>
   {% endif %}
   <a class="btn btn-quiet"
      href="{{ url_for('statements_page', quarter=s.quarter_slug) }}">All partners</a>
 </div>
 
-{% include "_mail_where.html" %}
+{% if not s.blockers %}
+  {% set eml_url = url_for('partner_statement_eml', pid=s.partner_id, qslug=s.quarter_slug) %}
+  {% include "_mail_where.html" %}
+{% endif %}
 {% endblock %}

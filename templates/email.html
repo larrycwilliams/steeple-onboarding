@@ -64,6 +64,7 @@
     It is never sent for you — read it, then hit send. The first time, macOS
     will ask permission to control Mail.
   </p>
+  {% set eml_url = url_for('partner_email_eml', pid=record.id) %}
   {% include "_mail_where.html" %}
 </div>
 
