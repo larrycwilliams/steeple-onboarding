@@ -1,0 +1,60 @@
+{# Did it actually go out?
+
+   Nothing in this app sends anything -- every message opens as a draft and
+   stops there. So the app knows a draft was opened and cannot know whether
+   anybody pressed send. This is the only place that gap gets closed, and a
+   person closes it by hand.
+
+   Variables the including page must set:
+     sent       -- onboarding.sent.status(...)
+     sent_url   -- the POST target for marking and clearing
+     sent_thing -- what is being ticked, lowercase, fits "the ___ has gone out"
+
+   Included by the welcome-email screen and the partner statement screen. #}
+
+<style>
+  .tick{border:1px solid var(--line);border-radius:10px;background:#fff;
+        padding:16px 18px;margin-top:18px}
+  .tick.yes{border-color:#7FA98F;background:#F3F8F4}
+  .tick h3{margin:0 0 4px 0;font-size:15px}
+  .tick .mark{color:#265B41;font-weight:700}
+  .tick form{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px}
+  .tick .field{margin:0}
+  .tick .field.when{flex:0 1 170px}
+  .tick .field.why{flex:1 1 220px}
+</style>
+
+<div class="tick{% if sent.sent %} yes{% endif %}">
+  {% if sent.sent %}
+    <h3><span class="mark">&check; Sent</span> — {{ sent.label }}</h3>
+    {% if sent.note %}<div class="help">{{ sent.note }}</div>{% endif %}
+    <div class="help" style="margin-top:6px">
+      Recorded by hand, so it is only as true as whoever ticked it. If this
+      one never actually left, clear it — an unsent {{ sent_thing }} showing
+      as sent is the version of this that costs a partner.
+    </div>
+    <form method="post" action="{{ sent_url }}">
+      <input type="hidden" name="action" value="clear">
+      <button class="btn btn-quiet" type="submit">It did not go out</button>
+    </form>
+  {% else %}
+    <h3>Not recorded as sent</h3>
+    <div class="help">
+      Opening a draft is not sending it. Once the {{ sent_thing }} has actually
+      left your outbox, tick it here — nothing else in the app can tell, and
+      the next person to look at this screen has no other way to know.
+    </div>
+    <form method="post" action="{{ sent_url }}">
+      <div class="field when">
+        <label for="sent-when">Sent on</label>
+        <input type="date" id="sent-when" name="when" value="{{ today() }}">
+      </div>
+      <div class="field why">
+        <label for="sent-note">Note (optional)</label>
+        <input type="text" id="sent-note" name="note"
+               placeholder="sent from my phone on the road">
+      </div>
+      <button class="btn btn-gold" type="submit">Mark as sent</button>
+    </form>
+  {% endif %}
+</div>

@@ -40,17 +40,19 @@
   {% endif %}
 
   <div class="actions" style="margin-bottom:6px">
-    <form method="post" action="{{ url_for('partner_email_draft', pid=record.id) }}"
-          style="display:inline">
-      <button class="btn btn-gold" type="submit"
-              {% if email.missing or not mail_available %}disabled{% endif %}>
-        Create draft on {{ mail_host }}
-      </button>
-    </form>
-    <a class="btn btn-quiet"
-       href="{{ url_for('partner_email_eml', pid=record.id) }}">
-      Download .eml
-    </a>
+    {% if not sent.sent %}
+      <form method="post" action="{{ url_for('partner_email_draft', pid=record.id) }}"
+            style="display:inline">
+        <button class="btn btn-gold" type="submit"
+                {% if email.missing or not mail_available %}disabled{% endif %}>
+          Create draft on {{ mail_host }}
+        </button>
+      </form>
+      <a class="btn btn-quiet"
+         href="{{ url_for('partner_email_eml', pid=record.id) }}">
+        Download .eml
+      </a>
+    {% endif %}
     <a class="btn btn-quiet"
        href="{{ url_for('partner_email_preview', pid=record.id, download=1) }}">
       Download .html
@@ -59,13 +61,48 @@
       Back to partner
     </a>
   </div>
-  <p class="help">
-    Opens a draft with the recipient, subject, body and attachments in place.
-    It is never sent for you — read it, then hit send. The first time, macOS
-    will ask permission to control Mail.
-  </p>
-  {% set eml_url = url_for('partner_email_eml', pid=record.id) %}
-  {% include "_mail_where.html" %}
+  {% if not sent.sent %}
+    <p class="help">
+      Opens a draft with the recipient, subject, body and attachments in place.
+      It is never sent for you — read it, then hit send. The first time, macOS
+      will ask permission to control Mail.
+    </p>
+    {% set eml_url = url_for('partner_email_eml', pid=record.id) %}
+    {% include "_mail_where.html" %}
+  {% endif %}
+
+  {% set sent_url = url_for('partner_email_sent', pid=record.id) %}
+  {% set sent_thing = 'welcome email' %}
+  {% include "_sent_tick.html" %}
+
+  {# Sending a second welcome is not wrong -- it bounced, it went to the
+     person who left, the contact changed. It is just never accidental, so it
+     lives behind a disclosure rather than next to the tick. #}
+  {% if sent.sent %}
+    <details class="again" style="margin-top:14px">
+      <summary style="cursor:pointer;font-weight:600">Send it again</summary>
+      <p class="help">
+        A second copy of an email they already have. Worth doing when the first
+        one bounced or went to the wrong address; worth not doing otherwise.
+      </p>
+      <div class="actions" style="margin-bottom:6px">
+        <form method="post" action="{{ url_for('partner_email_draft', pid=record.id) }}"
+              style="display:inline">
+          <input type="hidden" name="again" value="1">
+          <button class="btn btn-gold" type="submit"
+                  {% if email.missing or not mail_available %}disabled{% endif %}>
+            Draft it anyway on {{ mail_host }}
+          </button>
+        </form>
+        <a class="btn btn-quiet"
+           href="{{ url_for('partner_email_eml', pid=record.id, again=1) }}">
+          Download .eml anyway
+        </a>
+      </div>
+      {% set eml_url = url_for('partner_email_eml', pid=record.id, again=1) %}
+      {% include "_mail_where.html" %}
+    </details>
+  {% endif %}
 </div>
 
 <div class="card">

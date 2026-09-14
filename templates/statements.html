@@ -13,6 +13,7 @@
   .tile-note{font-size:12px;color:var(--muted);line-height:1.4}
   .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   .bad{color:var(--bad);font-weight:600}
+  .mark{color:#265B41;font-weight:700}
   .quarters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .qpill{display:inline-block;padding:7px 14px;border-radius:99px;font-size:13px;
          font-weight:600;text-decoration:none;background:#E8E3D8;color:#3B4049}
@@ -57,6 +58,16 @@
     <div class="tile-value">${{ '%.2f'|format(totals.margin) }}</div>
     <div class="tile-note">on ${{ '%.2f'|format(totals.revenue) }} of sales</div>
   </div>
+  {% set marked = rows|selectattr('sent.sent')|list|length %}
+  <div class="tile{% if totals.paying and marked < totals.paying %} tile-warn{% endif %}">
+    <div class="tile-label">Recorded as sent</div>
+    <div class="tile-value">{{ marked }} / {{ totals.paying }}</div>
+    <div class="tile-note">
+      {% if not totals.paying %}nothing to send this quarter
+      {% elif marked == totals.paying %}every donation statement is ticked
+      {% else %}{{ totals.paying - marked }} still to go out, or to be ticked{% endif %}
+    </div>
+  </div>
   <div class="tile{% if totals.blocked or totals.uncosted_revenue %} tile-warn{% endif %}">
     <div class="tile-label">Needs attention</div>
     <div class="tile-value">{{ totals.blocked }}</div>
@@ -90,6 +101,7 @@
         <th class="num phone-hide">Sales</th>
         <th class="num phone-hide">Margin</th>
         <th class="num">Donation</th>
+        <th>Sent</th>
         <th></th>
       </tr>
     </thead>
@@ -124,6 +136,14 @@
           {% if row.payout is not none %}<strong>${{ '%.2f'|format(row.payout) }}</strong>
           {% else %}<span class="bad" title="No negotiated rate on the record">—</span>{% endif %}
         </td>
+        <td>
+          {% if row.sent.sent %}
+            <span class="mark" title="Marked as sent {{ row.sent.label }}">&check;</span>
+            <span class="help">{{ row.sent.date }}</span>
+          {% elif row.payout %}
+            <span class="help">not yet</span>
+          {% endif %}
+        </td>
         <td class="acts">
           <a class="btn btn-quiet"
              href="{{ url_for('partner_statement', pid=row.partner_id, qslug=row.quarter_slug) }}">Open</a>
@@ -146,6 +166,8 @@
   <a class="btn btn-quiet" href="{{ url_for('statements_page', quarter=quarter|replace(' ', '-'), refresh=1) }}">Refresh from Shopify</a>
   <a class="btn btn-quiet" href="{{ url_for('dashboard_page') }}">Dashboard</a>
   <span class="help">PDFs land in each partner's output folder. Emails are opened as
-    drafts from the partner's own statement, one at a time, so nothing sends itself.</span>
+    drafts from the partner's own statement, one at a time, so nothing sends itself —
+    which is why <strong>Sent</strong> is a tick somebody sets by hand after the
+    message has actually left.</span>
 </div>
 {% endblock %}

@@ -32,6 +32,7 @@ from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
 from onboarding import recommendation, storefront, traveler
 from onboarding import statement, statement_email, statement_pdf
+from onboarding import sent as sent_log
 from onboarding import welcome_email
 from onboarding.palette import extract_palette
 from onboarding.schema import (DEFAULT_PALETTE, FIELDS, GROUPS, ORG_TYPES,
@@ -41,7 +42,10 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.27"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.30"   # shown in the header so you can tell a stale process at a glance
+# 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
+# newest commit on main set 3.27, so a number in that range would be ambiguous
+# exactly where this one is meant to settle an argument. Never go backwards.
 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"
@@ -49,6 +53,9 @@ app.jinja_env.globals["APP_VERSION"] = APP_VERSION
 app.jinja_env.globals.update(
     FIELDS=FIELDS, GROUPS=GROUPS, ORG_TYPES=ORG_TYPES, PALETTE_ROLES=PALETTE_ROLES
 )
+# A function, not a value: a global evaluated at import would freeze the date
+# at whenever gunicorn last restarted, which on the hub can be weeks.
+app.jinja_env.globals["today"] = lambda: datetime.now().strftime("%Y-%m-%d")
 
 
 @app.after_request
@@ -321,6 +328,7 @@ def partner_email(pid):
         email=welcome_email.render(record),
         mail_available=mail_draft.available(),
         mail_host=mail_draft.host_label(),
+        sent=sent_log.status("welcome", pid),
     )
 
 
@@ -344,6 +352,18 @@ def partner_email_draft(pid):
     record = store.load(pid)
     if record is None:
         abort(404)
+
+    # A second guard, of a different kind. The one below is about a document
+    # that is not ready; this one is about a document that has already gone.
+    # Opening a fresh draft of an email the partner received last week is how
+    # somebody sends it twice, so the tick makes that a deliberate act.
+    tick = sent_log.status("welcome", pid)
+    if tick["sent"] and request.form.get("again") != "1":
+        flash(f"Already recorded as sent {tick['label']} — not drafted again. "
+              "Use \u201cDraft it anyway\u201d if a second copy is what you want.",
+              "warn")
+        return redirect(url_for("partner_email", pid=pid))
+
     email = welcome_email.render(record)
 
     # The guard is the whole point: never hand Mail a draft with a merge field
@@ -363,6 +383,27 @@ def partner_email_draft(pid):
               "Read it, then send.", "ok")
     else:
         flash("Could not open a Mail draft: " + result["error"], "warn")
+    return redirect(url_for("partner_email", pid=pid))
+
+
+@app.route("/partner/<pid>/email/sent", methods=["POST"])
+def partner_email_sent(pid):
+    """The one thing only a person knows: it actually went.
+
+    Nothing in this app can set this. Mail accepting a draft says a window
+    opened, not that anybody pressed send, and the gap between those two is
+    where a partner sits waiting for a welcome that never came.
+    """
+    record = store.load(pid)
+    if record is None:
+        abort(404)
+    if request.form.get("action") == "clear":
+        ok, message = sent_log.clear("welcome", pid, request.form.get("note", ""))
+    else:
+        ok, message = sent_log.mark("welcome", pid,
+                                    request.form.get("note", ""),
+                                    request.form.get("when", ""))
+    flash(message, "ok" if ok else "error")
     return redirect(url_for("partner_email", pid=pid))
 
 
@@ -875,6 +916,13 @@ def statements_page():
     quarter = (statement.unslug(request.args.get("quarter", ""))
                or statement.default_quarter(snap))
     rows = statement.overview(snap, context["records"], quarter, context["data"])
+    # Per row rather than one folder read: the count of partners is small, and
+    # matching a stored filename back to a row is the kind of near-miss that
+    # would silently show every statement as unsent.
+    for row in rows:
+        row["sent"] = sent_log.status(
+            "statement",
+            sent_log.statement_ref(row["partner_id"], row["quarter_slug"]))
     return render_template(
         "statements.html",
         quarter=quarter,
@@ -900,6 +948,8 @@ def partner_statement(pid, qslug):
         email_missing=statement_email.missing(built, record),
         mail_available=mail_draft.available(),
         mail_host=mail_draft.host_label(),
+        sent=sent_log.status(
+            "statement", sent_log.statement_ref(pid, built["quarter_slug"])),
     )
 
 
@@ -923,6 +973,14 @@ def partner_statement_email(pid, qslug):
     if built is None:
         flash(context["source"], "error")
         return redirect(url_for("index"))
+
+    tick = sent_log.status(
+        "statement", sent_log.statement_ref(pid, built["quarter_slug"]))
+    if tick["sent"] and request.form.get("again") != "1":
+        flash(f"{built['quarter']} was already recorded as sent {tick['label']} "
+              "— not drafted again. Use \u201cDraft it anyway\u201d if a second "
+              "copy is what you want.", "warn")
+        return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
 
     mail = statement_email.render(built, record)
     # The guard is the whole point: never hand Mail a payout email with an
@@ -966,6 +1024,14 @@ def partner_statement_eml(pid, qslug):
     if built is None:
         flash(context["source"], "error")
         return redirect(url_for("index"))
+
+    tick = sent_log.status(
+        "statement", sent_log.statement_ref(pid, built["quarter_slug"]))
+    if tick["sent"] and request.args.get("again") != "1":
+        flash(f"{built['quarter']} was already recorded as sent {tick['label']} "
+              "— not built again. Use \u201cDownload it anyway\u201d if a second "
+              "copy is what you want.", "warn")
+        return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
 
     mail = statement_email.render(built, record)
     if mail["missing"]:
@@ -1018,6 +1084,12 @@ def partner_email_eml(pid):
     record = store.load(pid)
     if record is None:
         abort(404)
+    tick = sent_log.status("welcome", pid)
+    if tick["sent"] and request.args.get("again") != "1":
+        flash(f"Already recorded as sent {tick['label']} — not built again. "
+              "Use \u201cDownload it anyway\u201d if a second copy is what you want.",
+              "warn")
+        return redirect(url_for("partner_email", pid=pid))
     email = welcome_email.render(record)
     if email["missing"]:
         flash("Not built — still unset: " + ", ".join(email["missing"]), "error")
@@ -1030,6 +1102,24 @@ def partner_email_eml(pid):
     name = f"{store.name_token(record)}_Welcome-Email.eml"
     return send_file(io.BytesIO(raw), as_attachment=True, download_name=name,
                      mimetype="message/rfc822")
+
+
+@app.route("/partner/<pid>/statement/<qslug>/sent", methods=["POST"])
+def partner_statement_sent(pid, qslug):
+    """One tick per partner per quarter. Q2 sent is not Q3 sent."""
+    record, quarter, built, context = _statement_or_404(pid, qslug)
+    if built is None:
+        flash(context["source"], "error")
+        return redirect(url_for("index"))
+    ref = sent_log.statement_ref(pid, built["quarter_slug"])
+    if request.form.get("action") == "clear":
+        ok, message = sent_log.clear("statement", ref, request.form.get("note", ""))
+    else:
+        ok, message = sent_log.mark("statement", ref,
+                                    request.form.get("note", ""),
+                                    request.form.get("when", ""))
+    flash(message, "ok" if ok else "error")
+    return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
 
 
 @app.route("/statements/<qslug>/build", methods=["POST"])

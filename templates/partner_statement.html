@@ -165,14 +165,19 @@
     <button class="btn" disabled>Download PDF</button>
     <button class="btn" disabled>Open email draft</button>
   {% else %}
+    {# The PDF stays available either way. Downloading it sends nothing, and
+       the most common reason to want it after the fact is that somebody asked
+       for their copy again. #}
     <a class="btn btn-primary"
        href="{{ url_for('partner_statement_pdf', pid=s.partner_id, qslug=s.quarter_slug) }}">Download PDF</a>
-    <form method="post" style="margin:0"
-          action="{{ url_for('partner_statement_email', pid=s.partner_id, qslug=s.quarter_slug) }}">
-      <button class="btn btn-gold" type="submit"
-              {% if email_missing or not mail_available %}disabled{% endif %}>
-        Open draft on {{ mail_host }}</button>
-    </form>
+    {% if not sent.sent %}
+      <form method="post" style="margin:0"
+            action="{{ url_for('partner_statement_email', pid=s.partner_id, qslug=s.quarter_slug) }}">
+        <button class="btn btn-gold" type="submit"
+                {% if email_missing or not mail_available %}disabled{% endif %}>
+          Open draft on {{ mail_host }}</button>
+      </form>
+    {% endif %}
     <a class="btn btn-quiet"
        href="{{ url_for('partner_statement_email_preview', pid=s.partner_id, qslug=s.quarter_slug) }}">
       Preview email</a>
@@ -182,7 +187,40 @@
 </div>
 
 {% if not s.blockers %}
-  {% set eml_url = url_for('partner_statement_eml', pid=s.partner_id, qslug=s.quarter_slug) %}
-  {% include "_mail_where.html" %}
+  {% if not sent.sent %}
+    {% set eml_url = url_for('partner_statement_eml', pid=s.partner_id, qslug=s.quarter_slug) %}
+    {% include "_mail_where.html" %}
+  {% endif %}
+
+  {% set sent_url = url_for('partner_statement_sent', pid=s.partner_id, qslug=s.quarter_slug) %}
+  {% set sent_thing = 'statement' %}
+  {% include "_sent_tick.html" %}
+
+  {# A donation statement sent twice reads as two donations. Hence the
+     disclosure: re-sending is allowed, never accidental. #}
+  {% if sent.sent %}
+    <details class="again internal" style="margin-top:14px">
+      <summary style="cursor:pointer;font-weight:600">Send {{ s.quarter }} again</summary>
+      <p class="help">
+        They already have this one. Worth sending again when it bounced or went
+        to somebody who has since left; worth not sending otherwise, because a
+        second copy of a payout statement reads as a second payout.
+      </p>
+      <div class="actions">
+        <form method="post" style="margin:0"
+              action="{{ url_for('partner_statement_email', pid=s.partner_id, qslug=s.quarter_slug) }}">
+          <input type="hidden" name="again" value="1">
+          <button class="btn btn-gold" type="submit"
+                  {% if email_missing or not mail_available %}disabled{% endif %}>
+            Draft it anyway on {{ mail_host }}</button>
+        </form>
+        <a class="btn btn-quiet"
+           href="{{ url_for('partner_statement_eml', pid=s.partner_id, qslug=s.quarter_slug, again=1) }}">
+          Download .eml anyway</a>
+      </div>
+      {% set eml_url = url_for('partner_statement_eml', pid=s.partner_id, qslug=s.quarter_slug, again=1) %}
+      {% include "_mail_where.html" %}
+    </details>
+  {% endif %}
 {% endif %}
 {% endblock %}
