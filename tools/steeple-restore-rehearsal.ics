@@ -1,0 +1,38 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//The Williams Collective//Steeple & Stitch Ops//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VTIMEZONE
+TZID:America/New_York
+BEGIN:DAYLIGHT
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+TZNAME:EDT
+DTSTART:19700308T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+END:DAYLIGHT
+BEGIN:STANDARD
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+TZNAME:EST
+DTSTART:19701101T020000
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+END:STANDARD
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:steeple-restore-rehearsal-2026@thewilliamscollective.com
+DTSTAMP:20260915T022309Z
+DTSTART;TZID=America/New_York:20261005T090000
+DTEND;TZID=America/New_York:20261005T093000
+RRULE:FREQ=MONTHLY;INTERVAL=3;BYMONTHDAY=5
+SUMMARY:Rehearse the restore — Steeple & Stitch
+LOCATION:The hub (TWC-iMac)
+DESCRIPTION:Ten minutes. Proves the nightly backup is complete and readable - not merely present.\n\nON THE HUB (ssh imac):\n\n  cd ~/Dev/steeple-onboarding\n  tools/restore.sh ~/Desktop/restore-test --dry-run\n  tools/restore.sh ~/Desktop/restore-test\n\nCounts should match the MANIFEST the restore prints. Then read the records rather\nthan trusting the file count:\n\n  ~/.venvs/steeple-onboarding-312/bin/python - <<'EOF'\n  import json\, pathlib\n  folder = pathlib.Path.home() / "Desktop/restore-test/partners"\n  for f in sorted(folder.glob("*.json")):\n      d = json.loads(f.read_text())\n      print(d.get("org_name")\, d.get("plan")\, d.get("margin_pct"))\n  EOF\n\nThen: rm -rf ~/Desktop/restore-test\n\nWHY THIS IS ON THE CALENDAR: the first time it was run (15 Sep 2026) the data was\nperfect and the app was not - it read the people file as a tenth partner. Three days\nof daily use had not surfaced that. Ten minutes of pretending the hub had died did.\n\nFull procedure: doc 35 - Hub recovery.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Rehearse the restore — 10 minutes on the hub
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+END:VCALENDAR
