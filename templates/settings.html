@@ -14,6 +14,10 @@
         {% elif me.login %}{{ me.name }} &lt;{{ me.login }}&gt;{% if me.machine %} on {{ me.machine }}{% endif %}
         {% else %}<strong>not identified</strong>{% if me.error %} — {{ me.error }}{% endif %}{% endif %}
       </dd>
+      <dt>Your address</dt>
+      <dd style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">
+        {{ remote_addr or 'none' }}
+        {%- if ':' in remote_addr %} <span class="help">(IPv6)</span>{% endif %}</dd>
       <dt>Identified by</dt>
       <dd>
         {% if me.source == 'local' %}the machine itself

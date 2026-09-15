@@ -58,6 +58,23 @@ CLI_CANDIDATES = (
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 
+
+def _hostport(ip: str) -> str:
+    """The ip:port pair whois wants, correct for IPv6 as well as IPv4.
+
+    Not the cause of any bug so far -- the first identity failure looked like
+    it might be, and was not; the address was IPv4 and correct. Hardened
+    anyway, because Safari does prefer IPv6 when both exist, and
+    `fd7a:...:6c22:443` is a string of eight colons with nothing to mark where
+    the address ends and the port begins. IPv6 host and port wants brackets.
+
+    A zone suffix (`%en0`) is stripped for a related reason: it identifies an
+    interface on THIS machine, which means nothing to the machine being asked
+    about.
+    """
+    ip = (ip or "").strip().split("%")[0]
+    return f"[{ip}]:443" if ":" in ip else f"{ip}:443"
+
 # A whois answer is good for this long. Machine ownership changes about never;
 # this is only here so a page with twelve cards does not fork twelve processes.
 CACHE_SECONDS = 600
@@ -111,7 +128,7 @@ def whois(ip: str) -> dict:
         # whois wants an ip:port pair. The port is not used to identify
         # anything -- any port answers for the machine -- so a fixed one keeps
         # the cache key simple.
-        result = subprocess.run([binary, "whois", f"{ip}:443"],
+        result = subprocess.run([binary, "whois", _hostport(ip)],
                                 capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.SubprocessError) as exc:
         answer = {"login": "", "name": "", "machine": "", "error": str(exc)}
@@ -125,6 +142,14 @@ def whois(ip: str) -> dict:
         return answer
 
     answer = _parse_whois(result.stdout)
+    if not answer["login"] and not answer["machine"]:
+        # Ran, exited cleanly, told us nothing. Every other path here fills in
+        # `error`, and this one used to not -- which is how a failure reached
+        # the screen with no reason attached and cost an evening. A diagnostic
+        # field that is empty on the one failure nobody predicted is not a
+        # diagnostic field.
+        answer["error"] = (f"asked about {_hostport(ip)} and got no answer back"
+                           + (f": {result.stdout.strip()[:120]}" if result.stdout.strip() else ""))
     _cache[ip] = (_now(), answer)
     return answer
 
