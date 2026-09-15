@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -57,6 +58,27 @@ CLI_CANDIDATES = (
 )
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+
+def _env() -> dict:
+    """The environment the Tailscale CLI needs, which launchd does not supply.
+
+    The macOS CLI is a shim that talks to the GUI app, and it finds it through
+    the user's own directories. Run with a stripped environment it prints
+
+        The Tailscale GUI failed to start: ... (Tailscale.CLIError error 3.)
+
+    and then **exits 0**, which is how an outright failure reached the screen
+    looking like a successful query that happened to know nothing.
+
+    launchd gives a service PATH and little else -- no HOME on this hub -- so
+    the value is filled in from the password database when it is missing,
+    which is what expanduser does with no HOME set.
+    """
+    env = dict(os.environ)
+    env.setdefault("HOME", os.path.expanduser("~"))
+    env.setdefault("TMPDIR", "/tmp")
+    return env
 
 
 def _hostport(ip: str) -> str:
@@ -129,7 +151,8 @@ def whois(ip: str) -> dict:
         # anything -- any port answers for the machine -- so a fixed one keeps
         # the cache key simple.
         result = subprocess.run([binary, "whois", _hostport(ip)],
-                                capture_output=True, text=True, timeout=5)
+                                capture_output=True, text=True, timeout=5,
+                                env=_env())
     except (OSError, subprocess.SubprocessError) as exc:
         answer = {"login": "", "name": "", "machine": "", "error": str(exc)}
         _cache[ip] = (_now(), answer)
@@ -142,6 +165,13 @@ def whois(ip: str) -> dict:
         return answer
 
     answer = _parse_whois(result.stdout)
+    if not answer["login"] and not answer["machine"] and result.stderr.strip():
+        # The CLI exits 0 on at least one real failure, so a clean return code
+        # is not evidence of anything. Anything on stderr with nothing usable
+        # on stdout is a failure whatever the process claimed.
+        answer["error"] = result.stderr.strip()[:200]
+        _cache[ip] = (_now(), answer)
+        return answer
     if not answer["login"] and not answer["machine"]:
         # Ran, exited cleanly, told us nothing. Every other path here fills in
         # `error`, and this one used to not -- which is how a failure reached
