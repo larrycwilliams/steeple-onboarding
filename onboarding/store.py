@@ -173,7 +173,14 @@ def record_path(pid: str) -> Path:
 def list_partners() -> list[dict]:
     _paths()
     out = []
-    for path in sorted(PARTNERS.glob("*.json")):  # _history/ is a folder, not matched
+    # Underscore means "not a partner". Sidecars live in folders precisely so
+    # this glob cannot see them -- _history/, _sent/, _agreement/, _people/ --
+    # but the rule is cheap to state directly, and the one time it was left
+    # implicit somebody dropped a bare _people.json here and the Partners
+    # screen grew a tenth organisation with no name.
+    for path in sorted(PARTNERS.glob("*.json")):
+        if path.name.startswith("_"):
+            continue
         try:
             out.append(json.loads(path.read_text()))
         except json.JSONDecodeError:

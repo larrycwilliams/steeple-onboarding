@@ -47,7 +47,18 @@ from .store import PARTNERS
 # somebody is hired or leaves, not when the code changes, and `partners/` is
 # what the nightly backup copies. Being outside git also means an email
 # address list is not in a GitHub history forever.
-PEOPLE_PATH = PARTNERS / "_people.json"
+#
+# In a FOLDER, not as partners/_people.json, and that is not a style choice.
+# store.list_partners() globs partners/*.json and loads every match, so a bare
+# .json file there is read as a partner -- which is exactly why _history/,
+# _sent/ and _agreement/ are folders. The first version of this file was not,
+# and a restore rehearsal printed a tenth partner with no name for nine real
+# ones. Documented in two places and still walked into.
+PEOPLE_DIR = PARTNERS / "_people"
+PEOPLE_PATH = PEOPLE_DIR / "people.json"
+
+# Where it used to be. Read and migrated automatically; see config().
+LEGACY_PEOPLE_PATH = PARTNERS / "_people.json"
 
 ROLES = ("owner", "operator")
 
@@ -316,10 +327,21 @@ def _parse_whois(text: str) -> dict:
 def config() -> dict:
     """The people file, or the shape of one when it does not exist yet."""
     blank = {"enforce": False, "people": {}}
-    if not PEOPLE_PATH.exists():
-        return blank
+    path = PEOPLE_PATH
+    if not path.exists():
+        if not LEGACY_PEOPLE_PATH.exists():
+            return blank
+        # Move it out of the partner list's way, once, quietly. Copy first and
+        # unlink after, so an interrupted migration leaves the old file rather
+        # than nothing.
+        try:
+            PEOPLE_DIR.mkdir(parents=True, exist_ok=True)
+            PEOPLE_PATH.write_text(LEGACY_PEOPLE_PATH.read_text("utf8"), "utf8")
+            LEGACY_PEOPLE_PATH.unlink()
+        except OSError:
+            path = LEGACY_PEOPLE_PATH
     try:
-        data = json.loads(PEOPLE_PATH.read_text("utf8"))
+        data = json.loads(path.read_text("utf8"))
     except (json.JSONDecodeError, OSError):
         # An unreadable people file must not lock anybody out of anything.
         # Failing open here is the safe direction: the alternative is an app
