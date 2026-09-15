@@ -140,7 +140,18 @@
     <a href="{{ url_for('new_partner') }}">New partner</a>
     <a href="{{ url_for('redirects') }}">Redirect CSV</a>
     <a href="{{ url_for('tools_page') }}">Tools</a>
-    <a href="{{ url_for('settings_page') }}">Settings</a>
+    {# Owner-only once enforcement is on, so the link goes too. A link that
+       always refuses is worse than no link. #}
+    {% if not me or not me.enforced or me.is_owner %}
+      <a href="{{ url_for('settings_page') }}">Settings</a>
+    {% endif %}
+    {% if me %}
+      <span style="color:#7B8494" title="{{ me.login or me.machine or 'not identified' }}
+{%- if me.enforced %} · {{ me.role }}{% else %} · roles not enforced yet{% endif %}">
+        {%- if me.stamp_name %}{{ me.stamp_name }}
+        {%- else %}not identified{% endif %}
+        {%- if me.enforced and not me.is_owner %} · operator{% endif %}</span>
+    {% endif %}
   </nav>
 </header>
 <main>

@@ -26,8 +26,13 @@
 
 <div class="tick{% if sent.sent %} yes{% endif %}">
   {% if sent.sent %}
-    <h3><span class="mark">&check; Sent</span> — {{ sent.label }}</h3>
+    <h3><span class="mark">&check; Sent</span> — {{ sent.label }}
+      {%- if sent.by_name %} · {{ sent.by_name }}{% endif %}</h3>
     {% if sent.note %}<div class="help">{{ sent.note }}</div>{% endif %}
+    {% if sent.sent and not sent.by_name %}
+      <div class="help">Ticked before the app recorded who was working — the
+        date is the whole of what it knows.</div>
+    {% endif %}
     <div class="help" style="margin-top:6px">
       Recorded by hand, so it is only as true as whoever ticked it. If this
       one never actually left, clear it — an unsent {{ sent_thing }} showing

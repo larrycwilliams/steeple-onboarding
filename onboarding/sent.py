@@ -95,7 +95,7 @@ def _label(stamp: str, precise: bool = True) -> str:
 
 def _blank(kind: str, ref: str) -> dict:
     return {"kind": kind, "ref": ref, "sent_at": "", "precise": True,
-            "note": "", "log": []}
+            "note": "", "by": "", "by_name": "", "log": []}
 
 
 def _read(kind: str, ref: str) -> dict:
@@ -112,6 +112,10 @@ def _read(kind: str, ref: str) -> dict:
     data.setdefault("sent_at", "")
     data.setdefault("precise", True)
     data.setdefault("note", "")
+    # Records written before the app knew who anybody was. They stay honest
+    # about that rather than being backfilled with a guess.
+    data.setdefault("by", "")
+    data.setdefault("by_name", "")
     return data
 
 
@@ -138,13 +142,16 @@ def status(kind: str, ref: str) -> dict:
         "label": _label(stamp, precise),
         "date": stamp[:10],
         "note": data.get("note") or "",
+        "by": data.get("by") or "",
+        "by_name": data.get("by_name") or "",
         "log": data.get("log") or [],
         "kind": kind,
         "ref": ref,
     }
 
 
-def mark(kind: str, ref: str, note: str = "", when: str = "") -> tuple[bool, str]:
+def mark(kind: str, ref: str, note: str = "", when: str = "",
+         by: str = "", by_name: str = "") -> tuple[bool, str]:
     """Record that this went out. `when` is a date (YYYY-MM-DD) if not today.
 
     Backdating is allowed because the tick usually gets set the morning after
@@ -180,8 +187,11 @@ def mark(kind: str, ref: str, note: str = "", when: str = "") -> tuple[bool, str
     data["sent_at"] = stamp
     data["precise"] = precise
     data["note"] = (note or "").strip()
+    data["by"] = by or ""
+    data["by_name"] = by_name or by or ""
     data["log"].append({"at": _now().isoformat(), "action": "sent",
-                        "for": stamp, "note": (note or "").strip()})
+                        "for": stamp, "note": (note or "").strip(),
+                        "by": by or ""})
     if not _write(kind, ref, data):
         return False, "Could not write the sent record."
     label = _label(stamp, precise)
@@ -190,7 +200,7 @@ def mark(kind: str, ref: str, note: str = "", when: str = "") -> tuple[bool, str
     return True, f"{KINDS[kind]} marked as sent {label}."
 
 
-def clear(kind: str, ref: str, note: str = "") -> tuple[bool, str]:
+def clear(kind: str, ref: str, note: str = "", by: str = "") -> tuple[bool, str]:
     """Take the tick back. The file and its log stay."""
     if kind not in KINDS:
         return False, f"{kind!r} is not something this tracks."
@@ -198,9 +208,12 @@ def clear(kind: str, ref: str, note: str = "") -> tuple[bool, str]:
     if not data.get("sent_at"):
         return False, "That was not marked as sent."
     data["log"].append({"at": _now().isoformat(), "action": "cleared",
-                        "was": data["sent_at"], "note": (note or "").strip()})
+                        "was": data["sent_at"], "note": (note or "").strip(),
+                        "by": by or ""})
     data["sent_at"] = ""
     data["note"] = ""
+    data["by"] = ""
+    data["by_name"] = ""
     if not _write(kind, ref, data):
         return False, "Could not write the sent record."
     return True, f"{KINDS[kind]} is no longer marked as sent."

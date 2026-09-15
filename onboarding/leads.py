@@ -313,7 +313,7 @@ def _save_stages(data: dict) -> None:
     STAGES_PATH.write_text(json.dumps(data, indent=1, sort_keys=True))
 
 
-def set_stage(lead_id: str, stage: str, note: str = "") -> bool:
+def set_stage(lead_id: str, stage: str, note: str = "", by: str = "") -> bool:
     if stage not in STAGES:
         return False
     data = _load_stages()
@@ -321,6 +321,11 @@ def set_stage(lead_id: str, stage: str, note: str = "") -> bool:
     entry["stage"] = stage
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     entry["moved_at"] = now
+    # Who moved it, where the app can tell. Blank on a record written before
+    # there was any notion of who, and blank when Tailscale could not say --
+    # an empty field is honest, a guessed one is not.
+    if by:
+        entry["moved_by"] = by
     # Stamped once, the first time a lead leaves "New" by any route -- marked
     # Replied, booked straight from a phone call, or promoted. `moved_at` moves
     # every time the stage changes, so it cannot answer "how fast did we get

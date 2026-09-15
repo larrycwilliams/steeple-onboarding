@@ -58,7 +58,8 @@ def _path(pid: str) -> Path | None:
 
 def _blank(pid: str) -> dict:
     return {"pid": pid, "sent_at": "", "sent_note": "", "returned_at": "",
-            "returned_note": "", "chase_on": "", "chase_reason": "", "log": []}
+            "returned_note": "", "chase_on": "", "chase_reason": "",
+            "sent_by": "", "returned_by": "", "log": []}
 
 
 def _read(pid: str) -> dict:
@@ -152,6 +153,8 @@ def state(pid: str) -> dict:
         "returned_at": returned_at,
         "returned_label": _label(returned_at),
         "returned_note": data.get("returned_note") or "",
+        "sent_by": data.get("sent_by") or "",
+        "returned_by": data.get("returned_by") or "",
         "days": days,
         "overdue": overdue,
         "holding": holding,
@@ -164,12 +167,13 @@ def state(pid: str) -> dict:
     }
 
 
-def _stamp(data: dict, action: str, when: str, note: str) -> None:
+def _stamp(data: dict, action: str, when: str, note: str, by: str = "") -> None:
     data["log"].append({"at": _dt.datetime.now().replace(microsecond=0).isoformat(),
-                        "action": action, "for": when, "note": note})
+                        "action": action, "for": when, "note": note, "by": by})
 
 
-def mark_sent(pid: str, when: str = "", note: str = "") -> tuple[bool, str]:
+def mark_sent(pid: str, when: str = "", note: str = "",
+              by: str = "") -> tuple[bool, str]:
     """Record that the agreement went out, when it did not go with the welcome.
 
     Posted, handed over at a meeting, sent from somebody's own Mail: all
@@ -181,13 +185,15 @@ def mark_sent(pid: str, when: str = "", note: str = "") -> tuple[bool, str]:
     data = _read(pid)
     data["sent_at"] = day.isoformat()
     data["sent_note"] = (note or "").strip()
-    _stamp(data, "sent", data["sent_at"], data["sent_note"])
+    data["sent_by"] = by or ""
+    _stamp(data, "sent", data["sent_at"], data["sent_note"], by)
     if not _write(pid, data):
         return False, "Could not write the agreement record."
     return True, f"Agreement recorded as sent {_label(data['sent_at'])}."
 
 
-def mark_returned(pid: str, when: str = "", note: str = "") -> tuple[bool, str]:
+def mark_returned(pid: str, when: str = "", note: str = "",
+                  by: str = "") -> tuple[bool, str]:
     """The signed copy is back. This is the mark that unblocks everything after."""
     day, problem = _check_day(when or _dt.date.today().isoformat(), "date")
     if problem:
@@ -207,7 +213,8 @@ def mark_returned(pid: str, when: str = "", note: str = "") -> tuple[bool, str]:
         # say so in the note rather than inventing an earlier date.
         data["sent_at"] = day.isoformat()
         data["sent_note"] = "recorded when the signed copy came back"
-        _stamp(data, "sent", data["sent_at"], data["sent_note"])
+        data["sent_by"] = by or ""
+        _stamp(data, "sent", data["sent_at"], data["sent_note"], by)
     elif current["sent_source"] == "welcome":
         # The date was being read from the welcome-email tick. Freeze it here,
         # so clearing that tick later cannot silently re-date a signed deal.
@@ -216,15 +223,16 @@ def mark_returned(pid: str, when: str = "", note: str = "") -> tuple[bool, str]:
 
     data["returned_at"] = day.isoformat()
     data["returned_note"] = (note or "").strip()
+    data["returned_by"] = by or ""
     data["chase_on"] = ""
     data["chase_reason"] = ""
-    _stamp(data, "returned", data["returned_at"], data["returned_note"])
+    _stamp(data, "returned", data["returned_at"], data["returned_note"], by)
     if not _write(pid, data):
         return False, "Could not write the agreement record."
     return True, f"Signed agreement recorded, {_label(data['returned_at'])}."
 
 
-def clear(pid: str, field: str, note: str = "") -> tuple[bool, str]:
+def clear(pid: str, field: str, note: str = "", by: str = "") -> tuple[bool, str]:
     """Take back a sent or returned mark. The log keeps what it said."""
     if field not in ("sent", "returned"):
         return False, f"{field!r} is not something this tracks."
@@ -232,15 +240,16 @@ def clear(pid: str, field: str, note: str = "") -> tuple[bool, str]:
     key = f"{field}_at"
     if not data.get(key):
         return False, f"Nothing was recorded as {field}."
-    _stamp(data, f"cleared {field}", data[key], (note or "").strip())
+    _stamp(data, f"cleared {field}", data[key], (note or "").strip(), by)
     data[key] = ""
     data[f"{field}_note"] = ""
+    data[f"{field}_by"] = ""
     if not _write(pid, data):
         return False, "Could not write the agreement record."
     return True, f"The {field} mark is cleared."
 
 
-def set_chase(pid: str, when: str, reason: str = "") -> tuple[bool, str]:
+def set_chase(pid: str, when: str, reason: str = "", by: str = "") -> tuple[bool, str]:
     """Hold the red until a date, the way the pipeline holds a lead.
 
     Their board meets on the 20th; chasing on the 12th is noise. The age keeps
@@ -250,7 +259,7 @@ def set_chase(pid: str, when: str, reason: str = "") -> tuple[bool, str]:
     if not (when or "").strip():
         data["chase_on"] = ""
         data["chase_reason"] = ""
-        _stamp(data, "cleared chase", "", "")
+        _stamp(data, "cleared chase", "", "", by)
         _write(pid, data)
         return True, "Chase date cleared."
     day, problem = _check_day(when, "date", future_ok=True)
@@ -258,7 +267,7 @@ def set_chase(pid: str, when: str, reason: str = "") -> tuple[bool, str]:
         return False, problem
     data["chase_on"] = day.isoformat()
     data["chase_reason"] = (reason or "").strip()
-    _stamp(data, "chase", data["chase_on"], data["chase_reason"])
+    _stamp(data, "chase", data["chase_on"], data["chase_reason"], by)
     if not _write(pid, data):
         return False, "Could not write the agreement record."
     return True, f"Holding the chase until {_label(data['chase_on'])}."

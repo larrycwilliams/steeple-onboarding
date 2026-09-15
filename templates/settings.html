@@ -1,6 +1,118 @@
 {% extends "base.html" %}
 {% block content %}
 
+{# Who may do what. Above the settings it protects, because the first question
+   on this page is whether you should be on it at all. #}
+<div class="card">
+  <h2 style="margin-top:0">Who can do what</h2>
+
+  <div class="derived" style="margin-bottom:14px">
+    <dl>
+      <dt>You are</dt>
+      <dd>
+        {% if me.source == 'local' %}on the hub itself — at its keyboard, or the app calling itself
+        {% elif me.login %}{{ me.name }} &lt;{{ me.login }}&gt;{% if me.machine %} on {{ me.machine }}{% endif %}
+        {% else %}<strong>not identified</strong>{% if me.error %} — {{ me.error }}{% endif %}{% endif %}
+      </dd>
+      <dt>Identified by</dt>
+      <dd>
+        {% if me.source == 'local' %}the machine itself
+        {% elif me.source == 'unknown' %}nothing — Tailscale could not say
+        {% else %}Tailscale{% endif %}
+        {%- if not tailscale_cli %} · <span class="bad">the Tailscale command was not
+        found on this Mac, so nobody can be identified</span>{% endif %}
+      </dd>
+      <dt>Roles</dt>
+      <dd>
+        {% if people.enforce %}<strong>enforced</strong> — owner-only actions are refused
+        {% else %}recorded, <strong>not enforced</strong> — nothing is refused yet{% endif %}
+      </dd>
+    </dl>
+  </div>
+
+  {% if not people.people %}
+    <div class="note">
+      <strong>No people file yet</strong>, so everyone on the tailnet counts as an
+      owner — which is exactly how this app has always behaved. Add yourself to
+      start, then add anyone else before they need access.
+    </div>
+    <form method="post" action="{{ url_for('settings_people') }}" style="margin-top:10px">
+      <input type="hidden" name="action" value="claim">
+      <button class="btn btn-gold" type="submit"
+              {% if not me.login %}disabled title="You cannot be identified, so there is nothing to add"{% endif %}>
+        Add me as the owner</button>
+    </form>
+  {% else %}
+    <table>
+      <thead><tr><th>Person</th><th>Tailscale login</th><th>Role</th><th></th></tr></thead>
+      <tbody>
+      {% for login, person in people.people | dictsort %}
+        <tr>
+          <td><strong>{{ person.name or login }}</strong>
+            {% if login == me.login %}<span class="pill">you</span>{% endif %}</td>
+          <td style="font-size:12.5px;font-family:ui-monospace,Menlo,monospace">{{ login }}</td>
+          <td>{{ person.role }}</td>
+          <td style="text-align:right">
+            <form method="post" action="{{ url_for('settings_people') }}" style="display:inline">
+              <input type="hidden" name="action" value="remove">
+              <input type="hidden" name="login" value="{{ login }}">
+              <button class="btn btn-quiet" type="submit">Remove</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <form method="post" action="{{ url_for('settings_people') }}"
+          style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">
+      <input type="hidden" name="action" value="add">
+      <div class="field" style="flex:1 1 240px;margin:0">
+        <label for="p-login">Tailscale login</label>
+        <input type="text" id="p-login" name="login" placeholder="sarah@thewilliamscollective.com">
+      </div>
+      <div class="field" style="flex:0 1 160px;margin:0">
+        <label for="p-name">Name</label>
+        <input type="text" id="p-name" name="name" placeholder="Sarah">
+      </div>
+      <div class="field" style="flex:0 1 140px;margin:0">
+        <label for="p-role">Role</label>
+        <select id="p-role" name="role">
+          <option value="operator">operator</option>
+          <option value="owner">owner</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" type="submit">Add</button>
+    </form>
+    <div class="help" style="margin-top:6px">
+      The login is the email address their Mac is signed in to Tailscale as —
+      not their work email, if the two differ. Adding somebody to the tailnet is
+      a separate step, done in Tailscale.
+    </div>
+
+    <form method="post" action="{{ url_for('settings_people') }}" style="margin-top:14px">
+      <input type="hidden" name="action"
+             value="{{ 'enforce-off' if people.enforce else 'enforce-on' }}">
+      <button class="btn {{ 'btn-quiet' if people.enforce else 'btn-gold' }}" type="submit">
+        {% if people.enforce %}Stop enforcing roles{% else %}Start enforcing roles{% endif %}</button>
+    </form>
+  {% endif %}
+
+  <div class="help" style="margin-top:12px">
+    <strong>Owner-only, once enforced:</strong> this page and the Shopify
+    connection, deleting a partner, and renaming one. Everything else — leads,
+    calls, recommendations, welcome emails, statements, agreements — an operator
+    can do. That list is the “Ask Larry, do not decide” section of the runbook,
+    enforced rather than just written down.
+    <br><br>
+    Identity comes from Tailscale, not from a password: the app asks which
+    account the connecting Mac is signed in as. Nothing to reset, nothing to
+    share, nothing to leave on a sticky note. If it ever refuses you wrongly,
+    the file is <code>{{ people_path }}</code> on the hub — set
+    <code>"enforce": false</code> there and everything opens up again.
+  </div>
+</div>
+
 <div class="card">
   <h2 style="margin-top:0">Your details</h2>
   <p class="help" style="margin-top:0">

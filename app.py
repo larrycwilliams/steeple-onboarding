@@ -15,6 +15,7 @@ from datetime import datetime
 import webbrowser
 from pathlib import Path
 from threading import Thread
+from functools import wraps
 
 import hashlib
 import hmac
@@ -24,7 +25,7 @@ from urllib.parse import urlencode
 import requests
 from markupsafe import Markup, escape as _escape
 
-from flask import (Flask, abort, flash, jsonify, redirect, render_template,
+from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
 
 from onboarding import dashboard, discovery, discovery_reply, leads, mail_draft, package, library, reconcile, terms
@@ -34,6 +35,7 @@ from onboarding import recommendation, storefront, traveler
 from onboarding import statement, statement_email, statement_pdf
 from onboarding import sent as sent_log
 from onboarding import agreement
+from onboarding import access
 from onboarding import welcome_email
 from onboarding.palette import extract_palette
 from onboarding.schema import (DEFAULT_PALETTE, FIELDS, GROUPS, ORG_TYPES,
@@ -43,7 +45,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.33"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.34"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -61,6 +63,39 @@ app.jinja_env.globals["today"] = lambda: datetime.now().strftime("%Y-%m-%d")
 app.jinja_env.globals["HELPER_VERSION"] = mail_draft.EXPECTED_HELPER_VERSION
 # How long an unsigned agreement may sit before the screens turn red.
 app.jinja_env.globals["chase_after"] = agreement.CHASE_AFTER_DAYS
+
+
+@app.before_request
+def _identify():
+    """Who is asking, from Tailscale rather than from a password.
+
+    One resolution per request, cached by address inside onboarding.access, so
+    a page of twelve lead cards does not fork twelve subprocesses.
+    """
+    g.me = access.who(request.remote_addr or "")
+
+
+@app.context_processor
+def _me():
+    return {"me": getattr(g, "me", None)}
+
+
+def owner_only(view):
+    """Refuse the handful of actions the runbook says to ask Larry about.
+
+    The list is not invented here: it is the "Ask Larry -- do not decide"
+    section of the operator runbook, written when Larry was thinking about
+    training somebody rather than about permissions. Refusals only happen once
+    enforcement is switched on in partners/_people.json; until then this
+    records who did what and lets everything through.
+    """
+    @wraps(view)
+    def guarded(*args, **kwargs):
+        if not access.may(g.me, "owner"):
+            flash(access.refusal(g.me), "error")
+            return redirect(url_for("index"))
+        return view(*args, **kwargs)
+    return guarded
 
 
 @app.after_request
@@ -166,6 +201,15 @@ def edit_partner(pid):
                 flash(f"Tidied for the URL — {note}", "ok")
             record.pop("_normalized", None)
             renamed = store.partner_id(record) != pid
+            if renamed and not access.may(g.me, "owner"):
+                # A rename moves their folders and renames documents that have
+                # already been sent, which is why the runbook puts it on the
+                # Ask Larry list. Refuse the rename, keep the rest of the edit.
+                flash("Renaming an organisation is owner-only — it moves their "
+                      "folders and renames documents already sent. Everything "
+                      "else was saved.", "error")
+                record["org_name"] = existing["org_name"]
+                renamed = False
             record = store.save(record)
             if renamed:
                 flash(
@@ -199,14 +243,15 @@ def partner_agreement(pid):
     when = request.form.get("when", "")
     note = request.form.get("note", "")
 
+    by = g.me["stamp"]
     if action == "returned":
-        ok, message = agreement.mark_returned(pid, when, note)
+        ok, message = agreement.mark_returned(pid, when, note, by=by)
     elif action == "sent":
-        ok, message = agreement.mark_sent(pid, when, note)
+        ok, message = agreement.mark_sent(pid, when, note, by=by)
     elif action == "chase":
-        ok, message = agreement.set_chase(pid, when, note)
+        ok, message = agreement.set_chase(pid, when, note, by=by)
     elif action in ("clear-sent", "clear-returned"):
-        ok, message = agreement.clear(pid, action.split("-", 1)[1], note)
+        ok, message = agreement.clear(pid, action.split("-", 1)[1], note, by=by)
     else:
         ok, message = False, f"{action!r} is not something this does."
     flash(message, "ok" if ok else "error")
@@ -335,6 +380,7 @@ def partner_asset(pid, name):
 
 
 @app.route("/settings", methods=["GET", "POST"])
+@owner_only
 def settings_page():
     """Your own details — the half of the welcome email that never changes."""
     if request.method == "POST":
@@ -351,6 +397,9 @@ def settings_page():
         shopify_token=env_secrets.masked(),
         client_id=env_secrets.app_credentials()["client_id"],
         client_secret=env_secrets.masked_secret(),
+        people=access.config(),
+        people_path=str(access.PEOPLE_PATH),
+        tailscale_cli=access.cli(),
     )
 
 
@@ -435,11 +484,13 @@ def partner_email_sent(pid):
     if record is None:
         abort(404)
     if request.form.get("action") == "clear":
-        ok, message = sent_log.clear("welcome", pid, request.form.get("note", ""))
+        ok, message = sent_log.clear("welcome", pid, request.form.get("note", ""),
+                                     by=g.me["stamp"])
     else:
         ok, message = sent_log.mark("welcome", pid,
                                     request.form.get("note", ""),
-                                    request.form.get("when", ""))
+                                    request.form.get("when", ""),
+                                    by=g.me["stamp"], by_name=g.me["stamp_name"])
     flash(message, "ok" if ok else "error")
     return redirect(url_for("partner_email", pid=pid))
 
@@ -460,6 +511,7 @@ def redirects():
 
 
 @app.route("/partner/<pid>/delete", methods=["POST"])
+@owner_only
 def delete_partner(pid):
     store.delete(pid)
     flash("Partner removed. Generated files were left in place.", "ok")
@@ -468,7 +520,36 @@ def delete_partner(pid):
 
 
 
+@app.route("/settings/people", methods=["POST"])
+@owner_only
+def settings_people():
+    """Who may do the owner-only things, edited from the page it protects.
+
+    Deliberately editable here rather than only by hand on the hub: a model
+    that can only be changed over ssh is one that never gets changed, and the
+    people file is the part of this that has to keep up with reality.
+    """
+    action = request.form.get("action", "")
+    if action == "add":
+        ok, message = access.add_person(request.form.get("login", ""),
+                                        request.form.get("name", ""),
+                                        request.form.get("role", "operator"))
+    elif action == "remove":
+        ok, message = access.remove_person(request.form.get("login", ""))
+    elif action in ("enforce-on", "enforce-off"):
+        ok, message = access.set_enforce(action == "enforce-on")
+    elif action == "claim":
+        # The bootstrap: before a people file exists everyone resolved is an
+        # owner, so the first person to press this is whoever is already here.
+        ok, message = access.add_person(g.me["login"], g.me["name"], "owner")
+    else:
+        ok, message = False, f"{action!r} is not something this does."
+    flash(message, "ok" if ok else "error")
+    return redirect(url_for("settings_page"))
+
+
 @app.route("/settings/shopify", methods=["POST"])
+@owner_only
 def save_shopify():
     ok, message = env_secrets.save_token(
         request.form.get("shopify_token", ""),
@@ -523,7 +604,7 @@ def pipeline_stage(key):
         flash("That lead is no longer in the pipeline.", "error")
         return redirect(url_for("pipeline_page"))
     stage = request.form.get("stage", "")
-    if leads.set_stage(lead["id"], stage):
+    if leads.set_stage(lead["id"], stage, by=g.me["stamp"]):
         flash(f"{lead.get('org_name') or lead['name']} → {stage}.", "ok")
     else:
         flash(f"{stage!r} is not a stage.", "error")
@@ -588,7 +669,7 @@ def pipeline_reply(key):
         flash(result["error"], "error")
         return redirect(url_for("pipeline_page"))
 
-    leads.set_stage(lead["id"], "Replied")
+    leads.set_stage(lead["id"], "Replied", by=g.me["stamp"])
     flash(f"Draft open in Mail for {draft['to_name'] or draft['to']}. "
           f"{lead.get('org_name') or 'Lead'} → Replied.", "ok")
     return redirect(url_for("pipeline_page"))
@@ -1185,11 +1266,13 @@ def partner_statement_sent(pid, qslug):
         return redirect(url_for("index"))
     ref = sent_log.statement_ref(pid, built["quarter_slug"])
     if request.form.get("action") == "clear":
-        ok, message = sent_log.clear("statement", ref, request.form.get("note", ""))
+        ok, message = sent_log.clear("statement", ref, request.form.get("note", ""),
+                                     by=g.me["stamp"])
     else:
         ok, message = sent_log.mark("statement", ref,
                                     request.form.get("note", ""),
-                                    request.form.get("when", ""))
+                                    request.form.get("when", ""),
+                                    by=g.me["stamp"], by_name=g.me["stamp_name"])
     flash(message, "ok" if ok else "error")
     return redirect(url_for("partner_statement", pid=pid, qslug=qslug))
 
@@ -1285,6 +1368,7 @@ def _valid_hmac(params: dict, secret: str) -> bool:
 
 
 @app.route("/shopify/connect")
+@owner_only
 def shopify_connect():
     creds = env_secrets.app_credentials()
     store = env_secrets.store_domain()
@@ -1364,6 +1448,7 @@ def shopify_callback():
 
 
 @app.route("/settings/shopify-app", methods=["POST"])
+@owner_only
 def save_shopify_app():
     ok, message = env_secrets.save_app_credentials(
         request.form.get("client_id", ""),

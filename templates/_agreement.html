@@ -31,6 +31,7 @@
     <div class="help">
       Out {{ agreement.sent_label }}{% if agreement.turnaround is not none %},
       back in {{ agreement.turnaround }} day{{ '' if agreement.turnaround == 1 else 's' }}{% endif %}.
+      {% if agreement.returned_by %}Marked by {{ agreement.returned_by }}.{% endif %}
       {% if agreement.returned_note %}{{ agreement.returned_note }}{% endif %}
       Everything after this point — storefront, products, launch — is unblocked.
     </div>
