@@ -31,11 +31,14 @@ identity while refusing nothing. Turning it on is one field in one file.
 """
 from __future__ import annotations
 
+import base64
 import datetime as _dt
 import json
 import os
 import shutil
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from .store import PARTNERS
@@ -58,6 +61,75 @@ CLI_CANDIDATES = (
 )
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+# Where the Tailscale app leaves the keys to its local API. `ipnport` is a
+# symlink whose target is the port; `sameuserproof-<port>` holds the token,
+# readable by the admin group. This is the same door the CLI goes through --
+# the CLI is only a front end for it.
+PROOF_DIRS = (
+    Path("/Library/Tailscale"),
+    Path.home() / "Library/Group Containers/io.tailscale.ipn.macsys",
+)
+
+
+def _local_api() -> tuple[int, str] | None:
+    """The port and token for tailscaled's local API, if this Mac has them."""
+    for folder in PROOF_DIRS:
+        try:
+            proofs = sorted(folder.glob("sameuserproof-*"))
+        except OSError:
+            continue
+        for proof in proofs:
+            port = proof.name.rsplit("-", 1)[-1]
+            if not port.isdigit():
+                continue
+            try:
+                token = proof.read_text("utf8").strip()
+            except OSError:
+                # Present but unreadable -- wrong group, most likely. Worth
+                # trying the next candidate rather than giving up here.
+                continue
+            if token:
+                return int(port), token
+    return None
+
+
+def _whois_local_api(ip: str) -> dict | None:
+    """Ask tailscaled directly. None means this route is not available.
+
+    Preferred over the CLI because the macOS CLI is a shim that has to reach
+    the GUI app, which a launchd service is not allowed to start: it prints
+    "The Tailscale GUI failed to start" and exits 0. Nothing here needs the
+    GUI, a subprocess, or a PATH.
+    """
+    found = _local_api()
+    if not found:
+        return None
+    port, token = found
+    url = f"http://127.0.0.1:{port}/localapi/v0/whois?addr={_hostport(ip)}"
+    request = urllib.request.Request(url)
+    # Basic auth with an empty username and the proof file as the password.
+    # That is the whole handshake: verified by hand on the hub with curl, which
+    # sent nothing else and was answered. Two further headers were in an
+    # earlier draft of this -- a Host override and Sec-Tailscale -- on the
+    # theory that tailscaled wants them over TCP. It does not, and a header
+    # added on a theory is a thing that can start refusing on some future
+    # version for a reason nobody remembers.
+    request.add_header("Authorization",
+                       "Basic " + base64.b64encode(f":{token}".encode()).decode())
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            data = json.loads(response.read().decode("utf8"))
+    except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError) as exc:
+        return {"login": "", "name": "", "machine": "",
+                "error": f"tailscaled on port {port} said: {exc}"}
+
+    profile = data.get("UserProfile") or {}
+    node = data.get("Node") or {}
+    return {"login": (profile.get("LoginName") or "").strip(),
+            "name": (profile.get("DisplayName") or "").strip(),
+            "machine": (node.get("Name") or "").strip().rstrip("."),
+            "error": ""}
 
 
 def _env() -> dict:
@@ -139,8 +211,18 @@ def whois(ip: str) -> dict:
     if hit and _now() - hit[0] < CACHE_SECONDS:
         return hit[1]
 
+    # The local API first: it is what the CLI itself uses, and it works from a
+    # launchd service where the CLI does not.
+    direct = _whois_local_api(ip)
+    if direct and direct["login"]:
+        _cache[ip] = (_now(), direct)
+        return direct
+
     binary = cli()
     if not binary:
+        if direct:
+            _cache[ip] = (_now(), direct)
+            return direct
         answer = {"login": "", "name": "", "machine": "",
                   "error": "the Tailscale command is not installed here"}
         _cache[ip] = (_now(), answer)
