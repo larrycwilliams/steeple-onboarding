@@ -68,6 +68,16 @@
     </dl>
   </div>
 
+  {% if manifest.logo_problem %}
+  <div class="note" style="border-color:#B4472F;background:#FBF1EE;margin-bottom:18px">
+    <strong>No partner mark on any of this.</strong> {{ manifest.logo_problem }}
+    <div class="help" style="margin-top:6px">
+      The QR code, the postcards and the Launch Week Kit have all been built
+      without it. Fix the logo and generate again.
+    </div>
+  </div>
+  {% endif %}
+
   {% if manifest.incomplete %}
   <div class="note" style="border-color:#B4472F;background:#FBF1EE;margin-bottom:18px">
     <strong>Do not send these yet — {{ manifest.incomplete|length }}

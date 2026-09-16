@@ -144,6 +144,10 @@ def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
     # Not record["logo_path"] directly: see store.resolve_logo -- a stale
     # absolute path silently costs you the branded QR and the postcard mark.
     logo = store.resolve_logo(record)
+    # A record can carry a logo nothing can open -- a PDF uploaded before
+    # PyMuPDF was installed, a path that moved. Every consumer below handles
+    # that by skipping the artwork, silently. This is what makes it visible.
+    logo_problem = store.logo_problem(record)
 
     files: dict[str, str] = {}
     pdf_fonts: dict[str, str] = {}
@@ -252,6 +256,7 @@ def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
         "redirect": {"from": redirect_from, "to": redirect_to},
         "qr_check": getattr(qr.make_qr, "last_check", None),
         "logo_check": getattr(postcard.place_logo, "last_check", None),
+        "logo_problem": logo_problem,
         "agreement_template_version": ctx.get("template_version", ""),
         "incomplete": store.readiness(record),
         "pdf_fonts": pdf_fonts,

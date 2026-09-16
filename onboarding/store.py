@@ -125,8 +125,11 @@ def restore(pid: str, stamp: str) -> dict | None:
     return save(record)
 
 
+RASTER_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+
+
 def resolve_logo(record: dict) -> str:
-    """Return a logo path that actually exists on this machine, or "".
+    """Return a logo path PIL can actually open, or "".
 
     Records store an absolute path, which is fine until the folder moves --
     a different Mac, a different iCloud account, a renamed parent folder.
@@ -134,12 +137,25 @@ def resolve_logo(record: dict) -> str:
     test ``Path(logo).exists()`` and quietly skip the branded artwork, so the
     package builds "successfully" without the partner's mark on any of it.
 
-    So don't trust the stored string. Fall back to the partner's own assets
-    folder, first by the same filename, then by whatever image is in there.
+    So don't trust the stored string, and don't trust it to be a raster
+    either. A PDF or an .ai on the record satisfies ``exists()`` and then
+    fails the moment PIL opens it -- which, in the branded QR, takes the whole
+    build down rather than dropping one image. Vector uploads are rendered to
+    a PNG sibling on the way in (onboarding/vector_logo.py); this finds it.
+
+    Order: the stored path if it is a usable raster, then its rendered
+    sibling, then the same filename in the partner's own assets folder, then
+    whatever raster is in there.
     """
     stored = (record.get("logo_path") or "").strip()
-    if stored and Path(stored).exists():
-        return stored
+    if stored:
+        path = Path(stored)
+        if path.suffix.lower() in RASTER_SUFFIXES and path.exists():
+            return stored
+        # A vector on the record: use the render beside it.
+        sibling = path.with_suffix(".png")
+        if sibling.exists():
+            return str(sibling)
 
     folder = ASSETS / partner_id(record)
     if not folder.is_dir():
@@ -147,19 +163,43 @@ def resolve_logo(record: dict) -> str:
 
     if stored:
         same_name = folder / Path(stored).name
-        if same_name.exists():
+        if same_name.suffix.lower() in RASTER_SUFFIXES and same_name.exists():
             return str(same_name)
+        rendered = folder / (Path(stored).stem + ".png")
+        if rendered.exists():
+            return str(rendered)
 
     # Raster only. `.svg` used to be in this list and PIL cannot open one, so
     # a partner whose folder held only an SVG would have taken the fallback
     # and then raised inside the branded QR -- failing the whole build over an
-    # artwork file. Vector uploads are rendered to a PNG sibling on the way in
-    # (onboarding/vector_logo.py), so there is always a raster to find.
+    # artwork file.
     images = sorted(
         path for path in folder.iterdir()
-        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+        if path.suffix.lower() in RASTER_SUFFIXES
     )
     return str(images[0]) if images else ""
+
+
+def logo_problem(record: dict) -> str:
+    """Why this partner's package will have no mark on it, or "".
+
+    A record can carry a logo that cannot be used -- a PDF uploaded before
+    PyMuPDF was installed, a path that moved. Every consumer handles that by
+    skipping the artwork, which is the right behaviour and completely silent.
+    This is what makes it say so.
+    """
+    stored = (record.get("logo_path") or "").strip()
+    if not stored:
+        return ""
+    if resolve_logo(record):
+        return ""
+    name = Path(stored).name
+    if Path(stored).suffix.lower() not in RASTER_SUFFIXES:
+        return (f"{name} is on the record but has not been rendered to a PNG, "
+                "so nothing can use it. Re-upload it on the partner form "
+                "(PyMuPDF must be installed for a PDF), or upload a PNG.")
+    return (f"{name} is on the record but is not on this Mac, so the package "
+            "will be built without the partner's mark.")
 
 
 def partner_id(record: dict) -> str:
