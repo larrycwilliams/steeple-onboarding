@@ -45,7 +45,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.38"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.39"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -53,6 +53,26 @@ APP_VERSION = "3.38"   # shown in the header so you can tell a stale process at 
 app = Flask(__name__)
 app.secret_key = "steeple-stitch-local-only"
 app.jinja_env.globals["APP_VERSION"] = APP_VERSION
+app.jinja_env.filters["filesize"] = discovery.size_label
+
+# Call notes are the biggest thing anyone uploads here -- a phone recording of
+# a discovery call clears every other upload the app takes. The cap sits just
+# above discovery.NOTE_MAX_BYTES so the friendly per-file message is what you
+# normally hit; this one is the backstop that keeps a 900 MB mis-drop from
+# being read into a worker's memory before anything gets to check it.
+app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
+
+
+@app.errorhandler(413)
+def _too_big(_error):
+    """Werkzeug rejects an oversized body before any route runs, so without
+    this the answer is a bare white 413 and no clue which file did it."""
+    flash("That upload is too large for the app to take at all "
+          f"({app.config['MAX_CONTENT_LENGTH'] // (1024 * 1024)} MB is the "
+          "hard limit). Put it in the shared folder and link it instead.",
+          "error")
+    return redirect(request.referrer or url_for("index")), 303
+
 app.jinja_env.globals.update(
     FIELDS=FIELDS, GROUPS=GROUPS, ORG_TYPES=ORG_TYPES, PALETTE_ROLES=PALETTE_ROLES
 )
@@ -900,6 +920,96 @@ def discovery_recommendation_draft(sid):
     result = mail_draft.create_draft(draft["subject"], draft["to"], draft["html"])
     flash(result["error"] or f"Recommendation open in Mail for {draft['to_name'] or draft['to']}.",
           "error" if not result["ok"] else "ok")
+    return redirect(url_for("discovery_page", sid=sid))
+
+
+@app.route("/discovery/<sid>/recommendation/eml")
+def discovery_recommendation_eml(sid):
+    """The recommendation as a file, so it becomes a draft on ANY Mac.
+
+    The fourth screen to need this and the second to be found the hard way --
+    on a live call, with the church waiting on the email. `create_draft` runs
+    osascript inside the server process, so the window opened on the hub while
+    Larry sat at a laptop reading a flash message that said it had worked.
+
+    Docs 29 and 30 named three screens and fixed them. This one was built
+    afterwards (doc 27) and was never added to the list, which is precisely
+    the failure doc 29 warns about in its own last line. The list is now a
+    table with a row per caller, so a new one is a visible empty cell.
+    """
+    call = _discovery_or_404(sid)
+    lead = (leads.find_lead(call["lead_key"]) if call.get("lead_key") else None)
+    if not (lead or {}).get("email"):
+        flash("That call has no email address on it, so there is nobody to "
+              "write to.", "error")
+        return redirect(url_for("discovery_page", sid=sid))
+    draft = recommendation.render(call, lead)
+    if draft["missing"]:
+        flash("Not built — these are empty: " + ", ".join(draft["missing"]) + ".",
+              "error")
+        return redirect(url_for("discovery_page", sid=sid))
+    raw = mail_draft.build_eml(
+        draft["subject"], draft["to"], draft["html"], draft.get("text", ""),
+        [], company_settings.load().get("point_of_contact_email", ""))
+    token = _re.sub(r"[^A-Za-z0-9]+", "-",
+                    (call.get("org_name") or draft["to_name"]
+                     or "recommendation")).strip("-")
+    return send_file(io.BytesIO(raw), as_attachment=True,
+                     download_name=f"{token}_Recommendation.eml",
+                     mimetype="message/rfc822")
+
+
+@app.route("/discovery/<sid>/notes", methods=["POST"])
+def discovery_add_notes(sid):
+    """Attach what came out of the room -- the Meet or Gemini transcript, a
+    write-up, a photo of a legal pad, the recording.
+
+    Kept as a blob. Nothing in the app reads it, on purpose: doc 26 wrote that
+    rule while this was still unbuilt. A transcript is not a source for a
+    commercial term; terms.json is.
+    """
+    _discovery_or_404(sid)
+    uploads = [f for f in request.files.getlist("notes") if f and f.filename]
+    if not uploads:
+        flash("No file was chosen.", "error")
+        return redirect(url_for("discovery_page", sid=sid))
+    added, problems = 0, []
+    for upload in uploads:
+        session, error = discovery.add_note(sid, upload.filename,
+                                            upload.read(), by=g.me["stamp"])
+        if error:
+            problems.append(error)
+        else:
+            added += 1
+    # Each file reports for itself. Four attached and one over the cap is a
+    # useful thing to be told; one pass/fail over five files is not.
+    if added and problems:
+        flash(f"{added} attached. " + " ".join(problems), "error")
+    elif problems:
+        flash(" ".join(problems), "error")
+    else:
+        flash(f"{added} file{'' if added == 1 else 's'} attached to this call.",
+              "ok")
+    return redirect(url_for("discovery_page", sid=sid))
+
+
+@app.route("/discovery/<sid>/notes/<int:index>")
+def discovery_note_file(sid, index):
+    _discovery_or_404(sid)
+    path, name, error = discovery.note_file(sid, index)
+    if error:
+        flash(error, "error")
+        return redirect(url_for("discovery_page", sid=sid))
+    # as_attachment, always: whatever this is, it came from outside and is not
+    # being rendered by the browser on the app's own origin.
+    return send_file(path, as_attachment=True, download_name=name)
+
+
+@app.route("/discovery/<sid>/notes/<int:index>/delete", methods=["POST"])
+def discovery_remove_note(sid, index):
+    _discovery_or_404(sid)
+    call, error = discovery.remove_note(sid, index)
+    flash(error or "File removed from this call.", "error" if error else "ok")
     return redirect(url_for("discovery_page", sid=sid))
 
 

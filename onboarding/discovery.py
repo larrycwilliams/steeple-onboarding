@@ -53,6 +53,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from . import leads, store, terms
 from .schema import FIELDS_BY_KEY, slugify
@@ -291,6 +292,7 @@ def load(sid: str) -> dict | None:
         session.setdefault(field, "")
     session.setdefault("delivery_mode", "")
     session.setdefault("calls", [])
+    session.setdefault("notes", [])
     for call in session["calls"]:
         # Entries logged before the date picker kept free text in "when".
         call.setdefault("when_at", "")
@@ -687,6 +689,142 @@ def remove_call(sid: str, index: int) -> tuple[dict | None, str]:
         if not 0 <= index < len(calls):
             return None, "That call is not in the log."
         calls.pop(index)
+        return _write(session), ""
+
+
+# ---------------------------------------------------------------------------
+# Call notes: the transcript, kept as a blob
+#
+# Doc 26 listed this under "Still not built" and wrote the rule before the
+# feature existed: keep it a blob when it arrives, never parsed into fields,
+# and NEVER a source for a commercial term. `terms.json` is the source of
+# truth -- a transcript saying "we talked about thirty percent" is not a
+# negotiated margin, and doc 25 records what that costs in a live agreement.
+#
+# So files land here, are listed, downloaded and removed, and nothing in this
+# app ever reads their contents. They do not reach `writeup()` and they do not
+# reach the recommendation, for the same reason the meeting link does not: the
+# write-up gets pasted into emails and partner files, and a raw transcript is
+# somebody's unedited words about people who are not in the room.
+#
+# Stored OUTSIDE `leads/discovery/`, deliberately. `list_sessions()` globs
+# that folder, and `partners/_people.json` read as a tenth partner (doc 35) is
+# the same mistake one directory over. A sibling folder cannot be ambiguous.
+# Still under `leads/`, so the nightly backup already covers it.
+NOTES = ROOT / "leads" / "discovery_notes"
+
+NOTE_MAX_BYTES = 25 * 1024 * 1024
+NOTES_MAX = 20
+
+# What comes out of a call: a Meet or Gemini transcript, a Word write-up, a
+# photo of a legal pad, the recording itself. Deliberately NOT a list of good
+# formats -- it is a list of things that cannot execute. `.html` and `.svg`
+# are missing on purpose: nothing is worth serving active content off the
+# app's own origin for.
+NOTE_SUFFIXES = {".txt", ".md", ".rtf", ".pdf", ".docx", ".doc", ".odt",
+                 ".vtt", ".srt", ".csv", ".json", ".png", ".jpg", ".jpeg",
+                 ".heic", ".webp", ".m4a", ".mp3", ".wav", ".aac"}
+
+
+def notes_dir(sid: str) -> Path:
+    if not SESSION_ID.match(sid or ""):
+        raise ValueError(f"{sid!r} is not a discovery session id")
+    return NOTES / sid
+
+
+def size_label(count) -> str:
+    try:
+        count = int(count)
+    except (TypeError, ValueError):
+        return ""
+    if count >= 1024 * 1024:
+        return f"{count / (1024 * 1024):.1f} MB"
+    if count >= 1024:
+        return f"{round(count / 1024)} KB"
+    return f"{count} bytes"
+
+
+def add_note(sid: str, filename: str, data: bytes,
+             by: str = "") -> tuple[dict | None, str]:
+    """Attach one file to a call. (session, error).
+
+    The name on disk is generated and the uploaded name is kept only as a
+    label to show. That is what makes a filename containing a slash, a
+    dot-dot or a leading dash boring rather than interesting.
+    """
+    label = " ".join(
+        str(filename or "").replace("\\", "/").split("/")[-1].split())[:160]
+    if not label:
+        return None, "That file arrived without a name."
+    suffix = Path(label).suffix.lower()
+    if suffix not in NOTE_SUFFIXES:
+        return None, (f"{label}: {suffix or 'that kind of file'} is not one "
+                      "this keeps. Text, PDF, Word, VTT or SRT, an image, or "
+                      "an audio file.")
+    if not data:
+        return None, f"{label} is empty."
+    if len(data) > NOTE_MAX_BYTES:
+        return None, (f"{label} is {size_label(len(data))}; the cap is "
+                      f"{NOTE_MAX_BYTES // (1024 * 1024)} MB. Link it in the "
+                      "shared folder instead.")
+    with _locked(sid):
+        session = load(sid)
+        if session is None:
+            return None, "Those notes no longer exist."
+        notes = session.setdefault("notes", [])
+        if len(notes) >= NOTES_MAX:
+            return None, (f"That call already has {NOTES_MAX} files on it. "
+                          "Remove one first.")
+        stored = (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+                  + "-" + uuid4().hex[:8] + suffix)
+        folder = notes_dir(sid)
+        folder.mkdir(parents=True, exist_ok=True)
+        tmp = folder / (stored + ".tmp")
+        tmp.write_bytes(data)
+        # Same reason the session file is written this way: a reader never
+        # sees a half-written file.
+        os.replace(tmp, folder / stored)
+        notes.append({"stored": stored, "name": label, "bytes": len(data),
+                      "at": _now(), "by": str(by or "")[:120]})
+        return _write(session), ""
+
+
+def note_file(sid: str, index: int) -> tuple[Path | None, str, str]:
+    """(path, download name, error) for one attached file."""
+    session = load(sid)
+    if session is None:
+        return None, "", "Those notes no longer exist."
+    notes = session.get("notes") or []
+    if not 0 <= index < len(notes):
+        return None, "", "That file is not on this call."
+    entry = notes[index]
+    try:
+        path = notes_dir(sid) / str(entry.get("stored") or "")
+    except ValueError:
+        return None, "", "That file is not on this call."
+    if not path.is_file():
+        # Restored from a backup taken before the upload, most likely. Say so
+        # rather than 404 -- the row is the evidence something was there.
+        return None, "", (f"{entry.get('name') or 'That file'} is listed on "
+                          "this call but is not on disk.")
+    return path, (entry.get("name") or path.name), ""
+
+
+def remove_note(sid: str, index: int) -> tuple[dict | None, str]:
+    with _locked(sid):
+        session = load(sid)
+        if session is None:
+            return None, "Those notes no longer exist."
+        notes = session.setdefault("notes", [])
+        if not 0 <= index < len(notes):
+            return None, "That file is not on this call."
+        entry = notes.pop(index)
+        try:
+            (notes_dir(sid) / str(entry.get("stored") or "")).unlink()
+        except (OSError, ValueError):
+            # The listing losing the row is what was asked for. An orphaned
+            # blob on disk is tidier to leave than a row pointing at nothing.
+            pass
         return _write(session), ""
 
 
