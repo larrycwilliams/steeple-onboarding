@@ -130,30 +130,44 @@ def _knock_out(image: Image.Image, flat: Image.Image, sentinel) -> Image.Image:
     return Image.fromarray(rgba, "RGBA")
 
 
-# Measured against real marks: the GCS cardinal puts 10% of its pixels above
-# the contrast threshold on a near-black card (the red crest), while an all-black
-# silhouette puts 0%. 8% sits clear of both.
-LEGIBLE_SHARE = 0.08
+# How much of a mark may disappear into the card before it gets a plate.
+#
+# This used to ask the opposite question -- "does at least 8% of it show?" --
+# tuned on the GCS cardinal, which is mostly near-black body with a red crest
+# that reads perfectly well on its own. That test passes anything two-toned,
+# and on 15 Sep it passed Haven of Hope: the blue monogram and the blue word
+# HOPE cleared the bar on their own, so the mark went on unplated and the
+# black words HAVEN OF vanished into the card. The postcard said HOPE.
+#
+# "Some of it shows" is the wrong question for a wordmark, where the part that
+# disappears is the organisation's name. The question is how much is LOST.
+# Below 70% reading, it gets a plate -- including the cardinal, whose dark body
+# is equally invisible. A plate is a normal design choice; a printed postcard
+# missing half the partner's name is not recoverable.
+READS_SHARE = 0.70
 LEGIBLE_CONTRAST = 2.5
 
 
 def _logo_reads(logo: Image.Image, background) -> tuple[bool, tuple | None]:
     """Does enough of the mark contrast with the card to be seen?
 
-    Averaging the whole mark is the wrong test: a cardinal is mostly near-black
-    body with a red crest, and the mean says "invisible" while the crest reads
-    perfectly well. So this measures the *share* of visible pixels that clear a
-    contrast threshold, and only plates the logo when almost none of it does.
-    Returns (reads, mean_ink) -- the mean is used to choose a plate colour.
+    Averaging the whole mark is the wrong test -- a mean is dragged around by
+    whichever tone has more pixels. So this measures the *share* of visible
+    pixels that clear a contrast threshold against the card.
+
+    Returns (reads, mean_ink, share). The mean picks a plate colour; the share
+    is reported on the generate page, because a silent decision about a
+    partner's artwork is one only a human looking at the finished card can
+    catch -- which is exactly how the Haven of Hope card was caught.
     """
     import numpy as np
 
     data = np.asarray(logo, dtype=float)
     if data.ndim != 3 or data.shape[2] < 4:
-        return True, None
+        return True, None, None
     visible = data[data[..., 3] > 40][:, :3]
     if not len(visible):
-        return True, None
+        return True, None, None
 
     srgb = visible / 255
     lin = np.where(srgb <= 0.03928, srgb / 12.92, ((srgb + 0.055) / 1.055) ** 2.4)
@@ -166,6 +180,6 @@ def _logo_reads(logo: Image.Image, background) -> tuple[bool, tuple | None]:
 
     share = float((ratios >= LEGIBLE_CONTRAST).mean())
     mean_ink = tuple(int(v) for v in visible.mean(axis=0))
-    return share >= LEGIBLE_SHARE, mean_ink
+    return share >= READS_SHARE, mean_ink, share
 
 

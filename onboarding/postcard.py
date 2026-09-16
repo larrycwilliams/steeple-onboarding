@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .imaging import _contrast, _logo_reads, prepare_logo
+from .imaging import READS_SHARE, _contrast, _logo_reads, prepare_logo
 
 DPI = 300
 TRIM = (6.0, 4.0)
@@ -85,7 +85,16 @@ def place_logo(card: Image.Image, logo: Image.Image, xy, background, plate_colou
     Returns the vertical space consumed.
     """
     x, y = xy
-    reads, ink = _logo_reads(logo, background)
+    reads, ink, share = _logo_reads(logo, background)
+    # Reported on the generate page. Same idea as qr.make_qr.last_check: a
+    # decision the app makes about a partner's artwork should be visible
+    # without printing the card first.
+    place_logo.last_check = {
+        "plated": not (reads or ink is None),
+        "share": share,
+        "threshold": READS_SHARE,
+        "background": "#%02X%02X%02X" % tuple(background[:3]),
+    }
     if reads or ink is None:
         card.paste(logo, (x, y), logo)
         return logo.height
@@ -93,6 +102,7 @@ def place_logo(card: Image.Image, logo: Image.Image, xy, background, plate_colou
     # pick whichever plate the mark actually reads against
     candidates = [plate_colour, (255, 255, 255), (17, 22, 29)]
     plate = max(candidates, key=lambda c: _contrast(ink, c))
+    place_logo.last_check["plate"] = "#%02X%02X%02X" % tuple(plate[:3])
 
     pad = int(max(logo.width, logo.height) * 0.12)
     box_w, box_h = logo.width + pad * 2, logo.height + pad * 2

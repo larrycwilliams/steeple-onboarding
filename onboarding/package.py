@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from . import docx_pdf, merge, qr, store
+from . import postcard
 from .postcard import generate_postcards
 from .schema import derive
 
@@ -65,6 +66,12 @@ def build(record: dict, want_postcards: bool = True) -> dict:
 def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
            want_postcards: bool = True) -> dict:
     namer = store.make_namer(record)
+    # Both of these are attributes left on a function by the last build that
+    # ran, and a worker handles many partners in a row. Cleared here so a
+    # partner with no logo cannot inherit the previous partner's verdict --
+    # the manifest would report it as this partner's, and be believed.
+    qr.make_qr.last_check = None
+    postcard.place_logo.last_check = None
     # Not record["logo_path"] directly: see store.resolve_logo -- a stale
     # absolute path silently costs you the branded QR and the postcard mark.
     logo = store.resolve_logo(record)
@@ -168,6 +175,7 @@ def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
         "qr_target": ctx["qr_target"],
         "redirect": {"from": redirect_from, "to": redirect_to},
         "qr_check": getattr(qr.make_qr, "last_check", None),
+        "logo_check": getattr(postcard.place_logo, "last_check", None),
         "agreement_template_version": ctx.get("template_version", ""),
         "incomplete": store.readiness(record),
         "pdf_fonts": pdf_fonts,
