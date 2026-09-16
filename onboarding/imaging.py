@@ -130,56 +130,106 @@ def _knock_out(image: Image.Image, flat: Image.Image, sentinel) -> Image.Image:
     return Image.fromarray(rgba, "RGBA")
 
 
-# How much of a mark may disappear into the card before it gets a plate.
+# Whether a mark survives being put on the card, and how that is judged.
 #
-# This used to ask the opposite question -- "does at least 8% of it show?" --
-# tuned on the GCS cardinal, which is mostly near-black body with a red crest
-# that reads perfectly well on its own. That test passes anything two-toned,
-# and on 15 Sep it passed Haven of Hope: the blue monogram and the blue word
-# HOPE cleared the bar on their own, so the mark went on unplated and the
-# black words HAVEN OF vanished into the card. The postcard said HOPE.
+# Three tests have stood here. The first asked whether at least 8% of the mark
+# cleared a contrast threshold -- tuned on the GCS cardinal, whose red crest
+# reads on its own. Any two-toned artwork passes that, and Haven of Hope's did.
 #
-# "Some of it shows" is the wrong question for a wordmark, where the part that
-# disappears is the organisation's name. The question is how much is LOST.
-# Below 70% reading, it gets a plate -- including the cardinal, whose dark body
-# is equally invisible. A plate is a normal design choice; a printed postcard
-# missing half the partner's name is not recoverable.
-READS_SHARE = 0.70
+# The second asked whether at least 70% of it reads. Better, and still wrong,
+# because a share of PIXELS is not a share of meaning: the words HAVEN OF are
+# thin black type next to a fat blue monogram and a fat blue HOPE, so they can
+# be most of what the mark SAYS while being a small minority of what it is
+# made of. Tuning that number further is how you end up plating marks that
+# were fine.
+#
+# The third, here, asks both -- and the second question is the one that
+# matters. Grid the mark and look for a REGION that has ink in it and almost
+# nothing readable. That is what "part of the logo vanished" actually looks
+# like, and it does not care whether the missing part is large. A thin dark
+# outline running through the whole mark shares its cells with readable ink
+# and correctly does not trigger it.
+READS_SHARE = 0.70          # of the whole mark, by pixel
 LEGIBLE_CONTRAST = 2.5
+GRID = (8, 4)               # columns, rows, over the mark's bounding box
+CELL_INK_SHARE = 0.01       # a cell holding less ink than this is not a region
+CELL_READS_SHARE = 0.20     # a region below this has effectively disappeared
 
 
-def _logo_reads(logo: Image.Image, background) -> tuple[bool, tuple | None]:
-    """Does enough of the mark contrast with the card to be seen?
+def _logo_reads(logo: Image.Image, background) -> tuple[bool, tuple | None, dict | None]:
+    """Does the mark survive this background? (reads, mean_ink, detail).
 
-    Averaging the whole mark is the wrong test -- a mean is dragged around by
-    whichever tone has more pixels. So this measures the *share* of visible
-    pixels that clear a contrast threshold against the card.
-
-    Returns (reads, mean_ink, share). The mean picks a plate colour; the share
-    is reported on the generate page, because a silent decision about a
-    partner's artwork is one only a human looking at the finished card can
-    catch -- which is exactly how the Haven of Hope card was caught.
+    `mean_ink` picks a plate colour. `detail` carries the measurements and the
+    reason, which the generate page prints -- a silent decision about a
+    partner's artwork can only be caught by a human looking at a finished
+    card, and that is exactly how the Haven of Hope postcard was caught.
     """
     import numpy as np
 
     data = np.asarray(logo, dtype=float)
     if data.ndim != 3 or data.shape[2] < 4:
         return True, None, None
-    visible = data[data[..., 3] > 40][:, :3]
-    if not len(visible):
+    visible = data[..., 3] > 40
+    total = int(visible.sum())
+    if not total:
         return True, None, None
 
-    srgb = visible / 255
+    srgb = data[..., :3] / 255
     lin = np.where(srgb <= 0.03928, srgb / 12.92, ((srgb + 0.055) / 1.055) ** 2.4)
-    lum = 0.2126 * lin[:, 0] + 0.7152 * lin[:, 1] + 0.0722 * lin[:, 2]
-
+    lum = 0.2126 * lin[..., 0] + 0.7152 * lin[..., 1] + 0.0722 * lin[..., 2]
     bg = _relative_luminance(background)
-    high = np.maximum(lum, bg)
-    low = np.minimum(lum, bg)
-    ratios = (high + 0.05) / (low + 0.05)
+    ratios = (np.maximum(lum, bg) + 0.05) / (np.minimum(lum, bg) + 0.05)
+    readable = visible & (ratios >= LEGIBLE_CONTRAST)
 
-    share = float((ratios >= LEGIBLE_CONTRAST).mean())
-    mean_ink = tuple(int(v) for v in visible.mean(axis=0))
-    return share >= READS_SHARE, mean_ink, share
+    share = float(readable.sum()) / total
+    mean_ink = tuple(int(v) for v in data[visible][:, :3].mean(axis=0))
+
+    worst = _worst_region(visible, readable, total)
+    detail = {
+        "share": share,
+        "worst_region": worst,
+        "threshold": READS_SHARE,
+        "region_threshold": CELL_READS_SHARE,
+        "background": "#%02X%02X%02X" % tuple(int(c) for c in background[:3]),
+    }
+    if share < READS_SHARE:
+        detail["reason"] = "less than %d%% of the mark reads against the card" % (
+            READS_SHARE * 100)
+        return False, mean_ink, detail
+    if worst is not None and worst < CELL_READS_SHARE:
+        detail["reason"] = "a whole part of the mark disappears into the card"
+        return False, mean_ink, detail
+    detail["reason"] = ""
+    return True, mean_ink, detail
+
+
+def _worst_region(visible, readable, total) -> float | None:
+    """The least readable patch of the mark that actually holds ink.
+
+    Bounding box, not the whole canvas: a mark sitting in one corner of a
+    padded PNG would otherwise be measured mostly against empty space.
+    """
+    import numpy as np
+
+    ys, xs = np.nonzero(visible)
+    y0, y1 = int(ys.min()), int(ys.max()) + 1
+    x0, x1 = int(xs.min()), int(xs.max()) + 1
+    cols, rows = GRID
+    worst = None
+    for r in range(rows):
+        cy0 = y0 + (y1 - y0) * r // rows
+        cy1 = y0 + (y1 - y0) * (r + 1) // rows
+        for c in range(cols):
+            cx0 = x0 + (x1 - x0) * c // cols
+            cx1 = x0 + (x1 - x0) * (c + 1) // cols
+            cell = visible[cy0:cy1, cx0:cx1]
+            ink = int(cell.sum())
+            if ink < total * CELL_INK_SHARE:
+                continue
+            here = float(readable[cy0:cy1, cx0:cx1].sum()) / ink
+            if worst is None or here < worst:
+                worst = here
+    return worst
+
 
 

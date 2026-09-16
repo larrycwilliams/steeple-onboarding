@@ -31,22 +31,27 @@
         </dd>
       {% endif %}
       {% if manifest.logo_check %}
+        {% set lc = manifest.logo_check %}
         <dt>Logo on the postcard</dt>
         <dd>
-          {% set lc = manifest.logo_check %}
-          {% if lc.share is not none %}{{ (lc.share * 100)|round|int }}% of the mark
-            reads against {{ lc.background }}{% else %}contrast not measurable{% endif %} —
+          {% if lc.share is defined and lc.share is not none %}
+            {{ (lc.share * 100)|round|int }}% of the mark reads against
+            {{ lc.background }}{% if lc.worst_region is not none %}, faintest
+            patch {{ (lc.worst_region * 100)|round|int }}%{% endif %} —
+          {% endif %}
           {% if lc.plated %}
-            <strong>set on a {{ lc.plate }} plate</strong> so the parts that would
-            vanish still show
+            <strong>set on a {{ lc.plate }} plate</strong>{% if lc.reason %}
+            because {{ lc.reason }}{% endif %}
           {% else %}
             placed as supplied, no plate
           {% endif %}
-          {% if lc.share is not none and lc.share < 0.95 %}
-          <div class="help">Anything below {{ (lc.threshold * 100)|round|int }}% gets a
-            plate. If the mark still looks wrong on the card, the partner almost
-            certainly has a reversed version for dark backgrounds — that is the
-            better fix than either option here.</div>
+          {% if lc.worst_region is not none and lc.worst_region < 0.5 %}
+          <div class="help">
+            {% if lc.plated %}A plate is the fallback, not the good answer.{% endif %}
+            Part of this mark is close to invisible on a dark card — the partner
+            almost certainly has a reversed version for dark backgrounds, and
+            that reads 100% and needs no plate. Ask for it.
+          </div>
           {% endif %}
         </dd>
       {% endif %}
