@@ -150,9 +150,14 @@ def resolve_logo(record: dict) -> str:
         if same_name.exists():
             return str(same_name)
 
+    # Raster only. `.svg` used to be in this list and PIL cannot open one, so
+    # a partner whose folder held only an SVG would have taken the fallback
+    # and then raised inside the branded QR -- failing the whole build over an
+    # artwork file. Vector uploads are rendered to a PNG sibling on the way in
+    # (onboarding/vector_logo.py), so there is always a raster to find.
     images = sorted(
         path for path in folder.iterdir()
-        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".svg"}
+        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
     )
     return str(images[0]) if images else ""
 

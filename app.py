@@ -31,6 +31,7 @@ from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
 
 from onboarding import dashboard, discovery, discovery_reply, leads, mail_draft, package, library, reconcile, terms
+from onboarding import vector_logo
 from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
 from onboarding import recommendation, storefront, traveler
@@ -47,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.43"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.44"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -190,6 +191,24 @@ def _form_to_record(form, files, existing: dict | None = None) -> dict:
         dest = store.asset_dir(pid) / Path(upload.filename).name
         upload.save(dest)
         record["logo_path"] = str(dest)
+        if vector_logo.is_vector(dest):
+            # The original stays: a vector master is worth having the day
+            # somebody needs the mark at a size no raster will survive, and
+            # everything downstream wants pixels.
+            png = dest.with_suffix(".png")
+            result = vector_logo.rasterise(dest, png)
+            if result["ok"]:
+                record["logo_path"] = str(png)
+                record["logo_source"] = str(dest)
+                width, height = result["size"]
+                normalized_notes.append(
+                    f"{dest.name} rendered to {png.name} at {width}x{height}, "
+                    "trimmed, with transparency. The original is kept.")
+            else:
+                # Keep the upload and say why it is not usable yet, rather
+                # than refusing the whole save over an artwork file.
+                normalized_notes.append(f"{dest.name}: {result['error']}")
+    record["_normalized"] = normalized_notes
     return record
 
 

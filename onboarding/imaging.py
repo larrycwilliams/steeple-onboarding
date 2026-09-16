@@ -151,9 +151,16 @@ def _knock_out(image: Image.Image, flat: Image.Image, sentinel) -> Image.Image:
 # and correctly does not trigger it.
 READS_SHARE = 0.70          # of the whole mark, by pixel
 LEGIBLE_CONTRAST = 2.5
-GRID = (8, 4)               # columns, rows, over the mark's bounding box
-CELL_INK_SHARE = 0.01       # a cell holding less ink than this is not a region
+GRID = (12, 8)              # columns, rows, over the mark's bounding box
+CELL_FILL = 0.03            # ink over this share of a CELL makes it a region
 CELL_READS_SHARE = 0.20     # a region below this has effectively disappeared
+LOST_INK_SHARE = 0.005      # and the vanished ink has to amount to something
+
+# A cell qualifies on how much of ITSELF it fills, not on its share of the
+# whole mark. That distinction is the difference between catching this and
+# not: thin type is a tiny fraction of a mark whose other elements are fat, so
+# measuring it against the total silently excluded exactly the case the test
+# exists for. Measured against its own cell, a line of text is plainly ink.
 
 
 def _logo_reads(logo: Image.Image, background) -> tuple[bool, tuple | None, dict | None]:
@@ -184,7 +191,8 @@ def _logo_reads(logo: Image.Image, background) -> tuple[bool, tuple | None, dict
     share = float(readable.sum()) / total
     mean_ink = tuple(int(v) for v in data[visible][:, :3].mean(axis=0))
 
-    worst = _worst_region(visible, readable, total)
+    lost = float((visible & ~readable).sum()) / total
+    worst = _worst_region(visible, readable)
     detail = {
         "share": share,
         "worst_region": worst,
@@ -196,14 +204,14 @@ def _logo_reads(logo: Image.Image, background) -> tuple[bool, tuple | None, dict
         detail["reason"] = "less than %d%% of the mark reads against the card" % (
             READS_SHARE * 100)
         return False, mean_ink, detail
-    if worst is not None and worst < CELL_READS_SHARE:
+    if worst is not None and worst < CELL_READS_SHARE and lost >= LOST_INK_SHARE:
         detail["reason"] = "a whole part of the mark disappears into the card"
         return False, mean_ink, detail
     detail["reason"] = ""
     return True, mean_ink, detail
 
 
-def _worst_region(visible, readable, total) -> float | None:
+def _worst_region(visible, readable) -> float | None:
     """The least readable patch of the mark that actually holds ink.
 
     Bounding box, not the whole canvas: a mark sitting in one corner of a
@@ -224,7 +232,7 @@ def _worst_region(visible, readable, total) -> float | None:
             cx1 = x0 + (x1 - x0) * (c + 1) // cols
             cell = visible[cy0:cy1, cx0:cx1]
             ink = int(cell.sum())
-            if ink < total * CELL_INK_SHARE:
+            if not cell.size or ink < cell.size * CELL_FILL:
                 continue
             here = float(readable[cy0:cy1, cx0:cx1].sum()) / ink
             if worst is None or here < worst:

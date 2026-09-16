@@ -29,10 +29,19 @@
         {% elif f.kind == 'date' %}
           <input type="date" id="{{ f.key }}" name="{{ f.key }}" value="{{ record.get(f.key, '') }}">
         {% elif f.kind == 'file' %}
-          <input type="file" id="logo_file" name="logo_file" accept="image/*">
+          <input type="file" id="logo_file" name="logo_file"
+                 accept="image/*,.pdf,.ai,.eps,.svg,application/pdf">
           {% if record.get('logo_path') %}
-            <div class="help">Current: {{ record.logo_path.split('/')[-1] }}</div>
+            <div class="help">Current: {{ record.logo_path.split('/')[-1] }}{%
+              if record.get('logo_source') %} — rendered from
+              {{ record.logo_source.split('/')[-1] }}, which is kept{% endif %}</div>
           {% endif %}
+          <div class="help">A PDF, AI, EPS or SVG is rendered here at print
+            resolution with transparency, and the original is kept — that is a
+            better mark than one converted by hand somewhere else. <strong>If
+            the church has a reversed (white) version for dark backgrounds, use
+            that one:</strong> the postcard is dark, and a mark built for white
+            paper loses whatever part of it is black.</div>
         {% else %}
           <input type="text" id="{{ f.key }}" name="{{ f.key }}"
                  value="{{ record.get(f.key, '') }}" placeholder="{{ f.placeholder }}">

@@ -2,3 +2,9 @@
 # If this will not install, the app still generates codes — they just are not
 # machine-verified, so scan-test by hand.
 opencv-python-headless>=4.9
+
+# Not required. Lets the app take a logo as a PDF or .ai and render it here at
+# print resolution with transparency, instead of somebody converting it by
+# hand first -- which is where Haven of Hope's mark lost its quality, doc 39.
+# Without it, PDF uploads are kept but not usable and the form says so.
+pymupdf>=1.24

@@ -102,6 +102,13 @@ def check_packages() -> None:
         add("WARN", "opencv", "not installed — QR codes still generate, but "
                               "scan-test them by hand")
 
+    try:
+        importlib.import_module("pymupdf")
+        add("OK", "pymupdf", "logos can be uploaded as PDF or .ai")
+    except ImportError:
+        add("WARN", "pymupdf", "not installed — a PDF logo is kept but cannot "
+                               "be rendered, so upload a transparent PNG")
+
 
 def check_pdf_engine() -> None:
     try:
