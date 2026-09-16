@@ -31,7 +31,7 @@ from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
 
 from onboarding import dashboard, discovery, discovery_reply, leads, mail_draft, package, library, reconcile, terms
-from onboarding import vector_logo
+from onboarding import readiness, vector_logo
 from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
 from onboarding import recommendation, storefront, traveler
@@ -48,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.46"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.47"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -1221,6 +1221,31 @@ def _dashboard_context(refresh: bool = False) -> dict:
         "ready_to_connect": all(env_secrets.app_credentials().values())
                             and bool(env_secrets.store_domain()),
     }
+
+
+@app.route("/readiness")
+def readiness_page():
+    """Is each partner actually ready to launch? Every check, one screen.
+
+    Slower than the other pages by design -- it asks Shopify. One request for
+    every partner rather than one each, so the cost is a round trip, not nine.
+    """
+    partners = store.list_partners()
+    assessed = readiness.assess_all(partners)
+    snapshot_error = ""
+    for entry in assessed:
+        for finding in entry["findings"]:
+            if finding["check"] == "shopify":
+                snapshot_error = finding["detail"]
+    return render_template(
+        "readiness.html",
+        partners=sorted(assessed, key=lambda p: ({"fail": 0, "warn": 1, "ok": 2}[p["level"]],
+                                                 p["name"].lower())),
+        sections=readiness.SECTIONS,
+        error=snapshot_error,
+        blocked=[p for p in assessed if p["level"] == "fail"],
+        warned=[p for p in assessed if p["level"] == "warn"],
+        clean=[p for p in assessed if p["level"] == "ok"])
 
 
 @app.route("/dashboard")

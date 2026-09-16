@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Readiness{% endblock %}
+{% block content %}
+
+{# One screen answering the question every other screen answers a fifth of.
+
+   On 15 Sep a partner's postcards were printed against a storefront with no
+   vendor rule, a reversed redirect and no products, and a logo that vanished
+   into the card. Each of those was already detectable; the checks were just in
+   five different places, four of them command-line tools nobody remembers to
+   run. See onboarding/readiness.py. #}
+
+<h2>Ready to launch</h2>
+
+<div class="card" style="margin-bottom:22px">
+  <div class="rd-summary">
+    <span class="rd-pill rd-fail">{{ blocked|length }}</span> blocked
+    <span class="rd-pill rd-warn">{{ warned|length }}</span> worth a look
+    <span class="rd-pill rd-ok">{{ clean|length }}</span> clean
+    <span class="help" style="margin-left:auto">
+      {% if error %}<strong style="color:var(--bad)">{{ error }}</strong>
+      {% else %}Checked against Shopify just now, in one request.{% endif %}
+    </span>
+  </div>
+  <p class="help" style="margin-top:12px;margin-bottom:0">
+    <strong>Blocked</strong> means something would go out wrong — a dead QR
+    code, a document built from empty fields, sales attributed to the wrong
+    partner. <strong>Worth a look</strong> is something to know rather than
+    something to stop for.
+  </p>
+</div>
+
+{% for partner in partners %}
+<div class="card rd-partner rd-{{ partner.level }}">
+  <div class="rd-head">
+    <h3 style="margin:0">{{ partner.name }}</h3>
+    <span class="rd-pill rd-{{ partner.level }}">
+      {%- if partner.level == 'fail' %}{{ partner.counts.fail }} blocking
+      {%- elif partner.level == 'warn' %}{{ partner.counts.warn }} to look at
+      {%- else %}ready{% endif -%}
+    </span>
+    <div class="rd-acts">
+      <a class="btn btn-quiet" href="{{ url_for('edit_partner', pid=partner.pid) }}">Open</a>
+      <a class="btn btn-quiet" href="{{ url_for('generate', pid=partner.pid) }}">Generate</a>
+    </div>
+  </div>
+
+  {% for section in sections %}
+    {% set rows = partner.findings | selectattr('section', 'equalto', section) | list %}
+    {% if rows %}
+    <div class="rd-section">
+      <div class="rd-sectionname">{{ section }}</div>
+      <ul class="rd-rows">
+        {% for row in rows %}
+        <li class="rd-{{ row.level }}">
+          <span class="rd-dot" aria-hidden="true"></span>
+          <span class="rd-check">{{ row.check }}</span>
+          <span class="rd-detail">{{ row.detail }}{% if row.fix %}
+            <span class="rd-fix">{{ row.fix }}</span>{% endif %}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><p class="help" style="margin:0">No partner records yet.</p></div>
+{% endfor %}
+
+<style>
+  .rd-summary{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+  .rd-pill{display:inline-block;min-width:22px;padding:2px 9px;border-radius:99px;
+    font:700 12px/1.6 inherit;text-align:center}
+  .rd-pill.rd-ok{background:#E4EFE4;color:#2F6B3A}
+  .rd-pill.rd-warn{background:#FBF1DE;color:#8C6B2C}
+  .rd-pill.rd-fail{background:#FBF1EE;color:#B4472F}
+  .rd-partner{border-left:4px solid #E2DDD2}
+  .rd-partner.rd-fail{border-left-color:#B4472F}
+  .rd-partner.rd-warn{border-left-color:#C8A44D}
+  .rd-partner.rd-ok{border-left-color:#4E8C5A}
+  .rd-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .rd-acts{margin-left:auto;display:flex;gap:8px}
+  .rd-section{margin-top:10px}
+  .rd-sectionname{font:700 11px/1 inherit;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:6px}
+  .rd-rows{list-style:none;margin:0 0 12px;padding:0}
+  .rd-rows li{display:grid;grid-template-columns:14px 118px 1fr;gap:10px;
+    align-items:baseline;padding:4px 0;font-size:14px}
+  .rd-dot{width:8px;height:8px;border-radius:50%;background:#4E8C5A;
+    display:inline-block;transform:translateY(-1px)}
+  .rd-rows li.rd-warn .rd-dot{background:#C8A44D}
+  .rd-rows li.rd-fail .rd-dot{background:#B4472F}
+  .rd-check{color:var(--muted)}
+  .rd-rows li.rd-fail .rd-check{color:#B4472F;font-weight:600}
+  .rd-fix{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+  @media (max-width:699px){
+    .rd-rows li{grid-template-columns:14px 1fr}
+    .rd-check{grid-column:2;font-weight:600}
+    .rd-detail{grid-column:2}
+    .rd-acts{margin-left:0;width:100%}
+  }
+</style>
+{% endblock %}
