@@ -77,17 +77,36 @@ def _best_branded(qr, scale, logo_path, dark, accent, url):
 
     Starts at the nicest-looking size and steps down only if the decode fails,
     so the mark is as big as it can safely be rather than as small as is safe.
+
+    The two expensive things are now done ONCE, outside the loop: preparing the
+    logo (a flood fill over the mark at full resolution) and rendering the code
+    itself. Both are identical on every pass -- only the size the mark is
+    pasted at changes -- so doing them per step multiplied the cost of a
+    branded QR by four for no difference in the result. On Haven of Hope's
+    package that was most of a four-and-a-half minute build, against a
+    five-minute worker timeout.
     """
+    logo = prepare_logo(logo_path)
+    base = _render_code(qr, scale, dark)
     fallback = None
     for fraction in LOGO_RETRY_STEPS:
-        image = _with_logo(qr, scale, logo_path, dark, accent, fraction)
+        image = _with_logo(base, logo, accent, fraction)
         result = verify_scannable(image, url)
-        if result is None:            # no OpenCV — accept the default size
+        if result is None:            # no OpenCV -- accept the default size
             return image, fraction, None
         if result:
             return image, fraction, True
         fallback = fallback or image
     return fallback, LOGO_RETRY_STEPS[-1], False
+
+
+def _render_code(qr: segno.QRCode, scale: int, dark: str) -> Image.Image:
+    """The bare code as an RGBA image, ready to be composited onto."""
+    buf = BytesIO()
+    qr.save(buf, kind="png", scale=scale, border=QUIET_ZONE_MODULES,
+            dark=dark, light="#FFFFFF")
+    buf.seek(0)
+    return Image.open(buf).convert("RGBA")
 
 
 def _rgb(value: str) -> tuple[int, int, int]:
@@ -97,25 +116,27 @@ def _rgb(value: str) -> tuple[int, int, int]:
     return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))
 
 
-def _with_logo(qr: segno.QRCode, scale: int, logo_path: str, dark: str,
-               accent: str | None = None, fraction: float = LOGO_FRACTION) -> Image.Image:
+def _with_logo(base: Image.Image, logo: Image.Image,
+               accent: str | None = None,
+               fraction: float = LOGO_FRACTION) -> Image.Image:
     """Drop the partner's mark into the centre on a framed white plate.
 
     The white plate is what keeps the code readable: it gives the scanner a
     clean quiet area around the mark instead of logo pixels bleeding into
     modules. The accent ring is cosmetic and sits outside that plate.
-    """
-    buf = BytesIO()
-    qr.save(buf, kind="png", scale=scale, border=QUIET_ZONE_MODULES, dark=dark, light="#FFFFFF")
-    buf.seek(0)
-    code = Image.open(buf).convert("RGBA")
 
+    Takes the rendered code and the PREPARED logo rather than a path and a
+    segno object, because `_best_branded` calls this once per retry step and
+    both of those are identical every time. `base` is left untouched -- this
+    composites onto a copy -- so the caller can pass the same one in again.
+    """
+    code = base.copy()
     width, height = code.size
     box = int(width * fraction)
 
-    # Same preparation as the postcards: a white-boxed logo would otherwise
-    # paste a white square over the centre of the code.
-    logo = prepare_logo(logo_path)
+    # Same preparation as the postcards; already done by the caller. Thumbnail
+    # a copy, because thumbnail mutates and the caller reuses this mark.
+    logo = logo.copy()
     logo.thumbnail((box, box), Image.LANCZOS)
 
     pad = int(box * 0.16)

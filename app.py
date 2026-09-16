@@ -45,7 +45,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.39"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.40"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -283,7 +283,17 @@ def generate(pid):
     record = store.load(pid)
     if record is None:
         abort(404)
-    manifest = package.build(record)
+    try:
+        manifest = package.build(record)
+    except package.BuildInProgress:
+        # Two workers, one output folder. Before this, a reload part way
+        # through a slow build started a second run writing the same
+        # filenames as the first -- see doc 38.
+        flash("A package for this partner is already being built. It takes a "
+              "couple of minutes; leave the first tab alone and it will "
+              "finish on its own. Starting a second run would have both of "
+              "them writing the same files.", "error")
+        return redirect(url_for("edit_partner", pid=pid))
     return render_template("generated.html", manifest=manifest, record=record)
 
 

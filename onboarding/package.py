@@ -1,8 +1,10 @@
 """Full onboarding package build: QR, postcards, four documents, redirect row."""
 from __future__ import annotations
 
+import fcntl
 import json
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import docx_pdf, merge, qr, store
@@ -10,11 +12,58 @@ from .postcard import generate_postcards
 from .schema import derive
 
 
+class BuildInProgress(RuntimeError):
+    """A build for this partner is already running somewhere else."""
+
+
+@contextmanager
+def _only_one(out_dir: Path, pid: str):
+    """Refuse a second concurrent build into the same output folder.
+
+    A full package takes minutes, the button gives no sign of it, and gunicorn
+    runs two workers -- so a reload part way through starts a SECOND build
+    writing the same filenames into the same directory as the first. That
+    happened on Haven of Hope on 15 Sep: the QR timestamps are minutes apart
+    from everything else, which only makes sense as two overlapping runs. The
+    files survived it. A .docx written by two processes at once does not have
+    to.
+
+    Non-blocking on purpose. Queueing would tie up the other worker for the
+    length of the first build and take the whole app down with it -- exactly
+    what it looked like was happening. Refusing costs nothing and lets the
+    caller say something true.
+    """
+    lock_path = out_dir / ".build.lock"
+    handle = open(lock_path, "w")
+    try:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise BuildInProgress(pid) from None
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+    finally:
+        handle.close()
+
+
 def build(record: dict, want_postcards: bool = True) -> dict:
-    """Generate everything for one partner. Returns a manifest."""
+    """Generate everything for one partner. Returns a manifest.
+
+    Raises BuildInProgress if another build for this partner is already
+    running. Callers that are not a web request -- regenerate_all.py, the
+    tools -- run one partner at a time and will never see it.
+    """
     ctx = derive(record)
     pid = store.partner_id(record)
     out_dir = store.output_dir(record)
+    with _only_one(out_dir, pid):
+        return _build(record, ctx, pid, out_dir, want_postcards)
+
+
+def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
+           want_postcards: bool = True) -> dict:
     namer = store.make_namer(record)
     # Not record["logo_path"] directly: see store.resolve_logo -- a stale
     # absolute path silently costs you the branded QR and the postcard mark.

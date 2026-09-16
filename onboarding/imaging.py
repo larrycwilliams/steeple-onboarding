@@ -6,6 +6,7 @@ them usable without altering the mark itself.
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -31,6 +32,33 @@ def _contrast(a, b) -> float:
 
 
 def prepare_logo(path: str | Path) -> Image.Image:
+    """Cached front door to `_prepare_logo`. Returns a COPY every time.
+
+    One package build asks for the same mark repeatedly -- the branded QR, the
+    postcard front, the postcard back -- and each ask used to redo the flood
+    fill from scratch. The cache is keyed on the file's size and mtime, so a
+    partner replacing their logo invalidates it without anything having to
+    remember to.
+
+    The copy is not optional: every caller thumbnails what it gets back, and
+    `Image.thumbnail` mutates in place. Handing out the cached object would
+    mean the second caller received the first one's 300px version.
+    """
+    path = Path(path)
+    try:
+        stat = path.stat()
+        stamp = (stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        return _prepare_logo(str(path))
+    return _prepared(str(path), stamp).copy()
+
+
+@lru_cache(maxsize=8)
+def _prepared(path: str, stamp: tuple) -> Image.Image:
+    return _prepare_logo(path)
+
+
+def _prepare_logo(path: str | Path) -> Image.Image:
     """Load a logo and drop a solid white background if it has one.
 
     Partners send marks both ways: PNGs with real transparency, and flattened
@@ -63,15 +91,39 @@ def prepare_logo(path: str | Path) -> Image.Image:
         except Exception:
             continue
 
+    return _knock_out(image, flat, SENTINEL)
+
+
+def _knock_out(image: Image.Image, flat: Image.Image, sentinel) -> Image.Image:
+    """Zero the alpha wherever the flood fill painted the sentinel.
+
+    This was a per-pixel Python loop over the logo at FULL resolution -- four
+    million iterations on a 2000px mark. `_best_branded` in qr.py then called
+    `prepare_logo` once per retry step, so it ran up to four times for one
+    partner, and the postcards ran it again. That is where four and a half
+    minutes of Haven of Hope's package went on 15 Sep, forty seconds short of
+    the gunicorn timeout killing a worker mid-write.
+
+    Same result, as one array comparison. The loop stays as the fallback so
+    this cannot become the reason a package fails to build.
+    """
     knocked = image.copy()
-    pixels = knocked.load()
-    source = flat.load()
-    for y in range(knocked.height):
-        for x in range(knocked.width):
-            if source[x, y] == SENTINEL:
-                r, g, b, _ = pixels[x, y]
-                pixels[x, y] = (r, g, b, 0)
-    return knocked
+    try:
+        import numpy as np
+    except ImportError:
+        pixels = knocked.load()
+        source = flat.load()
+        for y in range(knocked.height):
+            for x in range(knocked.width):
+                if source[x, y] == sentinel:
+                    r, g, b, _ = pixels[x, y]
+                    pixels[x, y] = (r, g, b, 0)
+        return knocked
+
+    mask = (np.asarray(flat) == np.asarray(sentinel, dtype="uint8")).all(axis=2)
+    rgba = np.array(knocked)
+    rgba[mask, 3] = 0
+    return Image.fromarray(rgba, "RGBA")
 
 
 # Measured against real marks: the GCS cardinal puts 10% of its pixels above
