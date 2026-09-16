@@ -1,8 +1,10 @@
 """Full onboarding package build: QR, postcards, four documents, redirect row."""
 from __future__ import annotations
 
+import datetime as _dt
 import fcntl
 import json
+import os
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -49,7 +51,70 @@ def _only_one(out_dir: Path, pid: str):
         handle.close()
 
 
-def build(record: dict, want_postcards: bool = True) -> dict:
+PROGRESS_NAME = ".build.progress.json"
+
+# The steps the page counts through. Kept here rather than in the template so
+# the bar and the build cannot disagree about how many there are.
+STEPS = ["Branded QR code", "Postcards", "Documents",
+         "Signable agreement PDF", "Launch Week Kit PDF", "Redirect row",
+         "Manifest and zip"]
+
+
+def progress_path(out_dir: Path) -> Path:
+    return Path(out_dir) / PROGRESS_NAME
+
+
+def read_progress(out_dir: Path) -> dict | None:
+    """What the build is doing, readable from ANY worker.
+
+    A file rather than a variable on purpose. Gunicorn runs two workers; the
+    thread doing the build lives in one of them, and the browser polling for
+    progress lands on whichever is free. In-process state would report
+    "nothing running" half the time, at random.
+    """
+    try:
+        return json.loads(progress_path(out_dir).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def write_progress(out_dir: Path, **fields) -> None:
+    data = read_progress(out_dir) or {}
+    data.update(fields)
+    data["at"] = _dt.datetime.now().isoformat(timespec="seconds")
+    tmp = progress_path(out_dir).with_suffix(".json.tmp")
+    try:
+        tmp.write_text(json.dumps(data))
+        os.replace(tmp, progress_path(out_dir))
+    except OSError:
+        pass          # progress is a nicety; never fail a build over it
+
+
+def build_running(out_dir: Path) -> bool:
+    """Is a build actually running for this partner, right now?
+
+    Asks the LOCK, not the progress file. A build killed part way through --
+    a worker recycled, the hub restarted -- leaves a progress file that says
+    "running" for ever, and trusting it would mean the generate button never
+    worked again for that partner. The lock is released by the operating
+    system when the process holding it goes away, whatever killed it.
+    """
+    lock_path = Path(out_dir) / ".build.lock"
+    if not lock_path.exists():
+        return False
+    try:
+        with open(lock_path, "r+") as handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return True
+            fcntl.flock(handle, fcntl.LOCK_UN)
+    except OSError:
+        return False
+    return False
+
+
+def build(record: dict, want_postcards: bool = True, progress=None) -> dict:
     """Generate everything for one partner. Returns a manifest.
 
     Raises BuildInProgress if another build for this partner is already
@@ -60,11 +125,15 @@ def build(record: dict, want_postcards: bool = True) -> dict:
     pid = store.partner_id(record)
     out_dir = store.output_dir(record)
     with _only_one(out_dir, pid):
-        return _build(record, ctx, pid, out_dir, want_postcards)
+        return _build(record, ctx, pid, out_dir, want_postcards, progress)
 
 
 def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
-           want_postcards: bool = True) -> dict:
+           want_postcards: bool = True, progress=None) -> dict:
+    def step(label: str) -> None:
+        if progress:
+            progress(label)
+
     namer = store.make_namer(record)
     # Both of these are attributes left on a function by the last build that
     # ran, and a worker handles many partners in a row. Cleared here so a
@@ -79,6 +148,7 @@ def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
     files: dict[str, str] = {}
     pdf_fonts: dict[str, str] = {}
 
+    step("Branded QR code")
     qr_files = qr.make_qr(
         ctx["qr_target"],
         out_dir,
@@ -90,6 +160,7 @@ def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
     files.update(qr_files)
     qr_for_print = qr_files.get("QR branded print") or qr_files.get("QR print hi-res")
 
+    step("Postcards")
     postcard_files: dict[str, str] = {}
     if want_postcards:
         try:
@@ -112,10 +183,12 @@ def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
         "postcard_front": postcard_files.get("Postcard front (digital)", ""),
         "postcard_back": postcard_files.get("Postcard back (digital)", ""),
     }
+    step("Documents")
     documents = merge.generate_documents(record, media=media)
     for item in documents:
         files[item["label"]] = item["path"]
 
+    step("Signable agreement PDF")
     # Signable PDF, built from the rendered agreement so the terms in the two
     # files cannot drift. Optional dependency: if reportlab is not installed
     # the rest of the package still builds.
@@ -126,6 +199,7 @@ def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
     kit_docx = next(
         (i["path"] for i in documents if i["label"] == "Launch Week Kit"), None
     )
+    step("Launch Week Kit PDF")
     kit_pdf = {"ok": False, "engine": None, "error": ""}
     if kit_docx:
         kit_pdf = docx_pdf.convert(
@@ -161,12 +235,14 @@ def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
         except Exception as exc:
             files["Signable PDF failed"] = str(exc)
 
+    step("Redirect row")
     redirect_from, redirect_to = qr.redirect_row(ctx)
     redirect_csv = qr.write_redirect_csv(
         [(redirect_from, redirect_to)], out_dir / namer("Shopify-Redirect", "csv")
     )
     files["Shopify redirect CSV"] = redirect_csv
 
+    step("Manifest and zip")
     manifest = {
         "partner_id": pid,
         "org_name": record.get("org_name", ""),
@@ -205,6 +281,35 @@ def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
     manifest["bundle"] = str(bundle)
     files["Onboarding package (zip)"] = str(bundle)
 
+    # Rewrite the stored copy now that the zip exists, so the generate page can
+    # be rendered again from disk without rebuilding anything. Before the
+    # progress page there was no reason to reload a manifest; now every
+    # finished build is read back at least once.
+    stored["files"] = {label: (Path(path).name if isinstance(path, str) else path)
+                       for label, path in files.items()}
+    stored["bundle"] = bundle.name
+    (out_dir / "manifest.json").write_text(json.dumps(stored, indent=2))
+
+    return manifest
+
+
+def load_manifest(record: dict) -> dict | None:
+    """The last build's manifest, with file names expanded back to paths.
+
+    The stored copy deliberately holds bare names -- an absolute path bakes in
+    the directory the run happened in -- so this is the other half of that
+    decision rather than a workaround for it.
+    """
+    out_dir = store.output_dir(record)
+    try:
+        manifest = json.loads((out_dir / "manifest.json").read_text())
+    except (OSError, ValueError):
+        return None
+    manifest["files"] = {
+        label: (str(out_dir / name) if isinstance(name, str) else name)
+        for label, name in (manifest.get("files") or {}).items()}
+    if manifest.get("bundle"):
+        manifest["bundle"] = str(out_dir / Path(manifest["bundle"]).name)
     return manifest
 
 

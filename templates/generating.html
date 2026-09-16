@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Generating — {{ record.org_name }}{% endblock %}
+{% block content %}
+
+{# The package takes minutes. It used to take them inside the request, with a
+   blank tab and no sign of life -- four and a half of them on Haven of Hope,
+   which read as the app having died (doc 38). The work is on a thread now and
+   this page watches it.
+
+   Progress is polled from a file the build writes, not from anything held in
+   memory, because gunicorn has two workers and the poll lands on whichever is
+   free. See package.read_progress. #}
+
+<div class="card" id="gen"
+     data-status="{{ url_for('generate_status', pid=record.id) }}"
+     data-result="{{ url_for('generate_result', pid=record.id) }}">
+  <h2 style="margin-top:0">{{ record.org_name }} — building the package</h2>
+
+  <div class="gen-barwrap" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+       aria-valuenow="0" id="genBar">
+    <div class="gen-bar" id="genFill"></div>
+  </div>
+
+  <p class="gen-now" id="genNow">Starting…</p>
+
+  <ol class="gen-steps" id="genSteps">
+    {% for step in steps %}<li data-step="{{ loop.index }}">{{ step }}</li>{% endfor %}
+  </ol>
+
+  <p class="help" id="genHelp">
+    The first build for a partner is the slow one — the branded QR is rendered
+    and scan-tested, and four documents are converted to PDF. Leave this tab
+    alone; reloading does not start a second build, but it does not speed this
+    one up either.
+  </p>
+
+  <div class="actions" id="genDone" hidden>
+    <a class="btn btn-primary" href="{{ url_for('generate_result', pid=record.id) }}">Open the package</a>
+  </div>
+  <div class="note" id="genFailed" hidden
+       style="border-color:#B4472F;background:#FBF1EE;margin-top:16px">
+    <strong>The build stopped.</strong> <span id="genError"></span>
+    <div class="help" style="margin-top:6px">
+      Whatever was finished before it stopped is still in the output folder.
+      The full reason is in <code>steeple-onboarding.err.log</code> on the hub.
+    </div>
+  </div>
+</div>
+
+<style>
+  .gen-barwrap{height:12px;border-radius:99px;background:rgba(0,0,0,.08);
+    overflow:hidden;margin:18px 0 10px}
+  .gen-bar{height:100%;width:0;border-radius:99px;background:var(--gold,#C8A44D);
+    transition:width .4s ease}
+  .gen-now{margin:0 0 14px;font-weight:600}
+  .gen-steps{list-style:none;margin:0 0 4px;padding:0}
+  .gen-steps li{padding:5px 0 5px 26px;position:relative;color:var(--muted,#6B6B6B)}
+  .gen-steps li::before{content:"○";position:absolute;left:4px}
+  .gen-steps li.done{color:inherit}
+  .gen-steps li.done::before{content:"●";color:var(--gold,#C8A44D)}
+  .gen-steps li.now{color:inherit;font-weight:600}
+  .gen-steps li.now::before{content:"◐";color:var(--gold,#C8A44D)}
+</style>
+
+<script>
+(function () {
+  var card = document.getElementById('gen');
+  if (!card) return;
+  var fill = document.getElementById('genFill');
+  var bar = document.getElementById('genBar');
+  var now = document.getElementById('genNow');
+  var items = document.querySelectorAll('#genSteps li');
+  var misses = 0;
+
+  function paint(state) {
+    var total = state.total || items.length || 1;
+    var step = state.step || 0;
+    var pct = Math.min(100, Math.round(step / total * 100));
+    fill.style.width = pct + '%';
+    bar.setAttribute('aria-valuenow', pct);
+    now.textContent = state.label || 'Working…';
+    items.forEach(function (li) {
+      var n = Number(li.getAttribute('data-step'));
+      li.classList.toggle('done', n < step);
+      li.classList.toggle('now', n === step);
+    });
+  }
+
+  function finish() {
+    fill.style.width = '100%';
+    bar.setAttribute('aria-valuenow', 100);
+    now.textContent = 'Finished.';
+    items.forEach(function (li) {
+      li.classList.add('done'); li.classList.remove('now');
+    });
+    document.getElementById('genHelp').hidden = true;
+    document.getElementById('genDone').hidden = false;
+    // Straight through to the package: the point of the page is the wait, and
+    // the wait is over.
+    window.location.href = card.getAttribute('data-result');
+  }
+
+  function failed(message) {
+    document.getElementById('genHelp').hidden = true;
+    document.getElementById('genError').textContent = message || '';
+    document.getElementById('genFailed').hidden = false;
+    now.textContent = 'Stopped.';
+  }
+
+  function poll() {
+    fetch(card.getAttribute('data-status'), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (state) {
+        if (!state) { throw new Error('no answer'); }
+        misses = 0;
+        if (state.state === 'done') return finish();
+        if (state.state === 'failed') return failed(state.label);
+        paint(state);
+        setTimeout(poll, 1200);
+      })
+      .catch(function () {
+        // A dropped poll is not a dead build. The hub is on the far end of a
+        // tailnet and a laptop lid closing looks exactly like this.
+        misses += 1;
+        if (misses > 20) {
+          now.textContent = 'Lost contact with the hub — the build may still '
+            + 'be running. Reload to look again.';
+          return;
+        }
+        setTimeout(poll, 2000);
+      });
+  }
+  poll();
+})();
+</script>
+{% endblock %}

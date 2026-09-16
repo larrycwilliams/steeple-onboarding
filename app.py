@@ -48,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.44"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.45"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -346,21 +346,86 @@ def partner_agreement(pid):
     return redirect(url_for("edit_partner", pid=pid))
 
 
+def _run_build(record: dict, out_dir: Path) -> None:
+    """The package build, off the request thread.
+
+    It takes minutes -- see doc 38, where four and a half of them looked
+    exactly like the app having died. The request now returns immediately with
+    a page that watches this, and the work happens here.
+
+    Progress goes to a file in the output folder rather than to a variable,
+    because the poll can land on either gunicorn worker and only one of them
+    is running this.
+    """
+    done = [0]
+
+    def progress(label: str) -> None:
+        done[0] += 1
+        package.write_progress(out_dir, state="running", step=done[0],
+                               total=len(package.STEPS), label=label)
+
+    try:
+        package.build(record, progress=progress)
+    except package.BuildInProgress:
+        package.write_progress(out_dir, state="busy", step=0,
+                               total=len(package.STEPS),
+                               label="another build is already running")
+    except Exception as exc:                       # noqa: BLE001
+        # Written down rather than raised into a thread nobody is reading.
+        # A build that dies silently is the failure this whole page exists to
+        # stop being invisible.
+        package.write_progress(out_dir, state="failed", label=str(exc))
+        print(f"[build] {store.partner_id(record)} failed: {exc!r}",
+              file=_sys.stderr, flush=True)
+    else:
+        package.write_progress(out_dir, state="done",
+                               step=len(package.STEPS),
+                               total=len(package.STEPS), label="Finished")
+
+
 @app.route("/partner/<pid>/generate")
 def generate(pid):
+    """Start a build and hand back a page that watches it.
+
+    A GET that starts work is not ideal, but this is the link that has always
+    been here and the alternative is breaking every bookmark and every button
+    that points at it. The lock in package.build is what makes a second GET
+    harmless.
+    """
     record = store.load(pid)
     if record is None:
         abort(404)
-    try:
-        manifest = package.build(record)
-    except package.BuildInProgress:
-        # Two workers, one output folder. Before this, a reload part way
-        # through a slow build started a second run writing the same
-        # filenames as the first -- see doc 38.
-        flash("A package for this partner is already being built. It takes a "
-              "couple of minutes; leave the first tab alone and it will "
-              "finish on its own. Starting a second run would have both of "
-              "them writing the same files.", "error")
+    out_dir = store.output_dir(record)
+    # The lock, not the progress file: a build killed part way through leaves
+    # a file saying "running" for ever, and the button would never work again.
+    if not package.build_running(out_dir):
+        package.write_progress(out_dir, state="running", step=0,
+                               total=len(package.STEPS),
+                               label="Starting", failed=None)
+        Thread(target=_run_build, args=(record, out_dir), daemon=True).start()
+    return render_template("generating.html", record=record,
+                           steps=package.STEPS)
+
+
+@app.route("/partner/<pid>/generate/status")
+def generate_status(pid):
+    record = store.load(pid)
+    if record is None:
+        abort(404)
+    state = package.read_progress(store.output_dir(record)) or {
+        "state": "unknown", "step": 0, "total": len(package.STEPS), "label": ""}
+    return jsonify(state)
+
+
+@app.route("/partner/<pid>/generate/result")
+def generate_result(pid):
+    """The finished package, read back from the manifest on disk."""
+    record = store.load(pid)
+    if record is None:
+        abort(404)
+    manifest = package.load_manifest(record)
+    if manifest is None:
+        flash("Nothing has been generated for this partner yet.", "error")
         return redirect(url_for("edit_partner", pid=pid))
     return render_template("generated.html", manifest=manifest, record=record)
 

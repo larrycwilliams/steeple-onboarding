@@ -63,13 +63,22 @@ def _prepared(path: str, stamp: tuple) -> Image.Image:
 
 
 def _prepare_logo(path: str | Path) -> Image.Image:
-    """Load a logo and drop a solid white background if it has one.
+    """Load a logo and drop a solid background of ANY colour if it has one.
 
-    Partners send marks both ways: PNGs with real transparency, and flattened
-    files with a white box behind them. The flattened ones would paste onto the
-    card as a white rectangle, so the background is flood-filled away from the
-    edges inward -- which leaves white *inside* the mark (an eye, a highlight)
-    untouched, unlike a blanket "make white transparent" pass.
+    Partners send marks every way there is: PNGs with real transparency, marks
+    flattened onto a white box, and -- the one that caught us -- a "Black BG"
+    export, which is the mark sitting on a solid black rectangle.
+
+    This used to knock out white only. A black-backed logo therefore kept its
+    rectangle, so 94% of its pixels were black, and on a black card the file
+    measured 6.3% readable: the plate test was being asked about the
+    background rather than about the mark. The rectangle was invisible against
+    the card, so nothing looked obviously wrong -- the only symptom was the
+    part of the wordmark that really was black vanishing with it.
+
+    The fill still runs from the four corners inward, so a colour that appears
+    INSIDE the mark (a highlight, an eye, a counter in a letter) is untouched,
+    unlike a blanket "make this colour transparent" pass.
     """
     image = Image.open(path).convert("RGBA")
 
@@ -84,18 +93,44 @@ def _prepare_logo(path: str | Path) -> Image.Image:
         flat.getpixel((0, flat.height - 1)),
         flat.getpixel((flat.width - 1, flat.height - 1)),
     ]
-    if not all(min(c) >= 255 - WHITE_TOLERANCE for c in corners):
-        return image                      # not a white-boxed logo; leave it
+    base = corners[0]
+    # All four corners have to be the same colour. Two different corners mean
+    # the artwork reaches the edge, or there is a gradient -- either way there
+    # is no flat background to take away and guessing would damage the mark.
+    if not all(max(abs(c[k] - base[k]) for k in range(3)) <= WHITE_TOLERANCE
+               for c in corners):
+        return image
 
-    SENTINEL = (255, 0, 255)
+    # Magenta unless the background IS magenta-ish, in which case the fill
+    # would be indistinguishable from what it replaced.
+    sentinel = (255, 0, 255)
+    if max(abs(base[k] - sentinel[k]) for k in range(3)) <= WHITE_TOLERANCE * 3:
+        sentinel = (0, 255, 0)
+
     for corner in ((0, 0), (flat.width - 1, 0),
                    (0, flat.height - 1), (flat.width - 1, flat.height - 1)):
         try:
-            ImageDraw.floodfill(flat, corner, SENTINEL, thresh=WHITE_TOLERANCE)
+            ImageDraw.floodfill(flat, corner, sentinel, thresh=WHITE_TOLERANCE)
         except Exception:
             continue
 
-    return _knock_out(image, flat, SENTINEL)
+    knocked = _knock_out(image, flat, sentinel)
+    # If the fill ate most of the image it was not a background -- a mark that
+    # fills its own frame has its artwork in the corners, and taking that away
+    # would delete the logo. Safer to hand back the original and let the plate
+    # test deal with it.
+    if _transparent_share(knocked) > 0.90:
+        return image
+    return knocked
+
+
+def _transparent_share(image: Image.Image) -> float:
+    try:
+        import numpy as np
+    except ImportError:
+        return 0.0
+    alpha = np.asarray(image.getchannel("A"))
+    return float((alpha < 40).mean())
 
 
 def _knock_out(image: Image.Image, flat: Image.Image, sentinel) -> Image.Image:
