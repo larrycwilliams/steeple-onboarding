@@ -11,6 +11,8 @@ import io
 import json
 import os
 import re as _re
+import sys as _sys
+import time as _time
 from datetime import datetime
 import webbrowser
 from pathlib import Path
@@ -45,7 +47,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.40"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.41"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -85,6 +87,26 @@ app.jinja_env.globals["HELPER_VERSION"] = mail_draft.EXPECTED_HELPER_VERSION
 app.jinja_env.globals["chase_after"] = agreement.CHASE_AFTER_DAYS
 
 
+# Anything slower than this gets a line in the error log. Low enough that a
+# page which has quietly become sluggish shows up before anyone complains,
+# high enough that a normal day logs nothing at all.
+SLOW_REQUEST_SECONDS = 1.0
+
+
+@app.before_request
+def _start_clock():
+    """Registered first on purpose, so the timing includes identification.
+
+    Doc 38 cost an evening to the fact that gunicorn's access log stamps a
+    request when it FINISHES and never records how long it took -- a
+    four-and-a-half minute build and a twenty-millisecond page look identical
+    in it, and the only surviving record of the duration was the mtimes on the
+    files the build happened to write. This is the line that would have
+    answered it in one grep.
+    """
+    g._t_start = _time.perf_counter()
+
+
 @app.before_request
 def _identify():
     """Who is asking, from Tailscale rather than from a password.
@@ -93,6 +115,10 @@ def _identify():
     a page of twelve lead cards does not fork twelve subprocesses.
     """
     g.me = access.who(request.remote_addr or "")
+    # Timed separately: this is the one piece of per-request work that talks to
+    # something outside the process, so when a page is slow it is worth being
+    # able to rule it in or out rather than argue about it.
+    g._t_identified = _time.perf_counter()
 
 
 @app.context_processor
@@ -165,6 +191,29 @@ def _form_to_record(form, files, existing: dict | None = None) -> dict:
         upload.save(dest)
         record["logo_path"] = str(dest)
     return record
+
+
+@app.after_request
+def _log_slow(response):
+    """One line per slow request, in steeple-onboarding.err.log.
+
+    Logged rather than shown: the person who needs it is usually reading the
+    log after the fact, and a page that is already slow should not do more
+    work to say so. Nothing is logged on a normal request.
+    """
+    start = getattr(g, "_t_start", None)
+    if start is None:
+        return response
+    total = _time.perf_counter() - start
+    if total < SLOW_REQUEST_SECONDS:
+        return response
+    identified = getattr(g, "_t_identified", None)
+    detail = f" identify={identified - start:.2f}s" if identified else ""
+    path = request.full_path.rstrip("?") if request.query_string else request.path
+    print(f"[slow] {total:7.2f}s {request.method} {path}{detail} "
+          f"-> {response.status_code} for {(getattr(g, 'me', None) or {}).get('stamp', '?')}",
+          file=_sys.stderr, flush=True)
+    return response
 
 
 @app.route("/")
