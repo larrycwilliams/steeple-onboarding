@@ -53,7 +53,11 @@ def prepare_logo(path: str | Path) -> Image.Image:
     return _prepared(str(path), stamp).copy()
 
 
-@lru_cache(maxsize=8)
+# Two, not eight. These are full-resolution RGBA marks -- a 4000px logo is 64
+# MB in memory -- and every gunicorn worker keeps its own. One package build
+# only ever asks for one partner's logo, and regenerate_all works through them
+# one at a time, so a bigger cache buys nothing and costs the hub real memory.
+@lru_cache(maxsize=2)
 def _prepared(path: str, stamp: tuple) -> Image.Image:
     return _prepare_logo(path)
 
