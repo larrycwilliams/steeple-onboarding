@@ -31,7 +31,7 @@ from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
 
 from onboarding import dashboard, discovery, discovery_reply, leads, mail_draft, package, library, reconcile, terms
-from onboarding import docx_pdf, readiness, vector_logo
+from onboarding import docx_pdf, readiness, vector_logo, workflow
 from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
 from onboarding import recommendation, storefront, traveler
@@ -48,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.51"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.52"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -236,6 +236,27 @@ def _log_slow(response):
 
 
 @app.route("/")
+def home():
+    """The path, in the order it happens, with who is sitting where.
+
+    The nav grew a tab per tool and became a toolbox rather than an order of
+    work. This is the map: doc 17's fourteen stages in five phases, and every
+    partner's next step derived from what is actually true rather than from a
+    remembered position. See onboarding/workflow.py.
+    """
+    state = workflow.board()
+    # Resolve here rather than in the template: url_for needs a request
+    # context, and a template conditional over which endpoints take a pid is
+    # the kind of thing nobody wants to edit six months from now.
+    for entry in state["partners"]:
+        step = entry["next"]
+        step["url"] = (url_for(step["endpoint"], pid=entry["pid"])
+                       if step["pid_route"] else
+                       url_for(step["endpoint"]) if step["endpoint"] else "")
+    return render_template("home.html", phases=workflow.PHASES, **state)
+
+
+@app.route("/partners")
 def index():
     partners = store.list_partners()
     return render_template("index.html", partners=partners,

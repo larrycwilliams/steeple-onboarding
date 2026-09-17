@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Steeple &amp; Stitch — Onboarding{% endblock %}
+{% block content %}
+
+{# The map, not a menu.
+
+   The nav grew a tab per tool and became a toolbox rather than an order of
+   work. This is doc 17's path in the order it happens, with every partner's
+   next step derived from what is actually true -- never from a remembered
+   position. A wizard tracks which button you pressed; this tracks reality,
+   which is the only version that cannot quietly disagree with the store.
+
+   It does not enforce the order. Steps get skipped for good reasons. #}
+
+{% if needing_you %}
+<h2>Needs you</h2>
+{% for p in needing_you %}
+<div class="card hp-partner">
+  <div class="hp-row">
+    <div>
+      <div class="hp-name">{{ p.name }}</div>
+      <div class="hp-detail">{{ p.next.detail }}</div>
+      {% if p.next.fix %}<div class="help hp-fix">{{ p.next.fix }}</div>{% endif %}
+    </div>
+    {% if p.next.url %}
+    <a class="btn btn-primary hp-go" href="{{ p.next.url }}">{{ p.next.label }}</a>
+    {% endif %}
+  </div>
+  {% if p.counts.fail > 1 %}
+  <div class="help hp-more">
+    and {{ p.counts.fail - 1 }} other thing{{ 's' if p.counts.fail > 2 }} —
+    <a href="{{ url_for('readiness_page') }}">see all of it</a>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% if waiting or ready %}
+<h2>Not on you</h2>
+<div class="card">
+  {% for p in waiting %}
+  <div class="hp-quiet">
+    <span class="hp-dot hp-wait"></span>
+    <strong>{{ p.name }}</strong> — {{ p.next.label|lower }}. {{ p.next.detail }}
+  </div>
+  {% endfor %}
+  {% for p in ready %}
+  <div class="hp-quiet">
+    <span class="hp-dot hp-ok"></span>
+    <strong>{{ p.name }}</strong> — ready to launch.
+    <a href="{{ url_for('partner_files', pid=p.pid) }}">the package</a>
+  </div>
+  {% endfor %}
+  {% if not waiting and not ready %}
+  <p class="help" style="margin:0">Nothing sitting idle.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<h2>The path</h2>
+<p class="help" style="margin:-4px 0 14px">
+  Fourteen stages, five phases, in the order they happen. Nothing here forces
+  the order — it is what to do next when you do not already know.
+</p>
+
+{% for phase in phases %}
+<div class="card hp-phase">
+  <div class="hp-phasehead">
+    <span class="hp-num">{{ loop.index }}</span>
+    <h3>{{ phase.name }}</h3>
+    <span class="hp-stages">stages {{ phase.stages }}</span>
+  </div>
+  <p class="hp-blurb">{{ phase.blurb }}</p>
+  <div class="hp-links">
+    {% for label, endpoint, what in phase.links %}
+    <a class="hp-link" href="{{ url_for(endpoint) }}">
+      <span class="hp-linkname">{{ label }}</span>
+      <span class="help">{{ what }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+
+<style>
+  .hp-partner{border-left:4px solid var(--gold,#C8A44D)}
+  .hp-row{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .hp-name{font-weight:700;font-size:17px}
+  .hp-detail{font-size:14px;color:#5C6470;margin-top:2px}
+  .hp-fix{margin-top:4px}
+  .hp-go{margin-left:auto;white-space:nowrap}
+  .hp-more{margin-top:10px;padding-top:8px;border-top:1px solid rgba(0,0,0,.07)}
+  .hp-quiet{padding:5px 0;font-size:14px}
+  .hp-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px}
+  .hp-dot.hp-wait{background:#C8A44D}
+  .hp-dot.hp-ok{background:#4E8C5A}
+  .hp-phase{padding-bottom:16px}
+  .hp-phasehead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .hp-phasehead h3{margin:0;font-size:18px}
+  .hp-num{display:inline-flex;align-items:center;justify-content:center;
+    width:24px;height:24px;border-radius:50%;background:var(--gold,#C8A44D);
+    color:#fff;font:700 13px/1 inherit;flex:none}
+  .hp-stages{font-size:12px;color:var(--muted);letter-spacing:.06em;
+    text-transform:uppercase}
+  .hp-blurb{margin:10px 0 14px;font-size:14.5px;max-width:64ch}
+  .hp-links{display:flex;gap:10px;flex-wrap:wrap}
+  .hp-link{display:block;padding:10px 14px;border:1px solid #E2DDD2;border-radius:8px;
+    text-decoration:none;color:inherit;background:#FCFBF8;min-width:180px}
+  .hp-link:hover{border-color:var(--gold,#C8A44D)}
+  .hp-linkname{display:block;font-weight:600;font-size:14px;margin-bottom:2px}
+  @media (max-width:699px){
+    .hp-go{margin-left:0;width:100%}
+    .hp-link{min-width:0;flex:1 1 100%}
+  }
+</style>
+{% endblock %}
