@@ -9,7 +9,7 @@ import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 
-from . import docx_pdf, merge, qr, store
+from . import docx_pdf, launch_form_pdf, merge, qr, store
 from . import postcard
 from .postcard import generate_postcards
 from .schema import derive
@@ -239,6 +239,18 @@ def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
         except Exception as exc:
             files["Signable PDF failed"] = str(exc)
 
+    # The one page of the kit that comes back. The kit's own PDF is a flat
+    # LibreOffice conversion -- form fields do not survive it (confirmed by
+    # tools/formfield_probe.py) -- so the fillable part is a separate page
+    # built with the agreement's own AcroForm machinery, and its rows are read
+    # out of the kit that was just rendered so the two cannot drift.
+    launch_form = {"ok": False, "rows": 0, "note": "", "error": ""}
+    if kit_docx:
+        launch_form = launch_form_pdf.build(
+            record, ctx, kit_docx, out_dir / namer("Launch-Week-Owners", "pdf"))
+        if launch_form["ok"]:
+            files["Launch week owners (fillable)"] = launch_form["path"]
+
     step("Redirect row")
     redirect_from, redirect_to = qr.redirect_row(ctx)
     redirect_csv = qr.write_redirect_csv(
@@ -260,6 +272,12 @@ def _build(record: dict, ctx: dict, pid: str, out_dir: Path,
         "agreement_template_version": ctx.get("template_version", ""),
         "incomplete": store.readiness(record),
         "pdf_fonts": pdf_fonts,
+        "launch_form": {
+            "ok": launch_form["ok"],
+            "rows": launch_form["rows"],
+            "note": launch_form["note"],
+            "error": launch_form["error"],
+        },
         "kit_pdf": {
             "ok": kit_pdf["ok"],
             "engine": kit_pdf["engine"],

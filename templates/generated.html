@@ -30,6 +30,22 @@
           {% endif %}
         </dd>
       {% endif %}
+      {% if manifest.launch_form %}
+        <dt>Launch week owners</dt>
+        <dd>
+          {% if manifest.launch_form.ok %}
+            fillable page built{% if manifest.launch_form.rows %} — {{ manifest.launch_form.rows }}
+            owner field{{ 's' if manifest.launch_form.rows != 1 }} read from the kit's own plan{% endif %}
+            {% if manifest.launch_form.note %}
+            <div class="help">{{ manifest.launch_form.note }} — the three standing
+              decisions are on the page, but the plan's rows are not. Write the
+              owners onto the plan in the kit instead.</div>
+            {% endif %}
+          {% else %}
+            <strong>not built</strong>{% if manifest.launch_form.error %} — {{ manifest.launch_form.error }}{% endif %}
+          {% endif %}
+        </dd>
+      {% endif %}
       {% if manifest.logo_check %}
         {% set lc = manifest.logo_check %}
         <dt>Logo on the postcard</dt>

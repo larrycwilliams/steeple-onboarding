@@ -39,8 +39,14 @@ WHAT'S ATTACHED
      about a minute, and nothing else starts until it's back.
 {% endif %}{% if has_kit %}
 * Launch Week Kit. Your week-by-week plan, the copy for every email and
-  post, and a page for who owns what. Fill in the names and send it back
-  with the agreement.
+  post, and a page for who owns what. Yours to read and print -- nothing
+  to send back.
+{% if has_launch_form %}
+* Launch week -- who does what. One fillable page: the launch date, who
+  runs social that week, who orders the postcards, and an owner for each
+  step of the plan. Type into it, save, and send it back with the
+  agreement. This is the only page we need returned.
+{% endif %}
 {% endif %}{% if has_postcards %}
 * Postcards, print-ready. Hand this file to any commercial printer as
   it is. Nothing to print yet — it's here so you can get a quote and

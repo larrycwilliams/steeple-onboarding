@@ -141,7 +141,8 @@
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
           {% if has_kit %}
           <tr><td valign="top" width="22" style="padding:0 0 12px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">&#10022;</td>
-              <td style="padding:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;"><strong style="color:#001739;">Launch Week Kit.</strong> Your week-by-week plan, the copy for every email and post, and a page for who owns what. Fill in the names and send it back with the agreement.</td></tr>
+              <td style="padding:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;"><strong style="color:#001739;">Launch Week Kit.</strong> Your week-by-week plan, the copy for every email and post, and a page for who owns what. Yours to read and print &mdash; nothing to send back.{% if has_launch_form %}</td></tr>
+<tr><td style="padding:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;color:#333333;"><strong style="color:#001739;">Launch week &mdash; who does what.</strong> One fillable page: the launch date, who runs social that week, who orders the postcards, and an owner for each step of the plan. Type into it, save, and send it back with the agreement. This is the only page we need returned.{% endif %}</td></tr>
           {% endif %}
           {% if has_postcards %}
           <tr><td valign="top" width="22" style="padding:0 0 12px 0;font-family:Georgia,serif;font-size:16px;color:#C9993F;line-height:26px;">&#10022;</td>

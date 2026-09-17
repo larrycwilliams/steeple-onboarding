@@ -35,6 +35,7 @@ SUBJECT = "Welcome aboard, {{ org_name }} — here's what happens next"
 ATTACHMENTS = [
     ("Service-Agreement-SIGNABLE", "pdf", "Service Agreement to sign"),
     ("Launch-Week-Kit", "pdf", "Launch Week Kit"),
+    ("Launch-Week-Owners", "pdf", "Launch week owners"),
     ("Postcard-PRINT", "pdf", "Print-ready postcards"),
     ("QR-Branded-Print", "png", "Branded QR code"),
 ]
@@ -206,6 +207,7 @@ def render(record: dict, config: dict | None = None) -> dict:
     values.update({
         "has_agreement": "Service Agreement to sign" in labels,
         "has_kit": "Launch Week Kit" in labels,
+        "has_launch_form": "Launch week owners" in labels,
         "has_postcards": "Print-ready postcards" in labels,
         "has_qr": "Branded QR code" in labels,
         "attachment_count": len(found),
