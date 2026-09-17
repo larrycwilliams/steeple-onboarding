@@ -48,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.49"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.50"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -748,11 +748,16 @@ def preview_file(pid):
     mimetype = (PREVIEW_IMAGE.get(path.suffix.lower())
                 or PREVIEW_INLINE.get(path.suffix.lower()))
     response = send_file(path, mimetype=mimetype, as_attachment=False)
-    # Belt and braces on a file that came from outside the app originally (a
-    # partner's own logo ends up inside the postcards): tell the browser not
-    # to guess a type, and refuse to be framed by anything else.
+    # A file that came from outside the app originally -- a partner's own logo
+    # ends up inside the postcards -- so never let the browser guess its type.
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Content-Security-Policy"] = "sandbox; frame-ancestors 'self'"
+    # The sandbox only goes on things a browser treats as a DOCUMENT: a PDF or
+    # a text file opened in a tab, and an SVG, which can carry script. An
+    # <img> is not a document, and putting a sandbox CSP on a PNG asks Safari
+    # a question it has no good answer to.
+    if path.suffix.lower() != ".png" and path.suffix.lower() not in (
+            ".jpg", ".jpeg", ".webp"):
+        response.headers["Content-Security-Policy"] = "sandbox; frame-ancestors 'self'"
     return response
 
 
