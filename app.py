@@ -48,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.48"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.49"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -496,7 +496,15 @@ def partner_files(pid):
           "kb": round(f.stat().st_size / 1024),
           "ext": f.suffix.lstrip(".").upper(),
           "path": str(f)}
-         for f in folder.glob("*") if f.is_file() and f.name != "manifest.json"),
+         for f in folder.glob("*")
+         if f.is_file() and f.name != "manifest.json"
+         # The app keeps its own bookkeeping in here -- .build.lock,
+         # .build.progress.json, and the cached preview conversions. They were
+         # being listed as the partner's generated documents, with Download
+         # buttons, which is the same mistake as partners/_people.json being
+         # read as a tenth partner (doc 35): a folder scan that does not know
+         # which of its own files it put there.
+         and not f.name.startswith(".")),
         key=lambda d: d["name"])
     adir = store.ASSETS / store.partner_id(record)
     assets = sorted(

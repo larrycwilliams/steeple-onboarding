@@ -70,6 +70,13 @@
         <td class="phone-hide"><span class="pill">{{ d.ext }}</span></td>
         <td class="phone-hide" style="color:#5C6470">{{ d.kb }} KB</td>
         <td style="text-align:right">
+          {% set kind = preview_kind(d.name) %}
+          {% if kind %}
+            <a class="btn btn-quiet gp-preview"
+               data-kind="{{ kind }}" data-name="{{ d.name }}"
+               href="{{ url_for('preview_file', pid=pid, name=d.name) }}"
+               target="_blank" rel="noopener">Preview</a>
+          {% endif %}
           <a class="btn btn-quiet" href="{{ url_for('download', path=d.path) }}">Download</a>
         </td>
       </tr>
@@ -160,4 +167,5 @@
   <p class="help" style="font-family:ui-monospace,Menlo,monospace">{{ asset_dir }}</p>
 </div>
 
+{% include "_preview_box.html" %}
 {% endblock %}
