@@ -48,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.55"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.56"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -1738,10 +1738,14 @@ URL = f"http://127.0.0.1:{PORT}"
 # write_url_redirects the /go/ slugs. Adding a scope requires RECONNECTING from
 # Settings -- an existing token keeps the scopes it was minted with, and the
 # refusal arrives as a 403 that reads like a bad store domain.
-SHOPIFY_SCOPES = ("read_orders,read_products,read_inventory,read_customers,"
-                  "read_companies,write_products,read_publications,"
-                  "write_publications,write_content,"
-                  "write_online_store_navigation")
+# Must match the Shopify app VERSION's declared scopes exactly. Asking for a
+# scope the app version does not declare is a silent no-op, not an error --
+# the connect appears to do nothing at all. See claude/ops/18.
+SHOPIFY_SCOPES = ("read_companies,read_customers,read_files,read_inventory,"
+                  "read_locations,read_orders,read_products,read_publications,"
+                  "write_content,write_inventory,"
+                  "write_online_store_navigation,write_products,"
+                  "write_publications")
 
 
 def _redirect_uri() -> str:
