@@ -896,6 +896,77 @@ def carry_to_partner(session: dict, record: dict) -> list[str]:
     return filled
 
 
+def carry_conflicts(session: dict, record: dict | None) -> list[dict]:
+    """Where the call notes and the partner record say different things.
+
+    `carry_to_partner` refuses to overwrite a partner field that somebody has
+    typed, which is right -- the record is the negotiated version and the call
+    notes are the rough draft. But refusing silently leaves two answers on the
+    system and shows neither next to the other, so a line-up rebuilt in a call
+    goes nowhere and the screen says "Nothing copied" as though that were
+    reassurance.
+
+    This is the difference, so the operator can see it and decide. Same shape
+    as every other fix this week: the app knew both values and would not say
+    so.
+    """
+    if record is None:
+        return []
+    out = []
+    for q in QUESTIONS:
+        if not q.partner_field or q.partner_field not in FIELDS_BY_KEY:
+            continue
+        note = (session.get("answers", {}).get(q.id) or {}).get("note", "").strip()
+        if not note:
+            continue
+        current = (record.get(q.partner_field) or "").strip()
+        if current == note:
+            continue
+        out.append({
+            "id": q.id,
+            "field": q.partner_field,
+            "label": FIELDS_BY_KEY[q.partner_field].label,
+            "note": note,
+            "current": current,
+            "seed": _is_seed(record, q.partner_field),
+        })
+    return out
+
+
+CARRY_FIELDS = {q.partner_field for q in QUESTIONS if q.partner_field}
+
+
+def force_field(sid: str, field: str) -> tuple[dict | None, str]:
+    """Copy ONE call answer over the partner record, overwriting what is there.
+
+    Deliberately one field at a time and never part of the bulk copy: taking
+    the rough draft over the negotiated version is a decision, and it should
+    be made about a named field with both values on screen, not by a button
+    that says "copy everything".
+    """
+    if field not in CARRY_FIELDS or field not in FIELDS_BY_KEY:
+        return None, f"{field!r} is not a field a call can write."
+    session = load(sid)
+    if session is None:
+        return None, "Those notes no longer exist."
+    pid = session.get("partner_id") or ""
+    record = store.load(pid) if pid else None
+    if record is None:
+        return None, "No partner record is linked to these notes yet."
+    question = next((q for q in QUESTIONS if q.partner_field == field), None)
+    note = (session.get("answers", {}).get(question.id) or {}).get("note", "").strip()
+    if not note:
+        return None, f"The call has nothing written for {FIELDS_BY_KEY[field].label}."
+    was = (record.get(field) or "").strip()
+    record[field] = note
+    store.save(record)
+    label = FIELDS_BY_KEY[field].label
+    if was:
+        return record, (f"{label} taken from the call notes. The previous value "
+                        "is in this record's history if you want it back.")
+    return record, f"{label} filled from the call notes."
+
+
 def promote(sid: str) -> tuple[dict | None, str]:
     """Create the partner record from a call. (record, message)."""
     session = load(sid)

@@ -75,6 +75,16 @@
   .dc-status[data-state=ok]{color:#265B41}
   .dc-status[data-state=offline],.dc-status[data-state=error]{color:#8C332C;font-weight:600}
   .dc-bar form{margin:0}
+  .dc-conflicts{margin-top:26px}
+  .dc-conflict{border:1px solid #E2DDD2;border-left:4px solid var(--gold,#C8A44D);
+    border-radius:8px;padding:14px 16px;margin-bottom:12px;background:#fff}
+  .dc-conflictname{font:700 12px/1 inherit;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .dc-side{margin-bottom:10px}
+  .dc-sidename{font-size:12px;color:var(--muted);margin-bottom:2px}
+  .dc-value{font-size:14px;white-space:pre-wrap}
+  .dc-value.dc-seed{color:var(--muted);font-style:italic}
+  .dc-conflict form{margin:0}
   .dc-notes{margin-top:26px}
   .dc-notelist{list-style:none;margin:0 0 14px;padding:0}
   .dc-notelist li{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;
@@ -325,6 +335,43 @@
     <p class="help" id="copyState">Paste into an email, Notes, or the partner's file.</p>
     <textarea id="writeup" readonly></textarea>
   </section>
+
+  {# Where the call and the partner record disagree.
+
+     "Copy into partner" never overwrites a field somebody typed, which is
+     right -- the record is the negotiated version. But refusing silently left
+     two answers on the system with neither shown next to the other, so a
+     line-up rebuilt in a call went nowhere and the screen said "Nothing
+     copied" as though that were reassurance. Now it shows the difference and
+     the decision is a button. #}
+  {% if partner and conflicts %}
+  <section class="dc-conflicts">
+    <h2>The call says something different</h2>
+    <p class="help">These are the only two fields a call can write to a partner
+      record, and the record wins by default. Nothing here is wrong — a
+      negotiated line-up is meant to beat the rough draft. But if the call is
+      the newer answer, take it.</p>
+    {% for c in conflicts %}
+    <div class="dc-conflict">
+      <div class="dc-conflictname">{{ c.label }}</div>
+      <div class="dc-side">
+        <div class="dc-sidename">On the partner record{% if c.seed %} — still the default{% endif %}</div>
+        <div class="dc-value{% if c.seed %} dc-seed{% endif %}">{{ c.current or "— empty —" }}</div>
+      </div>
+      <div class="dc-side">
+        <div class="dc-sidename">From this call</div>
+        <div class="dc-value">{{ c.note }}</div>
+      </div>
+      <form method="post" action="{{ url_for('discovery_take_field', sid=s.id, field=c.field) }}"
+            onsubmit='return confirm({{ ("Replace " ~ c.label ~ " on the partner record with what this call says? The previous value is kept in the record history.")|tojson }})'>
+        <button class="btn btn-gold" type="submit">Use the call's version</button>
+      </form>
+    </div>
+    {% endfor %}
+    <p class="help">Changing either of these changes the documents. Regenerate
+      the package afterwards, or the agreement still carries the old line-up.</p>
+  </section>
+  {% endif %}
 
   {# What came out of the room, kept as a blob.
 

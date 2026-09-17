@@ -48,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.50"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.51"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -1078,6 +1078,7 @@ def discovery_page(sid):
         phases=discovery.PHASES,
         progress=discovery.progress(call),
         partner=partner,
+        conflicts=discovery.carry_conflicts(call, partner),
         org_types=[("church", "Church"), ("school", "School"), ("nonprofit", "Non-Profit")],
         delivery_modes=list(discovery.DELIVERY_MODES.items()),
     )
@@ -1275,6 +1276,15 @@ def discovery_promote(sid):
     # Straight to the partner form, same as promoting from the pipeline: the
     # record is deliberately incomplete until fees, margin and signers are in.
     return redirect(url_for("edit_partner", pid=store.partner_id(record)))
+
+
+@app.route("/discovery/<sid>/take/<field>", methods=["POST"])
+def discovery_take_field(sid, field):
+    """Overwrite one partner field with what the call actually said."""
+    _discovery_or_404(sid)
+    record, message = discovery.force_field(sid, field)
+    flash(message, "ok" if record else "error")
+    return redirect(url_for("discovery_page", sid=sid))
 
 
 @app.route("/discovery/<sid>/apply", methods=["POST"])
