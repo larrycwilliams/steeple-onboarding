@@ -31,7 +31,7 @@ from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
 
 from onboarding import dashboard, discovery, discovery_reply, leads, mail_draft, package, library, reconcile, terms
-from onboarding import readiness, vector_logo
+from onboarding import docx_pdf, readiness, vector_logo
 from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
 from onboarding import recommendation, storefront, traveler
@@ -48,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.47"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.48"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -667,6 +667,85 @@ def download():
     if store.OUTPUT.resolve() not in path.resolve().parents:
         abort(403)
     return send_file(path, as_attachment=True)
+
+
+# What a browser can show without downloading it. Anything not here keeps the
+# Download button on its own, which is the honest answer -- a Preview that
+# opens a dialog asking what to open it with is worse than no Preview.
+PREVIEW_IMAGE = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                 ".webp": "image/webp", ".svg": "image/svg+xml"}
+PREVIEW_INLINE = {".pdf": "application/pdf", ".csv": "text/plain",
+                  ".txt": "text/plain"}
+PREVIEW_CONVERT = {".docx"}
+
+
+def preview_kind(name: str) -> str:
+    """'image', 'page', 'convert' or '' -- what the button should do."""
+    suffix = Path(name).suffix.lower()
+    if suffix in PREVIEW_IMAGE:
+        return "image"
+    if suffix in PREVIEW_INLINE:
+        return "page"
+    if suffix in PREVIEW_CONVERT:
+        return "convert"
+    return ""
+
+
+app.jinja_env.globals["preview_kind"] = preview_kind
+
+
+@app.route("/partner/<pid>/preview")
+def preview_file(pid):
+    """Serve one of a partner's generated files INLINE, for looking at.
+
+    Deliberately not /download with a flag. That route takes an absolute path
+    and is only contained by a check that it sits under the output folder;
+    this one takes a bare NAME and joins it to this partner's own folder, so
+    the worst a crafted value can do is miss.
+
+    A .docx has no browser preview, so it is converted to a PDF once and the
+    conversion cached beside it. That is the same LibreOffice path the package
+    already uses for the Launch Week Kit, so it produces the same document --
+    a preview that renders differently from the file you send would be worse
+    than none.
+    """
+    record = store.load(pid)
+    if record is None:
+        abort(404)
+    name = Path(request.args.get("name", "")).name
+    if not name:
+        abort(404)
+
+    out_dir = store.output_dir(record)
+    path = out_dir / name
+    if not path.is_file() or out_dir.resolve() not in path.resolve().parents:
+        abort(404)
+
+    kind = preview_kind(name)
+    if kind == "convert":
+        cached = out_dir / "_preview" / (path.stem + ".pdf")
+        fresh = (cached.is_file()
+                 and cached.stat().st_mtime >= path.stat().st_mtime)
+        if not fresh:
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            result = docx_pdf.convert(path, cached)
+            if not result["ok"]:
+                flash(f"{name} could not be converted for preview: "
+                      f"{result['error']}. Download it instead.", "error")
+                return redirect(url_for("generate_result", pid=pid))
+        path, kind = cached, "page"
+
+    if not kind:
+        abort(404)
+    mimetype = (PREVIEW_IMAGE.get(path.suffix.lower())
+                or PREVIEW_INLINE.get(path.suffix.lower()))
+    response = send_file(path, mimetype=mimetype, as_attachment=False)
+    # Belt and braces on a file that came from outside the app originally (a
+    # partner's own logo ends up inside the postcards): tell the browser not
+    # to guess a type, and refuse to be framed by anything else.
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Content-Security-Policy"] = "sandbox; frame-ancestors 'self'"
+    return response
 
 
 @app.route("/redirects")
