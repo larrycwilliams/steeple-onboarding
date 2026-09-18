@@ -57,6 +57,13 @@ MAIL_PATHS = (
 #
 # Attachments go in after the body is set. Adding them before means Mail
 # places them at the top of the message, above the letterhead.
+# Mail is addressed by BUNDLE ID, not by name. On macOS 27 the name "Mail"
+# resolves to Mail.app/Contents/PlugIns/MailQuickLookExtension.appex -- a
+# QuickLook plugin with no scripting dictionary -- so every Mail class fails to
+# resolve and AppleScript reports a *syntax* error (-2741, "Expected class name
+# but found identifier") that reads like a typo in this file. `application id
+# "com.apple.mail"` cannot collide, and behaves identically on older macOS.
+# Diagnosed 2026-09-17; see claude/ops/43.
 SCRIPT = '''
 on run argv
     set theSubject to item 1 of argv
@@ -71,7 +78,7 @@ on run argv
         end repeat
     end if
 
-    tell application "Mail"
+    tell application id "com.apple.mail"
         set newMessage to make new outgoing message with properties ¬
             {subject:theSubject, html content:theBody, visible:true}
         tell newMessage
@@ -109,7 +116,7 @@ def _found_at() -> str:
         return ""
     try:
         result = subprocess.run(
-            ["osascript", "-e", 'id of app "Mail"'],
+            ["osascript", "-e", 'id of app id "com.apple.mail"'],
             capture_output=True, text=True, timeout=15,
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -127,7 +134,7 @@ def available() -> bool:
 # in the same commit as tools/draft_helper.py's own HELPER_VERSION -- they are
 # two copies of one number, because the helper is stdlib-only and cannot import
 # from this package.
-EXPECTED_HELPER_VERSION = 2
+EXPECTED_HELPER_VERSION = 3
 
 
 def host_label() -> str:
@@ -144,9 +151,53 @@ def host_label() -> str:
     return name or "this Mac"
 
 
+# ------------------------------------------------------------------ probe --
+#
+# Compiled, never run. A Mac that cannot build a draft should say so *before*
+# the button is pressed, not hand back a temp path and an error code at the end
+# of a discovery call. Same principle as the plate decision in doc 39 and the
+# build duration in doc 38.
+PROBE_SCRIPT = 'tell application id "com.apple.mail" to make new outgoing message'
+_PROBE_CACHE: "tuple[bool, str] | None" = None
+
+
+def scripting_ok() -> "tuple[bool, str]":
+    """(ok, reason) -- can this Mac compile a Mail draft? Opens nothing."""
+    global _PROBE_CACHE
+    if _PROBE_CACHE is not None:
+        return _PROBE_CACHE
+    if not shutil.which("osacompile"):
+        _PROBE_CACHE = (True, "")          # cannot check; never block on it
+        return _PROBE_CACHE
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "probe.applescript"
+            src.write_text(PROBE_SCRIPT, encoding="utf8")
+            result = subprocess.run(
+                ["osacompile", "-o", str(Path(tmp) / "probe.scpt"), str(src)],
+                capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            _PROBE_CACHE = (True, "")
+        else:
+            detail = (result.stderr or "").strip().splitlines()
+            _PROBE_CACHE = (False, detail[-1] if detail
+                            else f"osacompile exit {result.returncode}")
+    except Exception:
+        _PROBE_CACHE = (True, "")          # a broken probe must not block Mail
+    return _PROBE_CACHE
+
+
+PROBE_FAILED = ("This Mac's Mail will not accept a scripted draft -- {reason}. "
+                "Use Download .eml instead, then Message -> Send Again in Mail.")
+
+
 def create_draft(subject: str, recipient: str, html: str,
                  attachments: list[str] | None = None) -> dict:
     """Open a Mail draft. Returns {ok, error}; never raises."""
+    ok, why = scripting_ok()
+    if not ok:
+        return {"ok": False, "error": PROBE_FAILED.format(reason=why)}
+
     if not available():
         return {"ok": False,
                 "error": "Apple Mail could not be found on this Mac, so a "
