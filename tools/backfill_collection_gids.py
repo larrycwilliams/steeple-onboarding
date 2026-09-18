@@ -39,9 +39,17 @@ query($handle: String!) {
 def main() -> int:
     commit = "--commit" in sys.argv
     try:
+        from onboarding.shopify_pull import _load_env, configured
         from onboarding.storefront import _gql
-    except Exception as exc:                      # no creds, no requests, ...
-        print(f"Cannot reach Shopify: {exc}")
+    except Exception as exc:                      # no requests, bad venv, ...
+        print(f"Cannot import the Shopify transport: {exc}")
+        return 2
+
+    # storefront._gql refuses without credentials, and .env is not in the
+    # environment of a plain CLI run the way it is inside the app.
+    _load_env()
+    if not configured():
+        print("Shopify credentials are not set. Settings > Shopify in the app.")
         return 2
 
     set_ = kept = missing = disagree = 0
@@ -57,12 +65,14 @@ def main() -> int:
             missing += 1
             continue
 
-        try:
-            node = (_gql(QUERY, {"handle": handle}) or {}).get("collectionByHandle")
-        except Exception as exc:
-            print(f"  !  {org:34} lookup failed: {exc}")
+        # _gql returns {ok, data, error} and never raises -- reading it as if
+        # it were the data payload makes every lookup silently "not found".
+        result = _gql(QUERY, {"handle": handle})
+        if not result.get("ok"):
+            print(f"  !  {org:34} lookup failed: {result.get('error')}")
             missing += 1
             continue
+        node = (result.get("data") or {}).get("collectionByHandle")
 
         if not node:
             print(f"  ?  {org:34} nothing live at handle {handle!r}")
