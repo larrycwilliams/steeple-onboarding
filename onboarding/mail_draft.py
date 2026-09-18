@@ -134,7 +134,7 @@ def available() -> bool:
 # in the same commit as tools/draft_helper.py's own HELPER_VERSION -- they are
 # two copies of one number, because the helper is stdlib-only and cannot import
 # from this package.
-EXPECTED_HELPER_VERSION = 3
+EXPECTED_HELPER_VERSION = 4
 
 
 def host_label() -> str:
@@ -177,14 +177,17 @@ def scripting_ok() -> "tuple[bool, str]":
                 ["osacompile", "-o", str(Path(tmp) / "probe.scpt"), str(src)],
                 capture_output=True, text=True, timeout=30)
         if result.returncode == 0:
-            _PROBE_CACHE = (True, "")
-        else:
-            detail = (result.stderr or "").strip().splitlines()
-            _PROBE_CACHE = (False, detail[-1] if detail
-                            else f"osacompile exit {result.returncode}")
+            _PROBE_CACHE = (True, "")      # success is stable; cache it
+            return _PROBE_CACHE
+        # A FAILURE is not cached. The commonest cause is the macOS Automation
+        # prompt not answered yet -- the installer says the first draft raises
+        # it -- and caching that would keep saying "cannot script Mail" after
+        # the grant, until somebody restarted the helper.
+        detail = (result.stderr or "").strip().splitlines()
+        return (False, detail[-1] if detail
+                else f"osacompile exit {result.returncode}")
     except Exception:
-        _PROBE_CACHE = (True, "")          # a broken probe must not block Mail
-    return _PROBE_CACHE
+        return (True, "")                  # a broken probe must not block Mail
 
 
 PROBE_FAILED = ("This Mac's Mail will not accept a scripted draft -- {reason}. "
