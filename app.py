@@ -48,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.59"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.60"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -1331,9 +1331,13 @@ def _dashboard_context(refresh: bool = False) -> dict:
                 "snapshot": None, "records": records,
                 "configured": shopify_sales.configured(),
                 "scopes": shopify_sales.SCOPES,
-                "ready_to_connect": False}
+                "ready_to_connect": False,
+                "fees": dashboard.fees(records)}
     return {
         "data": dashboard.rollup(snap, records),
+        # Fees read only the records, so the panel
+        # works whether or not Shopify is connected.
+        "fees": dashboard.fees(records),
         # The rollup sums the quarter away; a statement needs the line items
         # back, and re-pulling for that would be a second answer to the same
         # question. Unused by the dashboard templates, which name their vars.

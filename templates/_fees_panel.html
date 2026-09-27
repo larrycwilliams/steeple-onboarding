@@ -1,0 +1,87 @@
+{# Money owed TO us. Billed and received stay in separate columns:
+   an invoice that was sent is a claim, not a payment. #}
+<h2 style="margin:26px 0 4px">Fees</h2>
+<p class="help" style="margin:0 0 14px">
+  Setup and monthly platform fees, from the partner records. Entered by hand —
+  <strong>billed</strong> means an invoice went out, <strong>received</strong>
+  means the money landed. They are not the same number and are never added
+  together.
+</p>
+
+<div class="tiles">
+  <div class="tile tile-gold">
+    <div class="tile-label">MRR billed</div>
+    <div class="tile-value">${{ '%.2f'|format(fees.mrr_billed) }}</div>
+    <div class="tile-note">
+      ${{ '%.2f'|format(fees.mrr_billed * 12) }} a year if every invoice is paid.
+    </div>
+  </div>
+  <div class="tile">
+    <div class="tile-label">MRR current</div>
+    <div class="tile-value">${{ '%.2f'|format(fees.mrr_current) }}</div>
+    <div class="tile-note">Paid through this month or later.</div>
+  </div>
+  {% if fees.mrr_unbilled > 0 %}
+  <div class="tile tile-warn">
+    <div class="tile-label">MRR not billed</div>
+    <div class="tile-value bad">${{ '%.2f'|format(fees.mrr_unbilled) }}</div>
+    <div class="tile-note">
+      {{ fees.unbilled_count }} partner{{ '' if fees.unbilled_count == 1 else 's' }}
+      with an agreed monthly fee and no recurring invoice set up. Money you
+      agreed to and are not asking for.
+    </div>
+  </div>
+  {% endif %}
+  <div class="tile">
+    <div class="tile-label">Setup fees received</div>
+    <div class="tile-value">${{ '%.2f'|format(fees.setup_paid) }}</div>
+    <div class="tile-note">
+      ${{ '%.2f'|format(fees.setup_billed) }} invoiced all time.
+    </div>
+  </div>
+  {% if fees.setup_open > 0 %}
+  <div class="tile tile-warn">
+    <div class="tile-label">Setup fees outstanding</div>
+    <div class="tile-value bad">${{ '%.2f'|format(fees.setup_open) }}</div>
+    <div class="tile-note">
+      {{ fees.setup_open_count }} invoiced, not yet received.
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% if fees.behind %}
+<div class="note" style="margin-bottom:16px">
+  <strong>Behind on the monthly fee:</strong>
+  {% for r in fees.behind %}{{ r.name }} ({{ r.months_behind }} month{{ '' if r.months_behind == 1 else 's' }}){{ ', ' if not loop.last }}{% endfor %}.
+</div>
+{% endif %}
+
+<table>
+  <thead>
+    <tr>
+      <th>Partner</th>
+      <th class="num">Setup fee</th>
+      <th>Invoiced</th>
+      <th>Received</th>
+      <th class="num">Monthly</th>
+      <th>Recurring from</th>
+      <th class="num">Day</th>
+      <th>Paid through</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in fees.rows %}
+    <tr{{ ' class="quiet"'|safe if not r.billing and r.monthly_fee == 0 }}>
+      <td>{{ r.name }}</td>
+      <td class="num">{{ '%.2f'|format(r.setup_fee) if r.setup_fee else '—' }}</td>
+      <td>{{ r.startup_sent or '—' }}</td>
+      <td>{% if r.startup_paid %}{{ r.startup_paid }}{% elif r.startup_sent %}<span class="bad">not yet</span>{% else %}—{% endif %}</td>
+      <td class="num">{{ '%.2f'|format(r.monthly_fee) if r.monthly_fee else '—' }}</td>
+      <td>{% if r.recurring_started %}{{ r.recurring_started }}{% elif r.monthly_fee %}<span class="bad">not set up</span>{% else %}—{% endif %}</td>
+      <td class="num">{{ r.billing_day or '—' }}</td>
+      <td>{% if r.months_behind is none %}{% if r.billing %}<span class="bad">never</span>{% else %}—{% endif %}{% elif r.months_behind %}<span class="bad">{{ r.paid_through }} · {{ r.months_behind }} behind</span>{% else %}{{ r.paid_through }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

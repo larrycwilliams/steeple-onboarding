@@ -3,6 +3,7 @@
 The one rule this module exists to enforce: **a missing cost is not a zero
 cost.** Shopify's `unitCost` is blank on a fair number of items -- deleted
 variants, hand-created products, some POD imports. Treating a blank as $0 would
+from datetime import date as _date_cls
 make margin equal revenue and inflate what a partner is owed by exactly the
 cost of goods. Nobody would notice until a church asked how the number was
 reached.
@@ -447,4 +448,91 @@ def catalog_health(snapshot: dict, records: list[dict]) -> dict:
             for p in items if p.get("unit_cost") is None),
         "live_total": live_total,
         "orphan_count": len(orphans),
+    }
+
+
+# --------------------------------------------------------------------- fees
+#
+# Everything above is money going OUT -- product revenue, and what each
+# partner is owed. This is the other direction: the setup fee and the monthly
+# platform fee, which existed on the records and appeared in no view at all.
+#
+# Billed and received are kept strictly apart. The record says an invoice was
+# SENT, which is a claim, not a payment. Adding them into one "revenue" figure
+# would be the same error as treating a missing cost as a zero cost.
+
+def _money(value: str) -> float:
+    try:
+        return float(str(value).replace("$", "").replace(",", "").strip() or 0)
+    except ValueError:
+        return 0.0
+
+
+def _day(value: str):
+    try:
+        return _date_cls.fromisoformat(str(value)[:10])
+    except Exception:
+        return None
+
+
+def _months_behind(paid_through: str):
+    """Whole months between the paid-through date and today. None if unset."""
+    day = _day(paid_through)
+    if not day:
+        return None
+    today = _date_cls.today()
+    months = (today.year - day.year) * 12 + (today.month - day.month)
+    return max(0, months)
+
+
+def fees(records: list[dict]) -> dict:
+    """Setup and monthly platform fees, billed against received.
+
+    Reads only the partner records -- no Shopify call -- so this panel works
+    whether or not the store is connected.
+    """
+    rows = []
+    for record in records:
+        monthly = _money(record.get("monthly_fee"))
+        setup = _money(record.get("setup_fee"))
+        started = (record.get("recurring_invoice_started") or "").strip()
+        behind = _months_behind(record.get("recurring_paid_through") or "")
+        rows.append({
+            "name": record.get("org_name") or record.get("id") or "?",
+            "monthly_fee": monthly,
+            "setup_fee": setup,
+            "startup_sent": (record.get("startup_invoice_sent") or "")[:10],
+            "startup_paid": (record.get("startup_invoice_paid") or "")[:10],
+            "recurring_started": started[:10],
+            "billing_day": (record.get("recurring_billing_day") or "").strip(),
+            "paid_through": (record.get("recurring_paid_through") or "")[:10],
+            "months_behind": behind,
+            # Billing them at all is the precondition for everything else.
+            "billing": bool(started),
+        })
+
+    billed = [r for r in rows if r["billing"]]
+    unbilled = [r for r in rows if not r["billing"] and r["monthly_fee"] > 0]
+    current = [r for r in billed if r["months_behind"] == 0]
+    behind = sorted([r for r in billed if (r["months_behind"] or 0) > 0],
+                    key=lambda r: -r["months_behind"])
+    never = [r for r in billed if r["months_behind"] is None]
+
+    setup_billed = [r for r in rows if r["startup_sent"]]
+    setup_paid = [r for r in rows if r["startup_paid"]]
+    setup_open = [r for r in setup_billed if not r["startup_paid"]]
+
+    return {
+        "rows": sorted(rows, key=lambda r: r["name"].lower()),
+        "mrr_billed": sum(r["monthly_fee"] for r in billed),
+        "mrr_current": sum(r["monthly_fee"] for r in current),
+        "mrr_unbilled": sum(r["monthly_fee"] for r in unbilled),
+        "unbilled_count": len(unbilled),
+        "behind": behind,
+        "never_paid": never,
+        "setup_billed": sum(r["setup_fee"] for r in setup_billed),
+        "setup_paid": sum(r["setup_fee"] for r in setup_paid),
+        "setup_open": sum(r["setup_fee"] for r in setup_open),
+        "setup_open_count": len(setup_open),
+        "partner_count": len(rows),
     }

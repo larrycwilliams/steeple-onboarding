@@ -108,10 +108,19 @@ FIELDS: list[Field] = [
     # existing partner read as incomplete the moment this ships.
     Field("startup_invoice_sent", "Startup invoice sent", "Commercial", kind="date",
           help="The one-time setup fee. Leave blank until it goes out."),
+    Field("startup_invoice_paid", "Startup fee received", "Commercial",
+          kind="date", help="When the money actually landed."),
     Field("recurring_invoice_started", "Recurring invoice started", "Commercial",
           kind="date", help="When the monthly invoice was set up and first sent."),
     Field("recurring_billing_day", "Bills on day", "Commercial", kind="select",
           choices=BILLING_DAYS, help="Day of the month it recurs."),
+    # Paid-THROUGH, not paid-on. The monthly fee has no single payment
+    # date -- there is one every month, forever. A log would be twelve
+    # rows a year per partner, maintained by hand. One paid-through date
+    # answers the only question worth asking: are they current, and if
+    # not, by how many months.
+    Field("recurring_paid_through", "Monthly fee paid through", "Commercial",
+          kind="date", help="Last month covered. Compare to today to see who is behind."),
     Field("billing_notes", "Billing notes", "Commercial",
           placeholder="Invoice number, terms, anything the dates do not carry"),
     Field("margin_pct", "Organization margin %", "Commercial", kind="percent",
