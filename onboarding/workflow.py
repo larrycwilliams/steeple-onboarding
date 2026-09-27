@@ -59,6 +59,17 @@ RULES = [
     ("Storefront", "published", "fail", "Publish the collection",
      "partner_storefront", False),
     ("Storefront", "products", "fail", "Build the products", "traveler_index", False),
+    # Billing sits last on purpose: getting a partner's store live outranks
+    # invoicing them for it. FAIL above WARN in each pair, as with Agreement --
+    # first match wins, so the overdue wording surfaces once it is overdue.
+    ("Billing", "startup", "fail", "Send the startup fee invoice - overdue",
+     "edit_partner", False),
+    ("Billing", "startup", "warn", "Send the startup fee invoice",
+     "edit_partner", False),
+    ("Billing", "recurring", "fail", "Set up the recurring monthly invoice - overdue",
+     "edit_partner", False),
+    ("Billing", "recurring", "warn", "Set up the recurring monthly invoice",
+     "edit_partner", False),
 ]
 
 # Endpoints that take a partner id. The rest are whole-app screens -- the

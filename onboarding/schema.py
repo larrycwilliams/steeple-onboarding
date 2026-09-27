@@ -30,6 +30,10 @@ ORG_TYPES = ["church", "school", "nonprofit"]
 PAYOUT_METHODS = ["Check", "Direct Deposit", "PayPal"]
 PAYOUT_FREQUENCIES = ["Quarterly", "Monthly"]
 
+# Capped at 28 on purpose. A recurring invoice set to the 30th silently skips
+# February, and you find out in March when a partner gets two.
+BILLING_DAYS = ("",) + tuple(str(d) for d in range(1, 29))
+
 
 @dataclass
 class Field:
@@ -96,6 +100,20 @@ FIELDS: list[Field] = [
           default="0", required=True, help="Dollars. Section 2 of the agreement."),
     Field("monthly_fee", "Monthly platform fee", "Commercial", kind="money",
           default="0", required=True),
+
+    # Invoicing is manual -- a Word/PDF by email -- so these hold a claim, not
+    # a verified fact. A DATE is the checkbox: a separate tick and date can
+    # disagree, and then there are two facts and no way to know which is true.
+    # Empty means not sent. None are required: marking them so would make every
+    # existing partner read as incomplete the moment this ships.
+    Field("startup_invoice_sent", "Startup invoice sent", "Commercial", kind="date",
+          help="The one-time setup fee. Leave blank until it goes out."),
+    Field("recurring_invoice_started", "Recurring invoice started", "Commercial",
+          kind="date", help="When the monthly invoice was set up and first sent."),
+    Field("recurring_billing_day", "Bills on day", "Commercial", kind="select",
+          choices=BILLING_DAYS, help="Day of the month it recurs."),
+    Field("billing_notes", "Billing notes", "Commercial",
+          placeholder="Invoice number, terms, anything the dates do not carry"),
     Field("margin_pct", "Organization margin %", "Commercial", kind="percent",
           default="10", required=True,
           help="Negotiated per organization. Paid against POD cost basis."),

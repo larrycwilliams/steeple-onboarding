@@ -26,6 +26,8 @@ fails reports that as a finding rather than taking the page down with it.
 """
 from __future__ import annotations
 
+import datetime as _dt
+
 import re
 
 from . import agreement, package, sent as sent_log, store
@@ -36,7 +38,12 @@ OK, WARN, FAIL = "ok", "warn", "fail"
 
 # The order they appear on the screen. Roughly the order they happen in real
 # life, so a half-built partner reads as a progress bar rather than a list.
-SECTIONS = ["Record", "Artwork", "Agreement", "Package", "Storefront"]
+SECTIONS = ["Record", "Artwork", "Agreement", "Package",
+            "Storefront", "Billing"]
+
+# How long after the signed copy is back before an unsent invoice
+# stops being a reminder and starts being a problem.
+INVOICE_AFTER_DAYS = 7
 
 _ALIAS = re.compile(r"[^a-z0-9]+")
 
@@ -293,6 +300,66 @@ def _storefront_findings(record: dict, collection, redirects) -> list[dict]:
 
 # ------------------------------------------------------------------ public
 
+def _days_since(iso: str) -> "int | None":
+    try:
+        return (_dt.date.today() - _dt.date.fromisoformat(iso[:10])).days
+    except Exception:
+        return None
+
+
+def _ordinal(day: str) -> str:
+    n = int(day)
+    suffix = "th" if 11 <= n % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _billing_findings(record: dict) -> list[dict]:
+    """The two invoices. Manual, so this reports a claim -- and chases it.
+
+    Silent until the signed copy is back. Invoicing somebody who has not
+    signed is the wrong order, and a section that reports work nobody owes
+    yet stops being worth reading.
+
+    The setup fee itself is deliberately NOT checked here. store.readiness()
+    already treats a seeded 0 as unset and the Record section reports it --
+    and the Record rule sits first in workflow.RULES, so an unset fee is
+    already where the path sends you. Checking it twice is how two checks
+    drift apart.
+    """
+    state = agreement.state(store.partner_id(record))
+    if not state["returned"]:
+        return []
+
+    since = _days_since(state.get("returned_at", ""))
+    aged = f" -- signed {since} day" + ("s" if since != 1 else "") + " ago" if since is not None else ""
+    late = since is not None and since >= INVOICE_AFTER_DAYS
+
+    startup = (record.get("startup_invoice_sent") or "").strip()
+    if not startup:
+        return [_finding("Billing", FAIL if late else WARN, "startup",
+                         "startup fee invoice not sent" + aged,
+                         "Partner form > Commercial > Startup invoice sent.")]
+
+    out = [_finding("Billing", OK, "startup", f"invoiced {startup[:10]}")]
+
+    recurring = (record.get("recurring_invoice_started") or "").strip()
+    if not recurring:
+        out.append(_finding("Billing", FAIL if late else WARN, "recurring",
+                            "recurring monthly invoice not set up" + aged,
+                            "Partner form > Commercial > Recurring invoice started."))
+        return out
+
+    day = (record.get("recurring_billing_day") or "").strip()
+    if not day:
+        out.append(_finding("Billing", WARN, "recurring",
+                            f"started {recurring[:10]}, but no billing day set",
+                            "Without it, nothing can tell you a month was missed."))
+    else:
+        out.append(_finding("Billing", OK, "recurring",
+                            f"started {recurring[:10]}, bills on the {_ordinal(day)}"))
+    return out
+
+
 def assess(record: dict, snapshot: dict | None = None) -> dict:
     """Every check for one partner. `snapshot` is one `live()` result."""
     snapshot = snapshot if snapshot is not None else live([record])
@@ -309,6 +376,8 @@ def assess(record: dict, snapshot: dict | None = None) -> dict:
     else:
         findings += _storefront_findings(record, snapshot.get(pid),
                                          snapshot.get("_redirects") or [])
+
+    findings += _billing_findings(record)
 
     counts = {level: sum(1 for f in findings if f["level"] == level)
               for level in (OK, WARN, FAIL)}
