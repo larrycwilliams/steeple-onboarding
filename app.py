@@ -48,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.60"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.61"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -1390,6 +1390,47 @@ def dashboard_page():
     context["snapshot_path"] = (
         DASHBOARD_FILE.name if DASHBOARD_FILE.exists() else "")
     return render_template("dashboard.html", **context)
+
+
+# The fees table on the dashboard posts here. Deliberately NOT a second way to
+# edit a partner: it touches five billing keys and nothing else, and it goes
+# through store.save() like every other edit rather than writing JSON itself.
+#
+# org_name is never in this form, so a record's id cannot change and the
+# rename path -- which moves folders and renames documents already sent --
+# cannot be reached from here.
+FEE_FIELDS = ("startup_invoice_sent", "startup_invoice_paid",
+              "recurring_invoice_started", "recurring_billing_day",
+              "recurring_paid_through")
+
+
+@app.route("/dashboard/fees", methods=["POST"])
+def dashboard_fees_save():
+    changed, missing = [], 0
+    for pid in request.form.getlist("pid"):
+        existing = store.load(pid)
+        if existing is None:
+            missing += 1
+            continue
+        updates = {}
+        for key in FEE_FIELDS:
+            value = (request.form.get(f"{pid}__{key}") or "").strip()
+            if value != (existing.get(key) or "").strip():
+                updates[key] = value
+        # Only write what moved. A batch save should not rewrite every record
+        # on file to change one of them.
+        if updates:
+            existing.update(updates)
+            store.save(existing)
+            changed.append(existing.get("org_name") or pid)
+
+    if changed:
+        flash(f"Saved billing for {len(changed)}: " + ", ".join(sorted(changed)), "ok")
+    else:
+        flash("Nothing changed.", "ok")
+    if missing:
+        flash(f"{missing} record(s) in the form no longer exist.", "error")
+    return redirect(url_for("dashboard_page") + "#fees")
 
 
 @app.route("/dashboard/snapshot")

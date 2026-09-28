@@ -1,6 +1,15 @@
 {# Money owed TO us. Billed and received stay in separate columns:
    an invoice that was sent is a claim, not a payment. #}
-<h2 style="margin:26px 0 4px">Fees</h2>
+<style>
+  .fee-in{font:inherit;font-size:13px;padding:4px 6px;border:1px solid #D8D2C6;
+          border-radius:6px;background:#fff;width:132px}
+  .fee-in:focus{outline:2px solid var(--gold);outline-offset:1px}
+  .fee-day{width:64px}
+  td.fee-cell{padding:4px 6px}
+  .fee-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0}
+</style>
+
+<h2 id="fees" style="margin:26px 0 4px">Fees</h2>
 <p class="help" style="margin:0 0 14px">
   Setup and monthly platform fees, from the partner records. Entered by hand —
   <strong>billed</strong> means an invoice went out, <strong>received</strong>
@@ -57,31 +66,68 @@
 </div>
 {% endif %}
 
-<table>
-  <thead>
-    <tr>
-      <th>Partner</th>
-      <th class="num">Setup fee</th>
-      <th>Invoiced</th>
-      <th>Received</th>
-      <th class="num">Monthly</th>
-      <th>Recurring from</th>
-      <th class="num">Day</th>
-      <th>Paid through</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for r in fees.rows %}
-    <tr{{ ' class="quiet"'|safe if not r.billing and r.monthly_fee == 0 }}>
-      <td>{{ r.name }}</td>
-      <td class="num">{{ '%.2f'|format(r.setup_fee) if r.setup_fee else '—' }}</td>
-      <td>{{ r.startup_sent or '—' }}</td>
-      <td>{% if r.startup_paid %}{{ r.startup_paid }}{% elif r.startup_sent %}<span class="bad">not yet</span>{% else %}—{% endif %}</td>
-      <td class="num">{{ '%.2f'|format(r.monthly_fee) if r.monthly_fee else '—' }}</td>
-      <td>{% if r.recurring_started %}{{ r.recurring_started }}{% elif r.monthly_fee %}<span class="bad">not set up</span>{% else %}—{% endif %}</td>
-      <td class="num">{{ r.billing_day or '—' }}</td>
-      <td>{% if r.months_behind is none %}{% if r.billing %}<span class="bad">never</span>{% else %}—{% endif %}{% elif r.months_behind %}<span class="bad">{{ r.paid_through }} · {{ r.months_behind }} behind</span>{% else %}{{ r.paid_through }}{% endif %}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<form method="post" action="{{ url_for('dashboard_fees_save') }}">
+  <div class="fee-bar">
+    <button class="btn btn-gold" type="submit">Save billing</button>
+    <span class="help">
+      Edit any cell and save once — only the partners you changed get written.
+      Dates are the day it happened, not today.
+    </span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Partner</th>
+        <th class="num">Setup fee</th>
+        <th>Invoiced</th>
+        <th>Received</th>
+        <th class="num">Monthly</th>
+        <th>Recurring from</th>
+        <th class="num">Day</th>
+        <th>Paid through</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in fees.rows %}
+      <tr>
+        <td>
+          <input type="hidden" name="pid" value="{{ r.pid }}">
+          <a href="{{ url_for('edit_partner', pid=r.pid) }}">{{ r.name }}</a>
+        </td>
+        <td class="num">{{ '%.2f'|format(r.setup_fee) if r.setup_fee else '—' }}</td>
+        <td class="fee-cell">
+          <input class="fee-in" type="date" name="{{ r.pid }}__startup_invoice_sent"
+                 value="{{ r.startup_sent }}">
+        </td>
+        <td class="fee-cell">
+          <input class="fee-in" type="date" name="{{ r.pid }}__startup_invoice_paid"
+                 value="{{ r.startup_paid }}">
+        </td>
+        <td class="num">{{ '%.2f'|format(r.monthly_fee) if r.monthly_fee else '—' }}</td>
+        <td class="fee-cell">
+          <input class="fee-in" type="date" name="{{ r.pid }}__recurring_invoice_started"
+                 value="{{ r.recurring_started }}">
+        </td>
+        <td class="fee-cell">
+          <select class="fee-in fee-day" name="{{ r.pid }}__recurring_billing_day">
+            <option value=""></option>
+            {% for d in range(1, 29) %}
+            <option value="{{ d }}"{{ ' selected'|safe if r.billing_day == d|string }}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td class="fee-cell">
+          <input class="fee-in" type="date" name="{{ r.pid }}__recurring_paid_through"
+                 value="{{ r.paid_through }}"
+                 {{ 'style=border-color:var(--bad)'|safe if r.months_behind }}>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="fee-bar">
+    <button class="btn btn-gold" type="submit">Save billing</button>
+  </div>
+</form>

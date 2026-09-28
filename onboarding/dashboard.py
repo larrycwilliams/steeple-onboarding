@@ -498,6 +498,7 @@ def fees(records: list[dict]) -> dict:
         started = (record.get("recurring_invoice_started") or "").strip()
         behind = _months_behind(record.get("recurring_paid_through") or "")
         rows.append({
+            "pid": record.get("id") or "",
             "name": record.get("org_name") or record.get("id") or "?",
             "monthly_fee": monthly,
             "setup_fee": setup,
