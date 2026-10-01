@@ -34,7 +34,7 @@ from onboarding import dashboard, discovery, discovery_reply, leads, mail_draft,
 from onboarding import docx_pdf, readiness, vector_logo, workflow
 from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
-from onboarding import recommendation, storefront, traveler
+from onboarding import clone, recommendation, storefront, traveler
 from onboarding import statement, statement_email, statement_pdf
 from onboarding import sent as sent_log
 from onboarding import agreement
@@ -48,7 +48,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.61"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.62"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -1953,6 +1953,7 @@ def partner_storefront_create(pid):
 
 
 def _traveler_context(run: dict) -> dict:
+    job = clone.status(run)          # records a finished background clone first
     done, total = traveler.progress(run)
     numbers = {key: i + 1 for i, key in enumerate(traveler.STEP_KEYS)}
     return {
@@ -1967,6 +1968,13 @@ def _traveler_context(run: dict) -> dict:
         "ladder": traveler.PRICE_LADDER,
         "metafields": traveler.PINNED_METAFIELDS,
         "shots": traveler.shots_present(),
+        "clone_job": job,
+        "shop_domain": os.environ.get("SHOPIFY_STORE", ""),
+        "clone_preview": run.get("clone_preview"),
+        "clone_opts": clone.options(run),
+        "clone_org": clone.pod_org(run),
+        "clone_stale": bool(run.get("clone_preview")) and
+                       run["clone_preview"].get("fingerprint") != clone._fingerprint(clone._inputs(run)[0]),
         "done": done,
         "total": total,
         "pct": round(done / total * 100) if total else 0,
@@ -2037,6 +2045,61 @@ def traveler_step(run_id):
     traveler.save(run)
     done, total = traveler.progress(run)
     return jsonify({"ok": True, "done": done, "total": total})
+
+
+# The Clone panel (doc 46). Preview is the dry run and runs inline; commit is
+# started in the background and the page polls /clone/status, because a large
+# clone can outrun the gunicorn timeout. See onboarding/clone.py.
+
+@app.route("/traveler/<run_id>/clone/preview", methods=["POST"])
+def traveler_clone_preview(run_id):
+    run = traveler.load(run_id)
+    if run is None:
+        abort(404)
+    if (run.get("clone") or {}).get("ok"):
+        flash("Already cloned — nothing to preview.", "error")
+        return redirect(url_for("traveler_run", run_id=run_id) + "#step-clone")
+    clone.set_options(run, request.form)
+    traveler.save(run)
+    result = clone.preflight(run)
+    if result["ok"]:
+        flash("Preview ready. Read the plan, then commit.", "ok")
+    else:
+        flash("Preview found problems — nothing can be committed until they're fixed.", "error")
+    return redirect(url_for("traveler_run", run_id=run_id) + "#step-clone")
+
+
+@app.route("/traveler/<run_id>/clone/commit", methods=["POST"])
+def traveler_clone_commit(run_id):
+    run = traveler.load(run_id)
+    if run is None:
+        abort(404)
+    result = clone.commit(run)
+    if result["ok"]:
+        flash("Clone started. This page updates when it finishes.", "ok")
+    else:
+        flash(f"Not started — {result['error']}", "error")
+    return redirect(url_for("traveler_run", run_id=run_id) + "#step-clone")
+
+
+@app.route("/traveler/<run_id>/clone/status")
+def traveler_clone_status(run_id):
+    run = traveler.load(run_id)
+    if run is None:
+        abort(404)
+    state = clone.status(run)
+    done, total = traveler.progress(traveler.load(run_id) or run)
+    return jsonify({**state, "done": done, "total": total})
+
+
+@app.route("/traveler/<run_id>/clone/reset", methods=["POST"])
+def traveler_clone_reset(run_id):
+    run = traveler.load(run_id)
+    if run is None:
+        abort(404)
+    clone.reset(run)
+    flash("Cleared the failed clone. Preview again when ready.", "ok")
+    return redirect(url_for("traveler_run", run_id=run_id) + "#step-clone")
 
 
 @app.route("/traveler/<run_id>/shot/<key>", methods=["POST"])

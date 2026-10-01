@@ -66,6 +66,23 @@
   table.mini{font-size:13.5px;max-width:66ch;margin-bottom:9px}
   table.mini td,table.mini th{padding:6px 12px 6px 0}
   td.mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+  .cl-panel{max-width:74ch;margin:4px 0 9px}
+  .cl-panel .grid{margin-bottom:6px}
+  .cl-inputs th,.cl-plan th{text-align:left;font-weight:600;color:var(--muted);white-space:nowrap;vertical-align:top;padding-right:14px}
+  .cl-plan td{vertical-align:top}
+  .cl-plan{border-top:1px solid #EFEBE2;margin-top:10px;width:100%}
+  .cl-check{display:block;font-size:13.5px;margin:4px 0}
+  .cl-when{font-size:12.5px;color:var(--muted);margin:14px 0 8px}
+  .cl-ok{background:#E6F2E8;border-left:3px solid var(--ok);padding:11px 14px;border-radius:0 7px 7px 0;font-size:14px}
+  .cl-ok small{display:block;color:var(--muted);margin-top:4px}
+  .cl-running{background:#EEF3F7;border-left:3px solid #3F5764;padding:11px 14px;border-radius:0 7px 7px 0;font-size:14px}
+  .cl-running ul{margin:8px 0 0;padding-left:18px;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#3E444D}
+  .cl-spin{display:inline-block;width:11px;height:11px;border:2px solid #B9CBD6;border-top-color:#3F5764;border-radius:50%;animation:clspin .8s linear infinite;margin-right:6px;vertical-align:-1px}
+  @keyframes clspin{to{transform:rotate(360deg)}}
+  .cl-log{font-size:12.5px;margin:9px 0}
+  .cl-log ul{margin:6px 0 0;padding-left:18px;font-family:ui-monospace,Menlo,monospace}
+  .cl-log .k-err{color:#B4443C}.cl-log .k-warn{color:#8A6D1F}
+  .bad{color:#B4443C}
   td.num{text-align:right;font-variant-numeric:tabular-nums;padding-right:20px}
 </style>
 
@@ -123,7 +140,7 @@
     </div>
     <div class="actions">
       <button class="btn btn-primary" type="submit">Save details</button>
-      <span class="tv-count">Commands below rebuild from these fields.</span>
+      <span class="tv-count">The Clone panel (step 04) reads these fields.</span>
     </div>
   </form>
 </div>
@@ -169,20 +186,135 @@
         {% endif %}
       {% endif %}
 
-      {% if step.cmd %}
-      <pre><button class="copy" type="button" data-copy="cmd-{{ step.key }}">Copy</button><span id="cmd-{{ step.key }}">{% if step.cmd in ('dry','commit') %}{{ cmds.prefix }}
-{% endif %}{{ cmds[step.cmd] }}</span></pre>
-      {% endif %}
 
-      {% if step.flags %}
-      <table class="mini">
-        <thead><tr><th>Flag</th><th>When to reach for it</th></tr></thead>
-        <tbody>
-          {% for flag, when in flags %}
-            <tr><td class="mono">{{ flag }}</td><td>{{ when }}</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      {% if step.clone_panel %}
+      {% set job = clone_job %}
+      {% set pv = clone_preview %}
+      <div class="cl-panel" id="clone-panel">
+        {% if job.state == 'done' %}
+          <div class="cl-ok">
+            <b>Cloned.</b>
+            {% if run.twc_product_id %}
+              <a href="https://{{ shop_domain }}/admin/products/{{ run.twc_product_id }}" target="_blank" rel="noopener">Open the in-house twin ↗</a>
+              <code>{{ run.twc_product_id }}</code>
+            {% endif %}
+            <small>Finished {{ job.finished }} · {{ job.api_calls or '?' }} API calls</small>
+          </div>
+          {% if job.events %}
+          <details class="cl-log"><summary>What the clone did ({{ job.events|length }} lines)</summary>
+            <ul>{% for e in job.events %}<li class="k-{{ e.kind }}">{{ e.msg }}</li>{% endfor %}</ul>
+          </details>
+          {% endif %}
+
+        {% elif job.state == 'running' %}
+          <div class="cl-running" id="cl-running" data-status="{{ url_for('traveler_clone_status', run_id=run.id) }}">
+            <span class="cl-spin" aria-hidden="true"></span>
+            <b>Cloning…</b> started {{ job.started }}. Leave this page open or come back — it keeps
+            running on the Mac either way.
+            <ul id="cl-progress">{% for line in job.progress %}<li>{{ line }}</li>{% endfor %}</ul>
+          </div>
+
+        {% elif job.state == 'failed' %}
+          <div class="stop">
+            <b>The clone failed.</b> {{ job.error }}
+            {% if job.partial %}
+              <br><br><b>A partial product was created — {{ job.new_id }}.</b> It is a DRAFT
+              and not linked. Delete it in admin (or finish it by hand) before cloning again, or
+              the store ends up with two twins.
+            {% endif %}
+          </div>
+          {% if job.events %}
+          <details class="cl-log" open><summary>Log ({{ job.events|length }} lines)</summary>
+            <ul>{% for e in job.events %}<li class="k-{{ e.kind }}">{{ e.msg }}</li>{% endfor %}</ul>
+          </details>
+          {% endif %}
+          <form method="post" action="{{ url_for('traveler_clone_reset', run_id=run.id) }}">
+            <button class="btn btn-quiet" type="submit">Clear and preview again</button>
+          </form>
+
+        {% else %}
+          <table class="mini cl-inputs">
+            <tr><th>POD product</th>
+                <td class="mono">{{ run.product_id or '— set in Run details' }}</td></tr>
+            <tr><th>Partner (pod2twc org)</th>
+                <td>{% if clone_org[0] %}{{ org.vendor if org }} <code>{{ clone_org[0] }}</code>
+                    {% else %}<span class="bad">{{ clone_org[1] }}</span>{% endif %}</td></tr>
+            <tr><th>Loaded in-house cost</th>
+                <td class="mono">{{ ('$' ~ run.cost) if run.cost else '— set in Run details' }}</td></tr>
+          </table>
+
+          <form method="post" action="{{ url_for('traveler_clone_preview', run_id=run.id) }}" class="cl-opts">
+            <div class="grid">
+              <div class="field">
+                <label for="pod_cost">POD cost override</label>
+                <input type="text" id="pod_cost" name="pod_cost" value="{{ clone_opts.pod_cost }}" placeholder="blank = read from the POD half">
+                <div class="help">Only when the POD app pushed cost = retail (Printify).</div>
+              </div>
+              <div class="field">
+                <label for="price">Price override</label>
+                <input type="text" id="price" name="price" value="{{ clone_opts.price }}" placeholder="blank = keep the POD price">
+                <div class="help">Retail must match across the pair. Normally blank.</div>
+              </div>
+            </div>
+            <label class="cl-check"><input type="checkbox" name="keep_images" value="1" {{ 'checked' if clone_opts.keep_images }}> Keep POD mockups</label>
+            <label class="cl-check"><input type="checkbox" name="no_flip" value="1" {{ 'checked' if clone_opts.no_flip }}> Leave the clone as DRAFT (don't flip)</label>
+            <div class="actions">
+              <button class="btn btn-quiet" type="submit" id="cl-preview-btn">{{ 'Preview again' if pv else 'Preview' }}</button>
+              <span class="tv-count">Dry run — reads Shopify, writes nothing.</span>
+            </div>
+          </form>
+
+          {% if pv %}
+            <div class="cl-result">
+              <div class="cl-when">Preview {{ pv.at }}{% if clone_stale %} — <b class="bad">run details changed since; preview again</b>{% endif %}</div>
+              {% for b in pv.blocking %}<div class="stop">{{ b }}</div>{% endfor %}
+              {% for w in pv.warnings %}<div class="why">{{ w }}</div>{% endfor %}
+
+              {% set p = pv.plan %}
+              {% if p %}
+              <table class="mini cl-plan">
+                <tr><th>Source</th><td>{{ p.source.title }} · {{ p.source.status }} · vendor <code>{{ p.source.vendor }}</code> ·
+                    {{ p.source.variants }} variants · {{ p.source.app or 'POD app unknown' }} ·
+                    ${{ p.source.price_min }}{% if p.source.price_max != p.source.price_min %}–${{ p.source.price_max }}{% endif %}</td></tr>
+                <tr><th>Creates</th><td><b>{{ p.title }}</b> <code>{{ p.handle }}</code></td></tr>
+                <tr><th>Vendor</th><td><code>{{ p.vendor }}</code> → the <code>{{ p.collection }}</code> smart collection</td></tr>
+                <tr><th>Type / tags</th><td>{{ p.product_type }} / {% for t in p.tags %}<code>{{ t }}</code> {% endfor %}</td></tr>
+                <tr><th>Options</th><td>
+                  {% if p.options_dropped %}drop {% for o in p.options_dropped %}<code>{{ o.name }}={{ o.value }}</code> {% endfor %}{% else %}none dropped{% endif %}
+                  · {% if p.recase.count %}re-case {{ p.recase.count }} ({{ p.recase.sample|join(', ') }}){% else %}casing unchanged{% endif %}</td></tr>
+                <tr><th>SKUs</th><td>{{ p.skus_cleared }} POD SKU(s) cleared</td></tr>
+                <tr><th>Variants</th><td>{{ p.variant_settings }}</td></tr>
+                <tr><th>Inventory</th><td>
+                  stock at {{ p.inventory.stock_at|join(', ') }}
+                  {% for d in p.inventory.detach %}· <span class="bad">detach {{ d.levels }} level(s) from {{ d.location }}</span> {% endfor %}
+                  {% if p.inventory.tracked_variants %}· {{ p.inventory.tracked_variants }} tracked variant(s) turned off first{% endif %}</td></tr>
+                <tr><th>Cost</th><td>in-house <b>${{ p.cost.in_house or '—' }}</b> · POD basis
+                  {% if p.cost.pod_basis_suspect %}<span class="bad">{{ p.cost.pod_basis }} (= retail, placeholder)</span>
+                  {% else %}<b>${{ p.cost.pod_basis or '—' }}</b>{% endif %}</td></tr>
+                <tr><th>Price</th><td>{{ ('$' ~ p.price_override ~ ' on every variant') if p.price_override else 'kept from the POD half' }}</td></tr>
+                <tr><th>Weights</th><td>{% if p.weights.with_weight %}{{ p.weights.with_weight }} of {{ p.weights.of }} carried over,
+                  {{ p.weights.min }}–{{ p.weights.max }} {{ (p.weights.unit or '')|lower }}{% else %}<span class="bad">none on the source — set them after, or shipping rates read 0</span>{% endif %}</td></tr>
+                <tr><th>Metafields</th><td>{% for m in p.metafields %}<div><code>{{ m.key }}</code> {% if m.value %}{{ m.value }}{% else %}<span class="bad">not written</span>{% endif %}</div>{% endfor %}
+                  {% if p.app_metafields_stripped %}<div>strip {{ p.app_metafields_stripped|join(', ') }}</div>{% endif %}</td></tr>
+                <tr><th>Images</th><td>{{ p.pod_media.count }} POD mockup(s): {{ p.pod_media.action }}</td></tr>
+                <tr><th>Publish</th><td>{{ p.publications }} channel(s) · clone <b>{{ p.final_status.clone }}</b> · POD half <b>{{ p.final_status.source }}</b></td></tr>
+              </table>
+              {% endif %}
+
+              {# No confirm() pop-up: the Claude app's browser pane silently answers
+                 "Cancel" to it, so the button did nothing there (2026-09-30).
+                 Two clicks instead -- the first arms the button, the second sends. #}
+              <form method="post" action="{{ url_for('traveler_clone_commit', run_id=run.id) }}" id="cl-commit">
+                <div class="actions">
+                  <button class="btn btn-primary" type="submit" id="cl-commit-btn"
+                          {{ 'disabled' if (not pv.ok) or clone_stale }}>Commit clone</button>
+                  <span class="tv-count">{% if not pv.ok %}Fix the problems above and preview again.{% elif clone_stale %}Preview again first.{% else %}Writes to Shopify.{% endif %}</span>
+                </div>
+              </form>
+            </div>
+          {% endif %}
+        {% endif %}
+      </div>
       {% endif %}
 
       {% if step.metafields %}
@@ -230,12 +362,24 @@
     <b>10</b>, whichever comes first. Set the trigger in advance, not while you're behind.
   </p>
   <pre><button class="copy" type="button" data-copy="cmd-flip">Copy</button><span id="cmd-flip">{{ cmds.prefix }}
-$P ~/Dev/pod2twc/pod2twc.py flip {{ run.product_id or '&lt;ref&gt;'|safe }} --to pod            <span class="c"># dry run</span>
-$P ~/Dev/pod2twc/pod2twc.py flip {{ run.product_id or '&lt;ref&gt;'|safe }} --to pod --commit</span></pre>
+{{ cmds.flip_dry }}            <span class="c"># dry run</span>
+{{ cmds.flip }}</span></pre>
   <p style="font-size:14.5px;color:#3E444D;max-width:66ch;margin-bottom:0">
     The command <b>refuses</b> if the POD half covers fewer colours or sizes than the in-house
     half. That refusal is the point — read what it lists before overriding.
   </p>
+</div>
+
+<h2>Terminal tools <span class="where" style="font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)">hub · Terminal</span></h2>
+<div class="card">
+  <p style="margin-top:0;font-size:14.5px;color:#3E444D;max-width:66ch">
+    Not part of every run. <b>Coverage exceptions</b> record gaps the supplier permanently can't fill,
+    so the guard stays quiet about those and loud about everything else. <b>Audit</b> checks every
+    pair in the store. Both use the app's own Python and the app's Shopify token.
+  </p>
+  <pre><button class="copy" type="button" data-copy="cmd-tools">Copy</button><span id="cmd-tools">{{ cmds.prefix }}
+{{ cmds.except }}
+{{ cmds.audit }}</span></pre>
 </div>
 
 <div class="actions" style="margin-top:26px">
@@ -276,6 +420,43 @@ $P ~/Dev/pod2twc/pod2twc.py flip {{ run.product_id or '&lt;ref&gt;'|safe }} --to
     var done = document.querySelectorAll(".tv-box:checked").length;
     bar.style.width = (done / total * 100) + "%";
     count.textContent = done + " / " + total;
+  }
+
+  // Clone job: poll until the background clone finishes, then reload so the
+  // result, the ticked step and the progress bar all render server-side.
+  var running = document.getElementById("cl-running");
+  if(running){
+    var list = document.getElementById("cl-progress");
+    var poll = function(){
+      fetch(running.dataset.status, {cache: "no-store"}).then(function(r){ return r.json(); })
+        .then(function(s){
+          if(s.state === "running"){
+            list.innerHTML = "";
+            (s.progress || []).forEach(function(line){
+              var li = document.createElement("li"); li.textContent = line; list.appendChild(li);
+            });
+            setTimeout(poll, 3000);
+          } else { location.reload(); }
+        }).catch(function(){ setTimeout(poll, 6000); });
+    };
+    setTimeout(poll, 2500);
+  }
+
+  var commitForm = document.getElementById("cl-commit");
+  if(commitForm){
+    var armed = false, btn = document.getElementById("cl-commit-btn");
+    commitForm.addEventListener("submit", function(ev){
+      if(!armed){
+        ev.preventDefault();
+        armed = true;
+        btn.textContent = "Click again to create it in Shopify";
+        btn.style.background = "#B4443C";
+        setTimeout(function(){ armed = false; btn.textContent = "Commit clone"; btn.style.background = ""; }, 8000);
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "Starting…";
+    });
   }
 
   document.querySelectorAll(".copy").forEach(function(btn){

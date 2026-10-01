@@ -64,38 +64,38 @@ PINNED_METAFIELDS = [
     ("7", "Pair Coverage Exceptions", "blank, or accepted gaps"),
 ]
 
+# Options the Clone panel exposes. Same flags as the CLI; the panel sets them.
 CLONE_FLAGS = [
-    ("--pod-cost N",  "The POD app pushed cost = retail (Printify does this). Supply the true cost."),
-    ("--price N",     "Override retail across all variants."),
-    ("--keep-images", "Copy the POD mockups instead of starting empty."),
-    ("--no-flip",     "Leave the clone DRAFT and the POD half untouched."),
+    ("POD cost override", "--pod-cost N", "The POD app pushed cost = retail (Printify does this). Supply the true cost."),
+    ("Price override",    "--price N",    "Override retail across all variants. Normally leave blank — retail must match the POD half."),
+    ("Keep POD mockups",  "--keep-images", "On by default in the app. Untick to start the clone with no images."),
+    ("Leave as draft",    "--no-flip",     "Leave the clone DRAFT and the POD half untouched."),
 ]
 
+# 2026-09-30 (doc 46): collapsed from 13 steps to 6. The clone is a button now,
+# so the steps that were "run this command" -- dry run, commit, except, audit --
+# became the Clone panel or moved to the Terminal tools card at the bottom.
+# What is left is what is genuinely manual. Step keys that survived keep their
+# names so old runs keep their ticks.
 PHASES = [
     {
         "mark": "A", "title": "Build the POD half", "where": "POD platform",
         "steps": [
             {
                 "key": "build",
-                "title": "Build the product with the full colour and size run",
+                "title": "Build it with the full colour and size run, priced to the ladder",
                 "body": "Create it in the POD app. Choose every colourway and size you intend "
-                        "to sell — not a subset you plan to extend later. Generate mockups.",
+                        "to sell — not a subset you plan to extend later. Set retail here, in "
+                        "the POD app, to the standard ladder. Generate mockups.",
+                "ladder": True,
                 "why": "<b>Why the full run:</b> the in-house twin inherits this grid. If the POD "
                        "half is narrower, the flip guard blocks the capacity valve later — exactly "
                        "when you need it.",
+                "stop": "<b>Price in the POD app, not Shopify.</b> The POD app is upstream: a "
+                        "price set in Shopify is overwritten on the next sync. Confirmed the hard "
+                        "way on 2026-09-08.",
                 "shot": "variant-grid",
                 "shot_hint": "The POD app's variant grid with every colour and size selected.",
-            },
-            {
-                "key": "price",
-                "title": "Set retail price here — not in Shopify",
-                "body": "Price to the standard ladder inside the POD app.",
-                "ladder": True,
-                "stop": "<b>Order matters.</b> The POD app is upstream of Shopify. A price set in "
-                        "Shopify is overwritten on the next sync; a price set in the POD app "
-                        "survives. Confirmed the hard way on 2026-09-08.",
-                "shot": "pod-pricing",
-                "shot_hint": "The POD app's pricing screen with the ladder entered.",
             },
             {
                 "key": "publish",
@@ -111,116 +111,63 @@ PHASES = [
         "steps": [
             {
                 "key": "vendor",
-                "title": "Set Vendor to the exact partner org string",
-                "body": "Product organization card, right-hand column. Type it exactly — the "
-                        "match is literal.",
+                "title": "Set Vendor to the exact partner string, and copy the product ID",
+                "body": "Product organization card, right-hand column — type it exactly, the "
+                        "match is literal. Then paste the product ID (last segment of the admin "
+                        "URL) into Run details above.",
                 "vendor_box": True,
                 "why": "<b>Vendor is the one load-bearing field.</b> Every storefront collection is "
                        "a <code>VENDOR EQUALS</code> smart rule, so vendor <em>is</em> the "
                        "collection assignment. Printify writes <code>Printify</code>; Ninja POD "
-                       "leaves <code>Steeple &amp; Stitch Co.</code> Neither matches an org, so "
-                       "neither lands anywhere.",
+                       "leaves <code>Steeple &amp; Stitch Co.</code> Neither lands anywhere. The "
+                       "Clone preview warns if this was skipped.",
                 "shot": "product-organization",
                 "shot_hint": "Shopify product page → Product organization card, corrected.",
             },
-            {
-                "key": "vendor-check",
-                "title": "Confirm the vendor took",
-                "body": "Check the product carries no <code>needs-vendor-fix</code> tag. The Flow "
-                        "workflow of that name tags anything created with a vendor matching no "
-                        "known org.",
-                "shot": "needs-vendor-fix",
-                "shot_hint": "Products list filtered on the needs-vendor-fix tag, returning nothing.",
-            },
-            {
-                "key": "product-id",
-                "title": "Record the product ID",
-                "body": "The last segment of the admin URL. Paste it into the run details above "
-                        "and the clone command below fills itself in.",
-            },
         ],
     },
     {
-        "mark": "C", "title": "Clone the in-house half", "where": "Terminal · pod2twc",
+        "mark": "C", "title": "Clone the in-house half", "where": "This app",
         "steps": [
             {
-                "key": "dry-run",
-                "title": "Dry run the clone and read the plan",
-                "cmd": "dry",
-                "body": "<code>--cost</code> is your <b>fully loaded</b> in-house cost, labor "
-                        "included. It is expected to sit <em>above</em> the POD basis. That is "
-                        "deliberate and must not be \"corrected\".",
-                "flags": True,
-                "shot": "clone-dry-run",
-                "shot_hint": "Terminal showing the dry-run plan, including the inventory-location lines.",
-            },
-            {
-                "key": "commit",
-                "title": "Commit it",
-                "cmd": "commit",
-                "body": "The clone lands ACTIVE, the POD half goes DRAFT, and the two are linked "
-                        "by metafield. This replaces the entire copy/paste pass.",
-                "why": "<b>The step that actually matters</b> happens inside this command: a plain "
+                "key": "clone",
+                "title": "Preview the clone, read the plan, commit",
+                "clone_panel": True,
+                "body": "Preview is a dry run — nothing is written. Commit builds the in-house "
+                        "twin: it lands ACTIVE, the POD half goes DRAFT, the two are linked by "
+                        "metafield, and this step ticks itself.",
+                "why": "<b>The step that actually matters</b> happens inside the commit: a plain "
                        "Shopify duplicate stays stocked at the POD fulfillment location, so an "
-                       "order on the in-house listing routes straight back to the printer — POD "
-                       "cost paid on a garment you printed yourself. The script turns tracking off "
-                       "<em>first</em>, detaches every POD location, then stocks the house and "
-                       "pickup locations.",
+                       "order on the in-house listing routes straight back to the printer. The "
+                       "clone turns tracking off, stocks the house location, detaches every POD "
+                       "location, and carries the real weights over — the three things a hand "
+                       "duplicate gets wrong.",
             },
         ],
     },
     {
-        "mark": "D", "title": "Finish the in-house half", "where": "Shopify admin · Terminal",
+        "mark": "D", "title": "Finish and check", "where": "Shopify admin",
         "steps": [
             {
                 "key": "mockups",
-                "title": "Upload your own mockups",
-                "body": "The clone starts with no images by design — POD mockups show the "
-                        "printer's render, not your artwork.",
-            },
-            {
-                "key": "exceptions",
-                "title": "Record any supplier coverage gaps",
-                "cmd": "except",
-                "body": "Some gaps are permanent — the supplier simply doesn't make that "
-                        "combination. Record them so the guard stays quiet about those and loud "
-                        "about everything else.",
-                "stop": "<b>Don't train yourself to ignore the guard.</b> Forcing past it every "
-                        "time is how a real gap gets shipped.",
-            },
-            {
-                "key": "metafields",
-                "title": "Eyeball the metafields on the product page",
-                "body": "All six definitions are pinned, so they sit directly on the product page "
-                        "rather than behind “Show all”.",
-                "metafields": True,
-                "why": "<b>POD Basis Cost is not your cost.</b> It's what the printer charges, and "
-                       "it's what the partner org's payout is calculated against — whichever half "
-                       "fulfills. Your loaded in-house cost lives in Cost per item and is "
-                       "deliberately higher.",
-                "shot": "pinned-metafields",
-                "shot_hint": "Product page metafields, all six pinned fields populated.",
-            },
-        ],
-    },
-    {
-        "mark": "E", "title": "Verify", "where": "Terminal",
-        "steps": [
-            {
-                "key": "audit",
-                "title": "Audit the pair",
-                "cmd": "audit",
-                "body": "The new pair should report no gaps. Fix anything it flags now — a gap "
-                        "found later is a gap found while you're drowning.",
-                "shot": "clean-audit",
-                "shot_hint": "Terminal showing a clean audit.",
+                "title": "Check the mockups — replace with your own if you have them",
+                "body": "The clone copies the POD app's mockups by default (untick “Keep POD "
+                        "mockups” before Preview to start empty). They are the printer's render "
+                        "of your design — fine to sell from; swap in your own shots when you "
+                        "have them.",
             },
             {
                 "key": "live",
-                "title": "Confirm the pair is live the right way round",
-                "body": "In-house twin <b>ACTIVE</b>, POD half <b>DRAFT</b>. Retail identical on "
-                        "both halves — if they disagree, the twin's price is the correct one, and "
-                        "the fix goes in at the POD app followed by a republish.",
+                "title": "Check the pair on the product page",
+                "body": "In-house twin <b>ACTIVE</b>, POD half <b>DRAFT</b>, retail identical on "
+                        "both. The six pinned metafields sit directly on the product page:",
+                "metafields": True,
+                "why": "<b>POD Basis Cost is not your cost.</b> It's what the printer charges, and "
+                       "what the partner payout is calculated against. Your loaded in-house cost "
+                       "lives in Cost per item and is deliberately higher. If retail disagrees "
+                       "between the halves, the fix goes in at the POD app, then republish.",
+                "shot": "pinned-metafields",
+                "shot_hint": "Product page metafields, all six pinned fields populated.",
             },
         ],
     },
@@ -233,23 +180,27 @@ SHOT_KEYS = [s["shot"] for p in PHASES for s in p["steps"] if s.get("shot")]
 # ----------------------------------------------------------------- commands
 
 def commands(run: dict) -> dict:
-    """Build the pod2twc commands for this run, filled in where we can.
+    """The pod2twc commands still run by hand (flip, except, audit).
 
-    Placeholders stay visible rather than collapsing to an empty string, so a
-    half-filled run yields a command you can see is unfinished instead of one
-    that looks complete and silently targets nothing.
+    Clone is a button now. These use the app's own venv -- pod2twc needs only
+    `requests`, so ~/.venvs/pod2twc was never needed -- and pod2twc reads this
+    app's .env for the token, so nothing else needs setting up.
+
+    The org is resolved through the vendor string, never passed straight
+    through: the traveler's key for Haven of Hope is "haven-of-hope", and
+    pod2twc's "hoh" is Highway of Holiness.
     """
-    pid = (run.get("product_id") or "").strip() or "<product-id>"
-    org = (run.get("org_key") or "").strip() or "<org>"
-    cost = (run.get("cost") or "").strip() or "<cost>"
+    from onboarding import clone
     ref = (run.get("product_id") or "").strip() or "<ref>"
+    org = clone.pod_org(run)[0] or "<org>"
     base = "$P ~/Dev/pod2twc/pod2twc.py"
     return {
-        "prefix": "P=~/.venvs/pod2twc/bin/python",
-        "dry":    f"{base} clone {pid} --org {org} --cost {cost}",
-        "commit": f"{base} clone {pid} --org {org} --cost {cost} --commit",
+        "prefix": "P=~/.venvs/steeple-onboarding-312/bin/python",
+        "org": org,
         "except": f"{base} except {ref} --add \"White / S\" --commit",
         "audit":  f"{base} audit",
+        "flip_dry": f"{base} flip {ref} --to pod",
+        "flip":     f"{base} flip {ref} --to pod --commit",
     }
 
 
