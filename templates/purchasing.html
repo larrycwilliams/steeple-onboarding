@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+{% block title %}Purchasing — Steeple &amp; Stitch{% endblock %}
+
+{% macro order_ref(name, order_id) -%}
+  {%- if shop_domain and order_id -%}
+    <a href="https://{{ shop_domain }}/admin/orders/{{ order_id }}" target="_blank" rel="noopener">{{ name }}</a>
+  {%- else -%}{{ name }}{%- endif -%}
+{%- endmacro %}
+
+{% macro stock(n) -%}{{ '500+' if n >= stock_cap else n }}{%- endmacro %}
+
+{% macro val(o, key) -%}
+  {%- set v = o.get(key) -%}{{ v if v is not none and v != '' else '—' }}
+{%- endmacro %}
+
+{% macro ss_totals(orders) %}
+  {% if orders %}
+  <div class="pu-scroll"><table class="pu-mini">
+    <thead><tr><th>S&amp;S order</th><th>From</th><th class="num">Subtotal</th><th class="num">Shipping</th>
+      <th class="num">Tax</th><th class="num">Small-order fee</th><th class="num">Total</th><th>Expected</th></tr></thead>
+    <tbody>
+    {% for o in orders %}
+      <tr><td class="mono">{{ val(o, 'orderNumber') }}</td><td>{{ val(o, 'warehouseAbbr') }}</td>
+          <td class="num">{{ val(o, 'subtotal') }}</td>
+          <td class="num">{{ val(o, 'shipping') }}</td>
+          <td class="num">{{ val(o, 'tax') }}</td>
+          <td class="num">{{ val(o, 'smallOrderFee') }}</td>
+          <td class="num"><b>{{ val(o, 'total') }}</b></td>
+          <td>{{ val(o, 'expectedDeliveryDate') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+{% endmacro %}
+
+{% block content %}
+<style>
+  .pu-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .pu-top form{margin:0}
+  .pu-when{font-size:13px;color:var(--muted)}
+  .stop{font-size:13.5px;color:#8C332C;background:#F8E3E1;border-left:3px solid #B4443C;
+        padding:10px 14px;border-radius:0 7px 7px 0;margin:10px 0;white-space:pre-line}
+  .why{font-size:13.5px;color:#6A5B33;background:#FBF3DF;border-left:3px solid var(--gold);
+       padding:10px 14px;border-radius:0 7px 7px 0;margin:10px 0}
+  .pu-ok{background:#E6F2E8;border-left:3px solid var(--ok);padding:11px 14px;
+         border-radius:0 7px 7px 0;font-size:14px;margin:10px 0}
+  .pu-running{background:#EEF3F7;border-left:3px solid #3F5764;padding:11px 14px;
+              border-radius:0 7px 7px 0;font-size:14px;margin:10px 0}
+  .pu-running ul{margin:8px 0 0;padding-left:18px;font-family:ui-monospace,Menlo,monospace;
+                 font-size:12px;color:#3E444D}
+  .pu-spin{display:inline-block;width:11px;height:11px;border:2px solid #B9CBD6;
+           border-top-color:#3F5764;border-radius:50%;animation:puspin .8s linear infinite;
+           margin-right:6px;vertical-align:-1px}
+  @keyframes puspin{to{transform:rotate(360deg)}}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+  .bad{color:#B4443C}
+  .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .pu-counts{font-size:13px;color:#5C6470;margin:0 0 14px}
+  .pu-counts b{color:var(--ink)}
+  .pu-lines td{vertical-align:top}
+  .pu-lines small{display:block;color:var(--muted);font-size:12.5px}
+  .pu-sub td{border-top:2px solid #E2DDD2;border-bottom:0;font-weight:600}
+  .pu-rec{background:#FBF9F4;border:1px solid #E2DDD2;border-radius:var(--radius);
+          padding:14px 18px;margin:16px 0}
+  .pu-rec .k{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .pu-rec .v{font-size:19px;font-weight:700;margin:2px 0 4px}
+  .pu-rec.hold .v{color:#8A6D1F}
+  .pu-opt{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid #EFEBE2;
+          font-size:14.5px}
+  .pu-opt:last-of-type{border-bottom:0}
+  .pu-opt input{margin-top:4px}
+  .pu-opt.off{color:#9A958A}
+  .pu-opt small{display:block;color:var(--muted);font-size:13px}
+  .pu-opt label{display:inline;font-size:inherit;font-weight:600;letter-spacing:0;
+                text-transform:none;color:inherit;margin:0}
+  .pu-mini{font-size:13.5px;margin:8px 0}
+  .pu-tight{width:auto;min-width:min(340px,100%)}
+  .pu-scroll{overflow-x:auto}
+  details.pu-more pre{max-width:100%}
+  .pu-ok,.pu-review,.stop{min-width:0;overflow-wrap:anywhere}
+  .pu-mini th,.pu-mini td{padding:6px 10px 6px 0}
+  .pu-review{border:2px solid var(--ink);border-radius:var(--radius);padding:18px 20px;margin:18px 0}
+  .pu-review h3{margin:0 0 4px;font-size:17px}
+  .pu-review dl{display:grid;grid-template-columns:max-content 1fr;gap:5px 18px;margin:12px 0;font-size:14px}
+  .pu-review dt{color:var(--muted);font-weight:600}
+  .pu-review dd{margin:0}
+  .pu-confirm{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+  .pu-confirm input[type=text]{width:110px}
+  .pu-group{border:1px solid #E2DDD2;border-radius:var(--radius);padding:16px 18px;margin-bottom:14px;background:#fff}
+  .pu-group h3{margin:0;font-size:15.5px}
+  .pu-group .meta{font-size:13px;color:var(--muted);margin:2px 0 8px}
+  .pu-group .actions{margin-top:12px}
+  .pu-check{width:26px}
+  details.pu-more{margin:14px 0 0;font-size:14px}
+  details.pu-more summary{cursor:pointer;color:#7A5C1C;font-weight:600}
+  details.pu-more pre{background:#F6F3EC;border-radius:7px;padding:12px;overflow:auto;font-size:12px;max-height:340px}
+  .pu-fix{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#3E444D;display:block;margin-top:3px}
+  @media (max-width:699px){
+    .pu-lines .wide,.pu-lines .for small{display:none}
+    .pu-review dl{grid-template-columns:1fr;gap:2px 0}
+    .pu-review dt{margin-top:8px}
+  }
+</style>
+
+<h2>Purchasing — S&amp;S Activewear</h2>
+
+<div class="card">
+  <div class="pu-top">
+    <form method="post" action="{{ url_for('purchasing_refresh') }}">
+      <button class="btn btn-primary" type="submit" {{ 'disabled' if job.state == 'running' }}>
+        {{ 'Refresh proposal' if snap else 'Build the first proposal' }}</button>
+    </form>
+    <span class="pu-when">
+      {% if refreshed %}Last refreshed {{ refreshed }}.{% else %}Not run yet.{% endif %}
+      Reads open Shopify orders and S&amp;S stock. Orders nothing.
+    </span>
+  </div>
+  {% for p in problems %}<div class="stop">{{ p }}</div>{% endfor %}
+  {% if snap and not snap.ok %}
+    <div class="stop"><b>The last refresh failed.</b> {{ snap.error }}
+      {%- if prop.lines or prop.tracked %}
+
+Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot be ordered from until a refresh succeeds.{% endif %}</div>
+  {% endif %}
+</div>
+
+{# ------------------------------------------------------------ order in flight #}
+<a id="order"></a>
+{% if job.state == 'running' %}
+  <div class="pu-running" id="pu-running" data-status="{{ url_for('purchasing_status') }}">
+    <span class="pu-spin" aria-hidden="true"></span>
+    <b>Placing {{ job.po }} with S&amp;S…</b> Leave this page open or come back — it keeps running
+    on the Mac either way.
+    <ul id="pu-progress">{% for line in job.progress %}<li>{{ line }}</li>{% endfor %}</ul>
+  </div>
+{% elif job.state == 'done' %}
+  <div class="pu-ok">
+    <b>Placed with S&amp;S.</b> {{ job.label }} · {{ job.pieces }} piece(s) · subtotal ${{ job.subtotal }}
+    {% for part in job.placed %}
+      <div>PO <span class="mono">{{ part.po_number }}</span> → S&amp;S order
+        <b class="mono">{{ part.ss_orders }}</b></div>
+      {{ ss_totals(part.orders) }}
+    {% endfor %}
+    <form method="post" action="{{ url_for('purchasing_dismiss') }}" style="margin-top:8px">
+      <button class="btn btn-quiet" type="submit">Dismiss</button>
+    </form>
+  </div>
+{% elif job.state == 'failed' %}
+  <div class="stop"><b>The order did not go through cleanly.</b> {{ job.error }}
+    {%- if job.died %}
+
+<b>ssorder stopped without reporting, so it is not known whether S&amp;S received the order.</b> Its lines are held if the order had already left. Check your S&amp;S order history for PO {{ job.po }} before placing anything.
+    {%- elif job.placed %}
+
+{% for part in job.placed %}{% if part.ss_orders %}<b>PO {{ part.po_number }} WAS placed</b> as S&amp;S order {{ part.ss_orders }}. {% else %}<b>PO {{ part.po_number }} got an answer from S&amp;S with no order number</b>, so it may or may not exist there. {% endif %}{% endfor %}Those lines are held and will not be proposed again.
+    {%- endif -%}
+<form method="post" action="{{ url_for('purchasing_dismiss') }}" style="margin-top:10px"><button class="btn btn-quiet" type="submit">I've read this — dismiss</button></form></div>
+{% endif %}
+
+{# ------------------------------------------------------------------- sourcing #}
+<h2 id="sourcing">Sourcing — blanks to buy</h2>
+
+{% if not snap %}
+  <div class="card empty">No proposal yet. Build one to see what needs buying.</div>
+{% else %}
+  {% if counts %}
+  <p class="pu-counts">
+    <b>{{ counts.open }}</b> open line(s) ·
+    <b>{{ counts.planned }}</b> to buy ·
+    <b>{{ counts.awaiting or 0 }}</b> awaiting product ·
+    <b>{{ counts.received or 0 }}</b> received ·
+    <b class="{{ 'bad' if counts.unmapped }}">{{ counts.unmapped }}</b> need mapping ·
+    {{ counts.elsewhere }} not from S&amp;S · {{ counts.ignored }} not in-house · {{ counts.unpaid }} unpaid
+  </p>
+  {% endif %}
+
+  {% if prop.lines %}
+  <div class="card">
+    <div class="pu-when" style="margin-bottom:10px">
+      Proposal <span class="mono">{{ po }}</span> · built {{ proposal_time }}
+      {% if stale %} — <b class="bad">out of date; refresh before ordering</b>{% endif %}
+    </div>
+    <div class="pu-scroll">
+    <table class="pu-lines">
+      <thead><tr>
+        <th class="num">Qty</th><th>S&amp;S item</th><th class="num wide">Unit</th><th class="num">Ext</th>
+        <th class="num">At {{ wh }}</th><th class="num wide">All</th><th>For</th>
+      </tr></thead>
+      <tbody>
+      {% for l in prop.lines %}
+        <tr>
+          <td class="num"><b>{{ l.qty }}</b></td>
+          <td>{{ l.desc }}<small class="mono">{{ l.sku }}</small></td>
+          <td class="num wide">${{ l.unit_price }}</td>
+          <td class="num">${{ l.ext }}</td>
+          <td class="num {{ 'bad' if not l.pickup_ok }}">{{ stock(l.pickup_qty) }}</td>
+          <td class="num wide">{{ stock(l.ship_qty) }}</td>
+          <td class="for">{% for s in l.sources %}
+                <div>{{ order_ref(s.order, s.order_id) }}{% if s.qty != l.qty %} ×{{ s.qty }}{% endif %}
+                  {% if s.title %}<small>{{ s.title }}{% if s.variant_title %} / {{ s.variant_title }}{% endif %}</small>{% endif %}</div>
+              {% endfor %}</td>
+        </tr>
+      {% endfor %}
+        <tr class="pu-sub">
+          <td></td><td>Subtotal</td><td class="wide"></td><td class="num">${{ prop.subtotal }}</td>
+          <td colspan="3" style="font-weight:400;color:var(--muted)">
+            free freight at ${{ prop.free_freight_min }}
+            {% if prop.shortfall != '0.00' %}— <b class="bad">${{ prop.shortfall }} short</b>{% else %}— cleared{% endif %}</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="pu-rec {{ 'hold' if prop.recommended == 'hold' }}">
+      <div class="k">Recommended</div>
+      <div class="v">{{ recommended_label or 'Nothing to order' }}</div>
+      <div>{{ prop.rule }}</div>
+      {% if prop.transit and prop.transit[wh] %}
+        <div class="pu-when" style="margin-top:6px">{{ wh }} to your zip: {{ prop.transit[wh].days }} day(s) by
+          Ground, shipping cutoff {{ prop.transit[wh].cutoff }}.</div>
+      {% endif %}
+    </div>
+
+    {% for w in prop.warnings %}<div class="why">{{ w }}</div>{% endfor %}
+
+    {# ---- choose, then test or review #}
+    <a id="options"></a>
+    <form method="post" action="{{ url_for('purchasing_review') }}">
+      {% for o in options %}
+        <div class="pu-opt {{ 'off' if not o.available }}">
+          {% if o.key == 'hold' %}
+            <span style="width:13px"></span>
+            <div><b>{{ o.label }}</b>{% if o.recommended %} <span class="pill">recommended</span>{% endif %}
+              <small>{{ o.note }}{% if o.note %}. {% endif %}Nothing to click — leave it and refresh when more orders come in.</small></div>
+          {% else %}
+            <input type="radio" name="option" value="{{ o.key }}" id="opt-{{ o.key }}"
+                   {{ 'checked' if o.key == (review.option or default_option) }} {{ 'disabled' if not o.placeable }} required>
+            <div><label for="opt-{{ o.key }}">{{ o.label }}</label>
+              {% if o.recommended %} <span class="pill">recommended</span>{% endif %}
+              <small>
+                {% if not o.available %}Not available{% if o.note %} — {{ o.note }}{% endif %}
+                {% else %}
+                  {% if o.freight is none %}Freight not known until S&amp;S totals it{% elif o.freight == '0.00' %}No freight{% else %}Freight ${{ o.freight }}{% endif %}
+                  {%- if o.note %} · {{ o.note }}{% endif %}
+                {% endif %}
+              </small></div>
+          {% endif %}
+        </div>
+      {% endfor %}
+      <div class="actions">
+        <button class="btn btn-primary" type="submit"
+                {{ 'disabled' if stale or not can_order or job.state == 'running' }}>Review order</button>
+        <button class="btn btn-quiet" type="submit" formaction="{{ url_for('purchasing_test') }}"
+                {{ 'disabled' if stale or not can_order or job.state == 'running' }}>Get S&amp;S totals</button>
+        <span class="pu-when">
+          {% if stale %}Refresh first.
+          {% elif not can_order %}No option can be ordered as it stands.
+          {% elif not default_option %}The recommendation is to hold, so nothing is picked for you. Choose one to go ahead anyway. Review sends nothing.
+          {% else %}Review sends nothing. Totals sends S&amp;S a <b>test order</b>, which they create and cancel.{% endif %}
+        </span>
+      </div>
+    </form>
+
+    {# ---- S&S's own totals #}
+    <a id="totals"></a>
+    {% if test %}
+      {% if test.ok %}
+        <div class="pu-ok">
+          <b>S&amp;S totals for {{ test.label }}</b>
+          — test order, {{ test.when }}. Nothing was placed.
+          {% for part in test.parts %}
+            {% if part.orders %}{{ ss_totals(part.orders) }}
+            {% else %}<div class="bad">S&amp;S answered PO {{ part.po_number }}, but not in the shape expected. Read the raw answer.</div>{% endif %}
+          {% endfor %}
+          <details class="pu-more"><summary>Raw answer from S&amp;S</summary>
+            <pre>{% for part in test.parts %}{{ part.response|tojson(indent=2) }}
+{% endfor %}</pre></details>
+        </div>
+      {% else %}
+        <div class="stop"><b>The test order failed.</b> {{ test.error }}</div>
+      {% endif %}
+    {% endif %}
+
+    {# ---- the order, read before it is sent #}
+    <a id="review"></a>
+    {% if review %}
+      {% if review.ok %}
+      <div class="pu-review">
+        <h3>{{ review.label }}</h3>
+        <div class="pu-when">This is exactly what will be sent to S&amp;S. Nothing has been sent yet.</div>
+        <dl>
+          <dt>Pieces</dt><dd>{{ review.pieces }}</dd>
+          <dt>Subtotal</dt><dd>${{ review.subtotal }}</dd>
+          <dt>Freight</dt><dd>{% if review.freight is none %}<span class="bad">not known</span> — use “Get S&amp;S totals” first if you want the number{% elif review.freight == '0.00' %}none{% else %}${{ review.freight }}{% endif %}</dd>
+          <dt>Payment</dt><dd>{% if review.payment_profile %}the saved card set in ssorder's config.json{% else %}no payment profile is set in ssorder's config.json, so none is sent with the order{% endif %}</dd>
+          <dt>Address on the order</dt><dd>{{ review.ship_to.customer }}{% if review.ship_to.attn %}, attn {{ review.ship_to.attn }}{% endif %} ·
+            {{ review.ship_to.address }}, {{ review.ship_to.city }}, {{ review.ship_to.state }} {{ review.ship_to.zip }}</dd>
+        </dl>
+        {% for pl in review.payloads %}
+          <table class="pu-mini pu-tight">
+            <thead><tr><th colspan="3">PO <span class="mono">{{ pl.poNumber }}</span> ·
+              {{ 'Will Call / pickup' if pl.shippingMethod == '6' else 'Ground' if pl.shippingMethod == '1' else 'method ' ~ pl.shippingMethod }}
+              {%- if pl.autoselectWarehouse %} · S&amp;S picks the warehouse{% endif %}</th></tr>
+              <tr><th class="num">Qty</th><th>SKU</th><th>Warehouse</th></tr></thead>
+            <tbody>{% for ln in pl.lines %}
+              <tr><td class="num">{{ ln.qty }}</td><td class="mono">{{ ln.identifier }}</td>
+                  <td>{{ ln.warehouseAbbr or 'S&S chooses' }}</td></tr>{% endfor %}</tbody>
+          </table>
+        {% endfor %}
+        <form method="post" action="{{ url_for('purchasing_place') }}" id="pu-place">
+          <input type="hidden" name="po" value="{{ review.po }}">
+          <input type="hidden" name="option" value="{{ review.option }}">
+          <div class="pu-confirm">
+            <label for="pu-yes" style="margin:0">Type yes to place it</label>
+            <input type="text" id="pu-yes" name="confirm" autocomplete="off" autocapitalize="off"
+                   spellcheck="false" placeholder="yes">
+            <button class="btn btn-gold" type="submit" id="pu-place-btn">Place order with S&amp;S</button>
+            <button class="btn btn-quiet" type="submit" formaction="{{ url_for('purchasing_review_clear') }}" formnovalidate>Not now</button>
+          </div>
+          <div class="help">A real order. S&amp;S lets it be cancelled here for {{ cancel_window }} minutes afterwards; after that it is a phone call.</div>
+        </form>
+      </div>
+      {% else %}
+        <div class="stop"><b>This order cannot be placed.</b> {{ review.error }}</div>
+      {% endif %}
+    {% endif %}
+
+    {# ---- bought some other way #}
+    <details class="pu-more">
+      <summary>Already have blanks for some of these?</summary>
+      <form method="post" action="{{ url_for('purchasing_mark') }}">
+        <p class="pu-when">Tick the lines whose blanks you bought another way or pulled from stock. They
+          leave the proposal and move to Awaiting product.</p>
+        <table class="pu-mini">
+          {% for l in prop.lines %}{% for s in l.sources %}
+            <tr><td class="pu-check"><input type="checkbox" name="key" value="{{ s.key }}" id="mk-{{ loop.index }}-{{ l.sku }}"></td>
+                <td>{{ s.order }}</td><td>{{ s.qty }} × {{ s.title or l.desc }}{% if s.variant_title %} / {{ s.variant_title }}{% endif %}</td></tr>
+          {% endfor %}{% endfor %}
+        </table>
+        <button class="btn btn-quiet" type="submit" {{ 'disabled' if job.state == 'running' }}>Mark as already bought</button>
+      </form>
+    </details>
+  </div>
+  {% elif snap.ok %}
+    <div class="card empty">Nothing to buy. Every open in-house line already has its blanks.</div>
+  {% endif %}
+
+  {% if prop.out_of_stock %}
+  <div class="card">
+    <b class="bad">Cannot be bought as ordered</b>
+    <table class="pu-mini">{% for o in prop.out_of_stock %}
+      <tr><td class="num">{{ o.qty }}</td><td>{{ o.desc or o.sku }}<small class="mono"> {{ o.sku }}</small></td>
+          <td class="bad">{{ o.reason }}</td>
+          <td>{% for s in o.sources %}{{ s.order }} {% endfor %}</td></tr>{% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
+  {% if prop.unmapped %}
+  <div class="card">
+    <b class="bad">Needs mapping — not in the proposal</b>
+    <p class="pu-when" style="margin:4px 0 8px">These are in-house lines ssorder could not match to an S&amp;S sku. It reports them; it never guesses.</p>
+    <table class="pu-mini">{% for u in prop.unmapped %}
+      <tr><td>{{ order_ref(u.order, u.order_id) }}</td>
+          <td>{{ u.qty }} × {{ u.title }}{% if u.variant_title %} / {{ u.variant_title }}{% endif %}
+            <span class="bad" style="display:block">{{ u.reason }}</span>
+            <span class="pu-fix">hub: cd {{ ssorder_dir }} &amp;&amp; python3 ssorder.py map set {{ u.product_id }} "Brand Style"</span></td></tr>{% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
+  {% if prop.elsewhere or prop.unpaid %}
+  <div class="card">
+    {% if prop.elsewhere %}
+      <b>Not from S&amp;S — source these yourself</b>
+      <table class="pu-mini">{% for u in prop.elsewhere %}
+        <tr><td>{{ order_ref(u.order, u.order_id) }}</td><td>{{ u.qty }} × {{ u.title }}{% if u.variant_title %} / {{ u.variant_title }}{% endif %}</td></tr>{% endfor %}
+      </table>
+    {% endif %}
+    {% if prop.unpaid %}
+      <b>Unpaid — held out of the proposal until Shopify says paid</b>
+      <table class="pu-mini">{% for u in prop.unpaid %}
+        <tr><td>{{ order_ref(u.order, u.order_id) }}</td><td>{{ u.qty }} × {{ u.title }}{% if u.variant_title %} / {{ u.variant_title }}{% endif %}</td></tr>{% endfor %}
+      </table>
+    {% endif %}
+  </div>
+  {% endif %}
+{% endif %}
+
+{# ------------------------------------------------------------ awaiting product #}
+<h2 id="awaiting">Awaiting product — bought, not in the shop yet</h2>
+
+{% if not groups %}
+  <div class="card empty">{{ 'Nothing on its way.' if snap else 'Build a proposal to see what is on its way.' }}</div>
+{% endif %}
+{% for g in groups %}
+  <div class="pu-group">
+    <form method="post" action="{{ url_for('purchasing_receive') }}">
+      {% if g.by_hand %}
+        <h3>Bought by hand</h3>
+        <div class="meta">Marked as already bought — not placed through this page.</div>
+      {% else %}
+        <h3>S&amp;S order <span class="mono">{{ g.ss_order or '— no number —' }}</span></h3>
+        <div class="meta">PO <span class="mono">{{ g.po }}</span> · {{ 'sent' if g.no_number else 'placed' }} {{ g.when }} · {{ g.pieces }} piece(s)
+          {%- for o in g.detail.orders or [] %} · from {{ val(o, 'warehouseAbbr') }} · total {{ val(o, 'total') }}
+            {%- if o.get('expectedDeliveryDate') %} · expected {{ o.get('expectedDeliveryDate') }}{% endif %}{% endfor %}</div>
+        {% if g.no_number %}
+          <div class="stop"><b>There is no S&amp;S order number for this PO, so it is not known whether the order exists.</b> The lines are held so they cannot be ordered twice. Look for PO <b>{{ g.po }}</b> in your S&amp;S order history, then settle it from the hub.
+If the order is there:<span class="pu-fix">hub: cd {{ ssorder_dir }} &amp;&amp; python3 ssorder.py resolve {{ g.po }} --ss-order &lt;number&gt; --commit</span>If it is not:<span class="pu-fix">hub: cd {{ ssorder_dir }} &amp;&amp; python3 ssorder.py resolve {{ g.po }} --not-placed --commit</span></div>
+        {% elif g.split %}
+          <div class="why">S&amp;S split this PO into more than one order. The Cancel button is not offered for a split: cancel each order with S&amp;S directly.</div>
+        {% endif %}
+      {% endif %}
+      <table class="pu-mini">
+        {% for l in g.lines %}
+          <tr><td class="pu-check"><input type="checkbox" name="key" value="{{ l.key }}" checked></td>
+              <td>{{ order_ref(l.order, l.order_id) }}</td>
+              <td>{{ l.qty }} × {{ l.title }}{% if l.variant_title %} / {{ l.variant_title }}{% endif %}</td></tr>
+        {% endfor %}
+      </table>
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Mark ticked as received</button>
+        {% if g.by_hand %}
+          <button class="btn btn-quiet" type="submit" name="undo" value="1"
+                  formaction="{{ url_for('purchasing_mark') }}">Not bought after all — back to Sourcing</button>
+        {% endif %}
+      </div>
+    </form>
+    {% if g.cancellable %}
+      <form method="post" action="{{ url_for('purchasing_cancel') }}" class="pu-arm" style="margin-top:10px"
+            data-armed="Click again to cancel S&amp;S order {{ g.ss_order }}">
+        <input type="hidden" name="ss_order" value="{{ g.ss_order }}">
+        <button class="btn btn-danger" type="submit">Cancel this order at S&amp;S</button>
+        <span class="pu-when">Only for {{ cancel_window }} minutes after placing. The lines go back to Sourcing.</span>
+      </form>
+    {% endif %}
+  </div>
+{% endfor %}
+
+{% if received %}
+<details class="pu-more">
+  <summary>Received, not yet fulfilled in Shopify ({{ received|length }})</summary>
+  <form method="post" action="{{ url_for('purchasing_receive') }}" class="card" style="margin-top:10px">
+    <table class="pu-mini">
+      {% for l in received %}
+        <tr><td class="pu-check"><input type="checkbox" name="key" value="{{ l.key }}"></td>
+            <td>{{ order_ref(l.order, l.order_id) }}</td>
+            <td>{{ l.qty }} × {{ l.title }}{% if l.variant_title %} / {{ l.variant_title }}{% endif %}</td>
+            <td class="pu-when">{{ ('S&S ' ~ l.ss_order) if l.ss_order else 'by hand' }} · received {{ l.when }}</td></tr>
+      {% endfor %}
+    </table>
+    <button class="btn btn-quiet" type="submit" name="undo" value="1">Ticked ones have not arrived — move back</button>
+    <span class="pu-when">A line drops off this list by itself once Shopify shows it fulfilled.</span>
+  </form>
+</details>
+{% endif %}
+
+<script>
+(function(){
+  // An order in flight: poll until ssorder finishes, then reload so the result
+  // and the re-planned proposal both render server-side.
+  var running = document.getElementById("pu-running");
+  if(running){
+    var list = document.getElementById("pu-progress");
+    var poll = function(){
+      fetch(running.dataset.status, {cache: "no-store"}).then(function(r){ return r.json(); })
+        .then(function(s){
+          if(s.state === "running"){
+            list.innerHTML = "";
+            (s.progress || []).forEach(function(line){
+              var li = document.createElement("li"); li.textContent = line; list.appendChild(li);
+            });
+            setTimeout(poll, 3000);
+          } else { location.reload(); }
+        }).catch(function(){ setTimeout(poll, 6000); });
+    };
+    setTimeout(poll, 2000);
+  }
+
+  // The Place button stays grey until yes is typed. The server checks the
+  // word again; this only stops the button looking live before it is.
+  var yes = document.getElementById("pu-yes"), go = document.getElementById("pu-place-btn");
+  if(yes && go){
+    var sync = function(){ go.disabled = yes.value.trim().toLowerCase() !== "yes"; };
+    yes.addEventListener("input", sync); sync();
+    document.getElementById("pu-place").addEventListener("submit", function(ev){
+      var sub = ev.submitter;
+      if(sub === go){ go.disabled = true; go.textContent = "Sending…"; }
+    });
+  }
+
+  // No confirm() pop-up -- the Claude app's browser pane answers "Cancel" to
+  // one without showing it. Two clicks instead: the first arms, the second sends.
+  document.querySelectorAll("form.pu-arm").forEach(function(form){
+    var armed = false, btn = form.querySelector("button");
+    form.addEventListener("submit", function(ev){
+      if(!armed){
+        ev.preventDefault(); armed = true; btn.textContent = form.dataset.armed;
+        setTimeout(function(){ armed = false; btn.textContent = "Cancel this order at S&S"; }, 6000);
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

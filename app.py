@@ -21,8 +21,9 @@ from functools import wraps
 
 import hashlib
 import hmac
+import ipaddress
 import secrets as secrets_module
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import requests
 from markupsafe import Markup, escape as _escape
@@ -34,7 +35,7 @@ from onboarding import dashboard, discovery, discovery_reply, leads, mail_draft,
 from onboarding import docx_pdf, readiness, vector_logo, workflow
 from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
-from onboarding import clone, recommendation, storefront, traveler
+from onboarding import clone, purchasing, recommendation, storefront, traveler
 from onboarding import statement, statement_email, statement_pdf
 from onboarding import sent as sent_log
 from onboarding import agreement
@@ -48,7 +49,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.62"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.63"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -2130,6 +2131,194 @@ def traveler_delete(run_id):
     traveler.delete(run_id)
     flash("Run deleted. The products themselves were not touched.", "ok")
     return redirect(url_for("traveler_index"))
+
+
+# ---------------------------------------------------------------- purchasing
+#
+# The Purchasing tab (doc 51): blanks from S&S Activewear, from "an order came
+# in" to "the blanks are in the shop". The page is drawn from the last saved
+# proposal and never calls Shopify or S&S by being loaded; every button below
+# is a POST that runs one `ssorder` command. See onboarding/purchasing.py.
+#
+# Anything that sends something to S&S -- a test order, the order, a cancel --
+# is owner-only. Marking blanks as bought or received is not: whoever opens the
+# box is the one who knows.
+
+def _purchasing_back(anchor: str = ""):
+    return redirect(url_for("purchasing_page") + (f"#{anchor}" if anchor else ""))
+
+
+def _own_address(host: str) -> bool:
+    """Is this Host header a name this app is actually reached by?
+
+    An address (the tailnet IP, 127.0.0.1), localhost, a bare machine name, a
+    MagicDNS name or a .local one. Never somebody's domain: a page can point
+    its own domain at the hub's address and then be "the same site" as far as
+    the browser is concerned -- but it cannot make that domain look like one
+    of these.
+    """
+    name = (urlsplit("//" + (host or "")).hostname or "").lower()
+    if not name:
+        return False
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        pass
+    return (name == "localhost" or "." not in name
+            or name.endswith(".ts.net") or name.endswith(".local"))
+
+
+def from_this_app(view):
+    """Refuse a POST that some other web page sent.
+
+    The app has no login -- Tailscale is the door -- so nothing else stops a
+    page open in another tab from posting a form at it. For most of the app
+    the worst that buys is a nuisance; here it is an order. Browsers say where
+    a POST came from, so anything that names a different site is turned away,
+    and so is anything addressed to a name that is not this app's own.
+    A request that names no source (curl, a script on the hub) is let through:
+    reaching the port at all already means being on the tailnet.
+    """
+    @wraps(view)
+    def guarded(*args, **kwargs):
+        if not _own_address(request.host):
+            abort(403)
+        source = request.headers.get("Origin") or request.headers.get("Referer") or ""
+        if source == "null" or (source and urlsplit(source).netloc != request.host):
+            abort(403)
+        return view(*args, **kwargs)
+    return guarded
+
+
+@app.route("/purchasing")
+def purchasing_page():
+    return render_template("purchasing.html", **purchasing.view())
+
+
+@app.route("/purchasing/refresh", methods=["POST"])
+@from_this_app
+def purchasing_refresh():
+    if purchasing.status()["state"] == "running":
+        # A re-plan in the same minute reuses the PO number and rewrites the
+        # proposal the order is being read from. ssorder would refuse it, but
+        # there is no reason to make it.
+        flash("An order is being placed. Refresh when it has finished.", "error")
+        return _purchasing_back("order")
+    snap = purchasing.refresh()
+    if snap["ok"]:
+        lines = len((snap.get("proposal") or {}).get("lines") or [])
+        flash(f"Proposal refreshed — {lines} line(s) to buy." if lines
+              else "Refreshed. Nothing to buy right now.", "ok")
+    else:
+        flash(f"Could not build a proposal — {snap['error']}", "error")
+    return _purchasing_back()
+
+
+@app.route("/purchasing/test", methods=["POST"])
+@from_this_app
+@owner_only
+def purchasing_test():
+    result = purchasing.test(request.form.get("option", ""))
+    if result["ok"]:
+        flash("S&S returned totals for a test order. Nothing was placed.", "ok")
+    else:
+        flash(f"Test order failed — {result['error']}", "error")
+    return _purchasing_back("totals")
+
+
+@app.route("/purchasing/review", methods=["POST"])
+@from_this_app
+def purchasing_review():
+    result = purchasing.review(request.form.get("option", ""))
+    if result["ok"]:
+        flash("Read the order below. Nothing has been sent.", "ok")
+    else:
+        flash(f"This order cannot be placed — {result['error']}", "error")
+    return _purchasing_back("review")
+
+
+@app.route("/purchasing/review/clear", methods=["POST"])
+@from_this_app
+def purchasing_review_clear():
+    purchasing.clear_review()
+    return _purchasing_back("options")
+
+
+@app.route("/purchasing/place", methods=["POST"])
+@from_this_app
+@owner_only
+def purchasing_place():
+    result = purchasing.place(request.form.get("po", ""), request.form.get("option", ""),
+                              request.form.get("confirm", ""))
+    if result["ok"]:
+        flash("Order sent to S&S. This page updates when they answer.", "ok")
+        return _purchasing_back("order")
+    flash(f"Not placed — {result['error']}", "error")
+    return _purchasing_back("review")
+
+
+@app.route("/purchasing/status")
+def purchasing_status():
+    state = purchasing.status()
+    return jsonify({"state": state["state"], "progress": state.get("progress", [])})
+
+
+@app.route("/purchasing/dismiss", methods=["POST"])
+@from_this_app
+def purchasing_dismiss():
+    purchasing.dismiss_last()
+    return _purchasing_back()
+
+
+@app.route("/purchasing/cancel", methods=["POST"])
+@from_this_app
+@owner_only
+def purchasing_cancel():
+    number = request.form.get("ss_order", "")
+    result = purchasing.cancel(number)
+    if result["ok"]:
+        flash(f"S&S order {number} cancelled. {result['released']} line(s) are back "
+              "in Sourcing.", "ok")
+        if result["still_held"]:
+            flash(f"{result['still_held']} line(s) are still held: S&S split that PO, and "
+                  f"order(s) {', '.join(result['other_orders'])} are still live. Cancel those "
+                  "too, or sort the lines out by hand.", "error")
+    else:
+        flash(f"S&S order {number} was NOT cancelled — {result['error']}", "error")
+    return _purchasing_back("awaiting")
+
+
+@app.route("/purchasing/mark", methods=["POST"])
+@from_this_app
+def purchasing_mark():
+    undo = request.form.get("undo") == "1"
+    result = purchasing.mark(request.form.getlist("key"), undo=undo)
+    if result["ok"]:
+        flash((f"{result['changed']} line(s) put back in Sourcing." if undo else
+               f"{result['changed']} line(s) marked as already bought.")
+              if result["changed"] else "Nothing changed.", "ok")
+        if result.get("stale"):
+            flash(result["stale"], "error")
+    else:
+        flash(f"Not changed — {result['error']}", "error")
+    return _purchasing_back("awaiting" if undo else "")
+
+
+@app.route("/purchasing/receive", methods=["POST"])
+@from_this_app
+def purchasing_receive():
+    undo = request.form.get("undo") == "1"
+    result = purchasing.receive(request.form.getlist("key"), undo=undo)
+    if result["ok"]:
+        flash((f"{result['changed']} line(s) moved back to Awaiting product." if undo else
+               f"{result['changed']} line(s) received.")
+              if result["changed"] else "Nothing changed.", "ok")
+        if result.get("stale"):
+            flash(result["stale"], "error")
+    else:
+        flash(f"Not changed — {result['error']}", "error")
+    return _purchasing_back("awaiting")
 
 
 # ---------------------------------------------------------------- reachability
