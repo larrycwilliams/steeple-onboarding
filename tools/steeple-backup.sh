@@ -24,16 +24,29 @@
 #                  signed by a partner cannot be reproduced after a price
 #                  change. A sent document is a record, not an artifact.
 #
+#   ssorder state  ~/Dev/ssorder/state -- NOT in this folder, and here anyway.
+#                  ledger.json is the record of which order lines already have
+#                  blanks bought; it is what stops the Purchasing tab ordering
+#                  the same blanks twice, and nothing can rebuild it. Added
+#                  2026-10-05. Optional on purpose: a hub with no ssorder, or
+#                  one that has never marked an order, backs up exactly as
+#                  before. Lands in current/ssorder-state/ and in the snapshot
+#                  as ssorder/state/. restore.sh does not put it back -- copy
+#                  it to ~/Dev/ssorder/state/ by hand.
+#
 # Deliberately NOT copied:
 #
 #   .env           secrets stay out of iCloud. Recovery recreates it; doc 35
 #                  says from where. This is a decision, not an oversight.
+#                  The same goes for ~/Dev/ssorder/.env (the S&S key) and its
+#                  config.json: only state/ is taken from that folder.
 #   cache/         Shopify data that rebuilds itself on the next refresh.
 #
 # Run it by hand any time. --dry-run shows what it would do and writes nothing.
 set -u
 
 SRC="$HOME/Dev/steeple-onboarding"
+SSORDER="$HOME/Dev/ssorder"
 DEST="$HOME/Library/Mobile Documents/com~apple~CloudDocs/20-Steeple-Stitch/Business-Files/Onboarding-Data-Backup"
 LOG="$HOME/Library/Logs/steeple-backup.log"
 STAMP=$(date '+%Y-%m-%d_%H%M')
@@ -66,13 +79,28 @@ run /usr/bin/rsync -a --exclude '.env' \
   "$SRC/partners" "$SRC/leads" "$SRC/product_runs" "$SRC/assets" "$SRC/output" \
   "$DEST/current/" 2>>"$LOG"
 
+# ssorder's ledger, proposals and saved S&S answers. Only when there is a
+# ledger to copy: a missing one must not abort the backup of everything else,
+# and must not be mirrored as an empty folder over a good copy either.
+HAVE_SS=0
+if [ -f "$SSORDER/state/ledger.json" ]; then
+  HAVE_SS=1
+  run mkdir -p "$DEST/current/ssorder-state"
+  run /usr/bin/rsync -a --exclude 'ledger.lock' --exclude '*.tmp' \
+    "$SSORDER/state/" "$DEST/current/ssorder-state/" 2>>"$LOG"
+fi
+
 # Ad-hoc safety copies somebody made by hand before a risky change. They are
 # small, they are evidence, and they were protected by nothing.
 # Written the long way rather than with a zsh glob qualifier, so the syntax
 # can be checked with bash -n as well as zsh -n. A backup script nobody can
 # lint is a backup script nobody checks.
-for extra in "$SRC"/partners_backup_*; do
-  [ -d "$extra" ] || continue
+#
+# With find, not a glob (2026-10-05): zsh treats a glob that matches nothing as
+# a fatal error, so `for extra in "$SRC"/partners_backup_*` killed the whole
+# run -- before the snapshot and the manifest -- on any hub with no such
+# folder. It only ever worked because one happens to exist.
+/usr/bin/find "$SRC" -maxdepth 1 -type d -name 'partners_backup_*' 2>/dev/null | while read -r extra; do
   run /usr/bin/rsync -a "$extra" "$DEST/current/" 2>>"$LOG"
 done
 
@@ -82,8 +110,16 @@ done
 # snapshotted -- fourteen copies of 200 MB to protect files that almost never
 # change in place would cost 3 GB to solve a problem that is not the one we
 # have.
-run /usr/bin/tar -czf "$DEST/snapshots/steeple-data_$STAMP.tar.gz" \
-  -C "$SRC" partners leads product_runs 2>>"$LOG"
+# The ledger rides along when there is one: it is the smallest thing here and
+# the one where yesterday's copy matters most.
+if [ $HAVE_SS -eq 1 ]; then
+  run /usr/bin/tar -czf "$DEST/snapshots/steeple-data_$STAMP.tar.gz" \
+    -C "$SRC" partners leads product_runs \
+    -C "$HOME/Dev" ssorder/state 2>>"$LOG"
+else
+  run /usr/bin/tar -czf "$DEST/snapshots/steeple-data_$STAMP.tar.gz" \
+    -C "$SRC" partners leads product_runs 2>>"$LOG"
+fi
 
 # Keep the last 14.
 if [ $DRY -eq 0 ]; then
@@ -104,13 +140,17 @@ if [ $DRY -eq 0 ]; then
     echo "app:       $(grep -m1 'APP_VERSION = ' "$SRC/app.py" 2>/dev/null | cut -d'"' -f2 || true)"
     echo "commit:    $(cd "$SRC" 2>/dev/null && git rev-parse --short HEAD 2>/dev/null || true)"
     echo
-    for d in partners leads product_runs assets output; do
+    for d in partners leads product_runs assets output ssorder-state; do
       printf '%-14s %6s files %10s\n' "$d" \
         "$(find "$DEST/current/$d" -type f 2>/dev/null | wc -l | tr -d ' ')" \
         "$(du -sh "$DEST/current/$d" 2>/dev/null | cut -f1)"
     done
     echo
+    echo "ssorder-state is ~/Dev/ssorder/state (the blanks ledger). restore.sh does"
+    echo "not put it back: copy it to ~/Dev/ssorder/state/ by hand."
+    echo
     echo "NOT in here: .env (secrets stay out of iCloud -- see doc 35)"
+    echo "             ~/Dev/ssorder/.env and config.json (same reason)"
     echo "             cache/ (rebuilds itself)"
   } > "$DEST/current/MANIFEST.txt"
 fi
