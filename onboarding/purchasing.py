@@ -45,6 +45,10 @@ Decisions:
   draft lost a running order's record to a refresh that started before it.
   None of these files is the record: the ledger and the saved S&S answers in
   ~/Dev/ssorder/state/ are.
+* WHICH CARD is chosen per order, never defaulted, when ssorder's config.json
+  lists more than one way to pay (Larry, 2026-10-05: "pick every time"). The
+  choice is made before Review, shown in the review box, and is part of the
+  payload fingerprint -- so the card that pays is the card that was read.
 * A review belongs to one proposal, identified by PO number AND build time.
   PO numbers are only as fine as a minute and a re-plan reuses the name, so
   the build time is what stops a review of one proposal being spent on
@@ -352,25 +356,45 @@ def test(option: str) -> dict:
     return {"ok": result["ok"], "error": result["error"]}
 
 
-def review(option: str) -> dict:
+def cards(snap: dict) -> list:
+    """The saved cards ssorder says an order may be paid with: [{"id", "label"}]."""
+    listed = (snap.get("setup") or {}).get("payment_profiles") or []
+    return [{"id": str(c.get("id", "")), "label": str(c.get("label", ""))}
+            for c in listed if isinstance(c, dict) and c.get("id") not in (None, "")]
+
+
+def review(option: str, payment: str = "") -> dict:
     """The dry run: every one of ssorder's guards, and the exact payload."""
     snap = load()
     why = _placeable(snap, option)
+    payment = (payment or "").strip()
+    choices = cards(snap)
+    if not why and choices and payment not in {c["id"] for c in choices}:
+        why = "Choose which card pays for this order."
     if why:
         _drop("review.json")
         return {"ok": False, "error": why}
     po, created = _ident(snap)          # fixed before the call; never re-read after it
-    result = _run(_argv("place", po, "--option", option, "--expect-created", created),
-                  CALL_TIMEOUT)
+    args = ["place", po, "--option", option, "--expect-created", created]
+    if payment:
+        args += ["--payment", payment]
+    result = _run(_argv(*args), CALL_TIMEOUT)
     doc = result["doc"] or {}
     ok = bool(result["ok"] and doc.get("dry_run") and not doc.get("sent")
-              and doc.get("po") == po and doc.get("option") == option)
+              and doc.get("po") == po and doc.get("option") == option
+              # A card that was picked must be the card ssorder says it will use.
+              # (With one card set the old way nothing is picked, and ssorder names it.)
+              and (not payment or str(doc.get("payment") or "") == payment))
+    if not result["ok"] and "choose which card" in (result["error"] or ""):
+        # config.json gained cards since the page last looked at it.
+        result["error"] += " Refresh the proposal so the page can offer them."
     _write("review.json", {
         "at": _stamp(), "po": po, "created": created, "option": option,
         "ok": ok, "error": result["error"],
         "label": doc.get("label", ""), "pieces": doc.get("pieces"),
         "subtotal": doc.get("subtotal"), "freight": doc.get("freight"),
         "payment_profile": bool(doc.get("payment_profile")),
+        "payment": payment, "payment_label": doc.get("payment_label") or "",
         "ship_to": doc.get("ship_to") or {},
         "payloads": doc.get("payloads") or [],
         # ssorder's fingerprint of exactly these payloads -- address and payment
@@ -445,13 +469,16 @@ def place(po: str, option: str, typed: str) -> dict:
     # on disk says so.
     job = {"pid": None, "started": _stamp(), "po": po, "created": created, "option": option,
            "label": rev.get("label", ""), "subtotal": rev.get("subtotal"),
-           "pieces": rev.get("pieces")}
+           "pieces": rev.get("pieces"), "payment_label": rev.get("payment_label", "")}
     _drop("place.out", "place.log", "place.last", "review.json")
     if not _write("place.job", job):
         _drop("place.lock")
         return {"ok": False, "error": "Could not record the order as started, so it was "
                                       "not started. Nothing was sent."}
-    argv = _argv("place", po, "--option", option, "--expect-created", created,
+    # The card goes exactly as it was reviewed. It is inside the fingerprint as
+    # well, so a different one here would be refused by ssorder, not charged.
+    pay = ["--payment", str(rev["payment"])] if rev.get("payment") else []
+    argv = _argv("place", po, "--option", option, "--expect-created", created, *pay,
                  "--expect-payloads", rev["payload_sha"], "--commit", "--yes")
     # /bin/sh backgrounds the order and exits at once, and start_new_session
     # puts it in a session of its own: neither a gunicorn worker being recycled
@@ -543,6 +570,7 @@ def status() -> dict:
         "finished": _stamp(), "started": job.get("started"),
         "po": job.get("po"), "option": job.get("option"), "label": job.get("label", ""),
         "subtotal": job.get("subtotal"), "pieces": job.get("pieces"),
+        "payment_label": job.get("payment_label", ""),
         "ok": result["ok"], "error": "" if result["ok"] else result["error"],
         "sent": bool(doc.get("sent")), "partial": bool(doc.get("partial")),
         "placed": doc.get("placed") or [],
@@ -703,6 +731,7 @@ def view() -> dict:
         "default_option": recommended if recommended in OPTION_KEYS else "",
         "can_order": any(o["placeable"] for o in options),
         "review": review_now, "test": test_now, "job": job,
+        "cards": cards(snap),
         "groups": _groups(awaiting, placed_by_po),
         "received": received,
         "counts": prop.get("counts") or {},

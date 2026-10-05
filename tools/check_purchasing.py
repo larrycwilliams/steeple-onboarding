@@ -241,7 +241,10 @@ class PurchasingTab(unittest.TestCase):
         self.config["ss"] = {"payment_profile": {"email": "a@b.c", "profileID": 7}}
         self.write_config()
         self.post("/purchasing/refresh")
-        self.assertIn("the saved card set in", self.post("/purchasing/review", option="will_call"))
+        html = self.post("/purchasing/review", option="will_call")
+        self.assertIn("the saved card in config.json (profile 7)", html)
+        self.assertIn("Type yes to place it", html)
+        self.assertNotIn('name="payment"', html)               # one card: nothing to pick
 
     def test_place_needs_yes_the_same_po_and_the_same_option(self):
         self.post("/purchasing/refresh")
@@ -521,6 +524,79 @@ class PurchasingTab(unittest.TestCase):
         self.assertIn("rebuilt since it was reviewed", state["error"])
         self.assertEqual(self.sent(), [])
         self.assertEqual(self.ledger(), {})
+
+    # ------------------------------------------------------------ which card
+    TWO_CARDS = {"payment_profile": {"email": "larry@example.com", "profileID": None},
+                 "payment_profiles": [{"label": "Visa ...1111 (Shop)", "profileID": 111},
+                                      {"label": "Amex ...2222 (Larry)", "profileID": 222}]}
+
+    def two_cards(self):
+        self.config["ss"] = json.loads(json.dumps(self.TWO_CARDS))
+        self.write_config()
+        return self.post("/purchasing/refresh")
+
+    def test_both_cards_are_offered_and_neither_is_pre_ticked(self):
+        html = self.two_cards()
+        self.assertIn("Visa ...1111 (Shop)", html)
+        self.assertIn("Amex ...2222 (Larry)", html)
+        self.assertNotRegex(html, r'name="payment"[^>]*\schecked')
+        self.assertRegex(html, r'name="payment"[^>]*\srequired')
+
+    def test_no_review_without_a_card_and_none_with_a_made_up_one(self):
+        self.two_cards()
+        for payment in ("", "999", "111 --commit"):
+            html = self.post("/purchasing/review", option="will_call", payment=payment)
+            self.assertIn("Choose which card pays for this order", html, payment)
+            self.assertNotIn("Type yes to place it", html)
+        html = self.post("/purchasing/place", po=self.po(), option="will_call", confirm="yes")
+        self.assertIn("Review the order first", html)
+        self.assertEqual(self.sent(), [])
+
+    def test_the_card_that_was_picked_is_the_card_that_pays(self):
+        self.two_cards()
+        html = self.post("/purchasing/review", option="will_call", payment="222")
+        self.assertIn("<b>Amex ...2222 (Larry)</b>", html)          # in the review box
+        self.assertRegex(html, r'value="222"[^>]*\schecked')
+        self.post("/purchasing/place", po=self.po(), option="will_call", confirm="yes")
+        self.assertEqual(self.wait()["state"], "done")
+        sent = self.sent()
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0]["paymentProfile"], {"email": "larry@example.com", "profileID": 222})
+        self.assertIn("paid with Amex ...2222 (Larry)", self.page())
+
+    def test_swapping_the_card_after_the_review_stops_the_order(self):
+        """The card is inside the fingerprint, so ssorder refuses rather than charges."""
+        self.two_cards()
+        self.post("/purchasing/review", option="will_call", payment="111")
+        self.put_state("review.json", {**self.state_file("review.json"), "payment": "222"})
+        self.post("/purchasing/place", po=self.po(), option="will_call", confirm="yes")
+        state = self.wait()
+        self.assertEqual(state["state"], "failed")
+        self.assertIn("no longer what was reviewed", state["error"])
+        self.assertEqual(self.sent(), [])
+        self.assertEqual(self.ledger(), {})
+
+    def test_a_refresh_clears_the_card_choice(self):
+        self.two_cards()
+        self.post("/purchasing/review", option="will_call", payment="111")
+        html = self.post("/purchasing/refresh")
+        self.assertNotRegex(html, r'name="payment"[^>]*\schecked')
+
+    def test_totals_need_no_card_and_send_none(self):
+        self.two_cards()
+        html = self.post("/purchasing/test", option="will_call")
+        self.assertIn("Nothing was placed", html)
+        self.assertNotIn("paymentProfile", self.sent()[0])
+
+    def test_cards_added_since_the_last_refresh_are_asked_for_not_skipped(self):
+        self.post("/purchasing/refresh")                       # the page knows of no cards
+        self.config["ss"] = json.loads(json.dumps(self.TWO_CARDS))
+        self.write_config()
+        html = self.post("/purchasing/review", option="will_call")
+        self.assertIn("choose which card", html)
+        self.assertIn("Refresh the proposal", html)
+        self.assertNotIn("Type yes to place it", html)
+        self.assertEqual(self.sent(), [])
 
     # ------------------------------------------------------------ after the order
     def test_receive_and_put_back(self):
