@@ -691,6 +691,19 @@ again from the block in `onboarding/package.py` that says so.
 > **every** partner's kit, captioned as their own launch lineup. If the
 > section returns, it must never fall back to the template's image.
 
+## Reprinting packing slips
+
+The **Slips** tab replaces `python3 ~/Dev/slipprint/slipprint.py print 1088`.
+Type the order number, pick the store, then **Preview** (builds the PDF and
+shows it here, prints nothing) or **Print** (sends it to the Jadens). Recent
+slips are listed with a one-tap **Reprint**, which pulls the order from Shopify
+again so later edits are on the new label.
+
+It imports `~/Dev/slipprint/slipprint.py` (override with `SLIPPRINT_DIR`), so
+layout, printer queue, lp options and the 15-second printer gap all come from
+slipprint itself. Nothing is written to Shopify or to slipprint's `state.json`.
+Each print is logged in slipprint's log tagged `[onboarding app]`.
+
 ## Known limits
 
 - **The Launch Week Kit gets to about 90%.** Merge fields, vocabulary and the

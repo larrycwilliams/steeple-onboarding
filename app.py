@@ -41,6 +41,7 @@ from onboarding import sent as sent_log
 from onboarding import agreement
 from onboarding import access
 from onboarding import welcome_email
+from onboarding import slips
 from onboarding.palette import extract_palette
 from onboarding.schema import (DEFAULT_PALETTE, FIELDS, GROUPS, ORG_TYPES,
                                PALETTE_ROLES, derive, normalize, validate)
@@ -49,7 +50,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.64"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.65"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -2319,6 +2320,68 @@ def purchasing_receive():
     else:
         flash(f"Not changed — {result['error']}", "error")
     return _purchasing_back("awaiting")
+
+
+# ---------------------------------------------------------------- slips
+#
+# Reprint a 4x6 packing slip -- what `slipprint.py print 1088` did from the
+# terminal. See onboarding/slips.py. Preview builds the PDF and shows it here;
+# Print sends it to the Jadens. Neither writes to Shopify or to slipprint's
+# state, so neither is owner-only.
+
+@app.route("/slips")
+def slips_page():
+    ctx = slips.view()
+    shown = None
+    store_key = request.args.get("store", "ss")
+    number = slips.clean_number(request.args.get("show", ""))
+    if number and slips.pdf_path(store_key, number):
+        shown = {"store": store_key, "number": number}
+    return render_template("slips.html", shown=shown, **ctx)
+
+
+@app.route("/slips/preview", methods=["POST"])
+@from_this_app
+def slips_preview():
+    store_key = request.form.get("store", "ss")
+    result = slips.preview(request.form.get("number", ""), store_key)
+    if not result["ok"]:
+        flash(f"No slip built — {result['error']}", "error")
+        return redirect(url_for("slips_page"))
+    msg = (f"{result['order']}: {result['inhouse_items']} item(s) in the box"
+           + (f", {result['pod_lines']} POD line(s) ship separately" if result["pod_lines"] else "")
+           + ". Nothing printed yet.")
+    flash(msg, "ok")
+    if result["cancelled"]:
+        flash(f"{result['order']} is cancelled in Shopify.", "error")
+    if not result["inhouse_lines"]:
+        flash(f"{result['order']} has no in-house items — the auto-printer skips orders like this.", "error")
+    return redirect(url_for("slips_page", store=result["store"], show=result["number"]))
+
+
+@app.route("/slips/print", methods=["POST"])
+@from_this_app
+def slips_print():
+    store_key = request.form.get("store", "ss")
+    result = slips.print_slip(request.form.get("number", ""), store_key)
+    if result["ok"]:
+        flash(f"{result['order']} sent to {result['queue']}"
+              + (f" ({result['job']})" if result["job"] else "") + ".", "ok")
+        if result["cancelled"]:
+            flash(f"{result['order']} is cancelled in Shopify — printed anyway because you asked.", "error")
+    else:
+        flash(f"Not printed — {result['error']}", "error")
+    return redirect(url_for("slips_page"))
+
+
+@app.route("/slips/pdf/<store_key>/<number>")
+def slips_pdf(store_key, number):
+    path = slips.pdf_path(store_key, number)
+    if not path:
+        abort(404)
+    resp = send_file(path, mimetype="application/pdf")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 # ---------------------------------------------------------------- reachability

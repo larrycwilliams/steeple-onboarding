@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Slips — Steeple &amp; Stitch{% endblock %}
+
+{% block content %}
+<style>
+  .sl-form{display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:end}
+  .sl-form .field{margin:0}
+  .sl-form input[name=number]{font-size:18px;font-variant-numeric:tabular-nums}
+  .sl-meta{font-size:13px;color:var(--muted);margin-top:10px}
+  .sl-meta b{color:var(--ink)}
+  .sl-bad{color:#8C332C}
+  .sl-preview{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start}
+  .sl-preview iframe{width:300px;height:450px;border:1px solid #CFC9BC;border-radius:6px;background:#fff}
+  .sl-preview .actions{margin-top:0;flex-direction:column;align-items:stretch}
+  .sl-recent td form{margin:0;display:inline}
+  .sl-recent td.act{text-align:right;white-space:nowrap}
+  .sl-recent .btn{padding:7px 12px;font-size:13px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  @media (max-width:699px){
+    .sl-form{grid-template-columns:1fr 1fr}
+    .sl-form button{width:100%}
+    .sl-preview{grid-template-columns:1fr}
+    .sl-preview iframe{width:100%;height:auto;aspect-ratio:2/3}
+    .sl-recent td.act .btn{display:inline-block;margin:0 0 0 6px;min-width:0}
+  }
+</style>
+
+<h2>Reprint a packing slip</h2>
+
+{% if problems %}
+  <div class="card">{% for p in problems %}<p class="sl-bad">{{ p }}</p>{% endfor %}</div>
+{% else %}
+
+<div class="card">
+  {% set live = stores | selectattr('connected') | list %}
+  <form class="sl-form" method="post" action="{{ url_for('slips_print') }}" data-guard>
+    <div class="field">
+      <label for="sl-number">Order number</label>
+      <input id="sl-number" type="text" name="number" inputmode="numeric" autocomplete="off"
+             placeholder="1088" required autofocus
+             value="{{ shown.number if shown else '' }}">
+    </div>
+    <div class="field">
+      <label for="sl-store">Store</label>
+      <select id="sl-store" name="store">
+        {% for s in live %}
+          <option value="{{ s.key }}" {{ 'selected' if shown and shown.store == s.key }}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-quiet" type="submit" formaction="{{ url_for('slips_preview') }}">Preview</button>
+    <button class="btn btn-gold" type="submit">Print</button>
+  </form>
+  <div class="sl-meta">
+    Printer:
+    {% if printer %}<b class="mono">{{ printer }}</b>{% else %}<b class="sl-bad">not found — check the Jadens is on and set "printer" in slipprint's settings.json</b>{% endif %}
+    · Built fresh from Shopify each time, same layout as the auto-printer.
+    {% set off = stores | rejectattr('connected') | list %}
+    {% if off %}· Not connected: {{ off | map(attribute='name') | join(', ') }}{% endif %}
+  </div>
+</div>
+
+{% if shown %}
+<div class="card">
+  <div class="sl-preview">
+    <iframe src="{{ url_for('slips_pdf', store_key=shown.store, number=shown.number) }}#toolbar=0&view=Fit"
+            title="Slip preview"></iframe>
+    <div>
+      <div class="actions">
+        <form method="post" action="{{ url_for('slips_print') }}" data-guard>
+          <input type="hidden" name="number" value="{{ shown.number }}">
+          <input type="hidden" name="store" value="{{ shown.store }}">
+          <button class="btn btn-gold" type="submit" style="width:100%">Print #{{ shown.number }}</button>
+        </form>
+        <a class="btn btn-quiet" href="{{ url_for('slips_pdf', store_key=shown.store, number=shown.number) }}"
+           target="_blank" rel="noopener">Open PDF</a>
+        <a class="btn btn-quiet" href="{{ url_for('slips_page') }}">Done</a>
+      </div>
+      <p class="help">A long order runs onto a second label; Open PDF shows every page.</p>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<h2>Recent slips</h2>
+<div class="card">
+  {% if recent %}
+  <table class="sl-recent">
+    <thead><tr><th>Order</th><th class="phone-hide">Store</th><th>Built</th><th></th></tr></thead>
+    <tbody>
+    {% for r in recent %}
+      <tr>
+        <td class="mono"><b>#{{ r.number }}</b></td>
+        <td class="phone-hide">{{ r.store_name }}</td>
+        <td>{{ r.when }}</td>
+        <td class="act">
+          <a class="btn btn-quiet" href="{{ url_for('slips_page', store=r.store, show=r.number) }}">View</a>
+          <form method="post" action="{{ url_for('slips_print') }}" data-guard>
+            <input type="hidden" name="number" value="{{ r.number }}">
+            <input type="hidden" name="store" value="{{ r.store }}">
+            <button class="btn btn-gold" type="submit">Reprint</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="help">View shows the last slip built for that order. Reprint pulls the order again, so any edit made in Shopify since is on the new label.</p>
+  {% else %}
+  <div class="empty">No slips built yet.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<script>
+  // The printer needs a 15-second gap between labels, so a print can take that
+  // long to come back. Lock the buttons so a second tap doesn't queue a duplicate.
+  document.querySelectorAll('form[data-guard]').forEach(function (f) {
+    f.addEventListener('submit', function (ev) {
+      var b = ev.submitter;
+      setTimeout(function () {
+        f.querySelectorAll('button').forEach(function (x) { x.disabled = true; });
+        if (b && b.formAction.indexOf('preview') < 0) b.textContent = 'Printing…';
+      }, 0);
+    });
+  });
+</script>
+{% endblock %}
