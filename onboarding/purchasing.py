@@ -7,9 +7,13 @@ gone around. This puts the proposal, the test order, the order itself and
 
 It covers two stages of an order and no more:
 
-    Sourcing          open, paid, in-house lines with no blanks bought yet
-    Awaiting product  blanks bought -- placed here, or marked as bought by
-                      hand -- and not yet in the shop
+    Sourcing          open, paid, in-house lines with no blanks bought yet,
+                      plus samples added to the S&S order by hand (doc 61)
+    Other suppliers   in-house lines whose blank is NOT from S&S, not bought
+                      yet, one box per supplier (doc 61)
+    Awaiting product  blanks bought -- placed here, bought from another
+                      supplier, or marked as bought by hand -- and not yet in
+                      the shop
 
 Shape mirrors onboarding/clone.py:
 
@@ -301,6 +305,7 @@ def refresh() -> dict:
             "proposal": doc.get("proposal") or {},
             "setup": doc.get("setup") or {},
             "saved": bool(doc.get("saved")),
+            "styles": [str(x) for x in doc.get("styles") or [] if x],
         }
         if not result["ok"]:
             # Keep the last good picture on screen underneath the error, marked as
@@ -308,6 +313,7 @@ def refresh() -> dict:
             snap["proposal"] = old.get("proposal") or {}
             snap["setup"] = old.get("setup") or {}
             snap["saved"] = False
+            snap["styles"] = old.get("styles") or []
         _write("snapshot.json", snap)
         return snap
 
@@ -614,6 +620,19 @@ def _keys(keys) -> list[str]:
     return [k for k in dict.fromkeys(str(k).strip() for k in keys or []) if k]
 
 
+def _edit(args: list[str], timeout: int = LEDGER_TIMEOUT) -> dict:
+    """Run one committed ssorder edit, then re-plan so the page agrees with it."""
+    result = _run(_argv(*args, "--commit"), timeout)
+    doc = result["doc"] or {}
+    changed = len(doc.get("changed") or []) or (1 if doc.get("added") or doc.get("removed") else 0)
+    stale = ""
+    if result["ok"] and changed and not refresh()["ok"]:
+        stale = ("Saved, but the page could not be refreshed afterwards, so it still shows "
+                 "the old picture.")
+    return {"ok": result["ok"], "error": result["error"], "changed": changed, "stale": stale,
+            "doc": doc}
+
+
 def _ledger(command: str, keys) -> dict:
     """Run one ledger edit on exact lines, then re-plan so the page agrees with it."""
     keys = _keys(keys)
@@ -622,13 +641,7 @@ def _ledger(command: str, keys) -> dict:
     args = [command]
     for key in keys:
         args += ["--key", key]
-    result = _run(_argv(*args, "--commit"), LEDGER_TIMEOUT)
-    changed = len((result["doc"] or {}).get("changed") or [])
-    stale = ""
-    if result["ok"] and changed and not refresh()["ok"]:
-        stale = ("Saved, but the page could not be refreshed afterwards, so it still shows "
-                 "the old picture.")
-    return {"ok": result["ok"], "error": result["error"], "changed": changed, "stale": stale}
+    return _edit(args)
 
 
 def mark(keys, undo: bool = False) -> dict:
@@ -641,6 +654,113 @@ def receive(keys, undo: bool = False) -> dict:
     return _ledger("unreceive" if undo else "receive", keys)
 
 
+# ------------------------------------------------------------------ other suppliers (doc 61)
+
+def _line_keys(keys) -> list[str]:
+    """Keys go to mark-line as positionals, so one that looks like a flag is dropped."""
+    return [k for k in _keys(keys) if not k.startswith("-")]
+
+
+def mark_other(keys, supplier: str = "", supplier_order: str = "", cost: str = "") -> dict:
+    """These lines were bought from another supplier. By line, never by order."""
+    keys = _line_keys(keys)
+    if not keys:
+        return {"ok": False, "error": "Tick at least one line.", "changed": 0}
+    args = ["mark-line"]
+    for flag, value in (("--supplier", supplier), ("--supplier-order", supplier_order),
+                        ("--cost", cost)):
+        value = " ".join(str(value or "").split())
+        if value:
+            args += [flag, value]
+    return _edit(args + keys)
+
+
+def unmark_other(keys) -> dict:
+    """Not bought from that supplier after all: back to Other suppliers."""
+    keys = _line_keys(keys)
+    if not keys:
+        return {"ok": False, "error": "Tick at least one line.", "changed": 0}
+    return _edit(["unmark-line", *keys])
+
+
+# ------------------------------------------------------------------ samples (doc 61)
+
+MANUAL_PREVIEW_MINUTES = 30
+
+
+def _manual_args(form: dict) -> list[str] | str:
+    """`add` arguments from the form, or why not."""
+    style = " ".join(str(form.get("style") or "").split())
+    color = " ".join(str(form.get("color") or "").split())
+    size = " ".join(str(form.get("size") or "").split())
+    reason = " ".join(str(form.get("reason") or "").split())
+    qty = str(form.get("qty") or "1").strip()
+    if not (style and color and size):
+        return "Give the S&S style, colour and size."
+    if not reason:
+        return "Say what it is for, e.g. “Sample — Lighthouse Ministries”."
+    if not qty.isdigit():
+        return "The quantity should be a whole number."
+    return ["add", style, "--color", color, "--size", size, "--qty", qty, "--reason", reason]
+
+
+def manual_preview(form: dict) -> dict:
+    """`add` without --commit: the sku, the account price and OH vs total stock.
+    Saves nothing in ssorder; the preview is kept here so the page can show it."""
+    if status()["state"] == "running":
+        return {"ok": False, "error": "An order is being placed. Try again when it has finished."}
+    args = _manual_args(form)
+    if isinstance(args, str):
+        _drop("manual_preview.json")
+        return {"ok": False, "error": args}
+    result = _run(_argv(*args), CALL_TIMEOUT)
+    doc = result["doc"] or {}
+    ok = bool(result["ok"] and doc.get("dry_run") and doc.get("preview"))
+    _write("manual_preview.json", {"at": _stamp(), "ok": ok, "error": result["error"],
+                                   "form": {k: str(form.get(k) or "") for k in
+                                            ("style", "color", "size", "qty", "reason")},
+                                   "preview": doc.get("preview") or {}})
+    return {"ok": ok, "error": result["error"]}
+
+
+def manual_add(form: dict) -> dict:
+    """Put the previewed line on the S&S order. ssorder checks it all again."""
+    if status()["state"] == "running":
+        return {"ok": False, "error": "An order is being placed. Try again when it has finished."}
+    args = _manual_args(form)
+    if isinstance(args, str):
+        return {"ok": False, "error": args}
+    result = _edit(args, CALL_TIMEOUT)
+    if result["ok"]:
+        _drop("manual_preview.json")
+    return result
+
+
+def manual_remove(ident: str) -> dict:
+    if status()["state"] == "running":
+        return {"ok": False, "error": "An order is being placed. Try again when it has finished."}
+    ident = (ident or "").strip()
+    if not ident.isalnum():
+        return {"ok": False, "error": "That is not a line added by hand."}
+    return _edit(["manual", "remove", ident])
+
+
+def clear_manual_preview() -> None:
+    _drop("manual_preview.json")
+
+
+def style_options(style: str) -> dict:
+    """Colours and sizes S&S has for a style, for the Add form's lists. Read-only."""
+    style = " ".join(str(style or "").split())
+    if not style or len(style) > 80:
+        return {"ok": False, "error": "Give an S&S style.", "colors": [], "sizes": []}
+    result = _run(_argv("stock", style), CALL_TIMEOUT)
+    doc = result["doc"] or {}
+    return {"ok": result["ok"], "error": result["error"],
+            "colors": [str(c) for c in doc.get("colors") or []],
+            "sizes": [str(c) for c in doc.get("sizes") or []]}
+
+
 # ------------------------------------------------------------------ the page
 
 def _groups(tracked: list, placed_by_po: dict) -> list:
@@ -648,10 +768,19 @@ def _groups(tracked: list, placed_by_po: dict) -> list:
     groups: dict[str, dict] = {}
     for row in tracked:
         ss_order = str(row.get("ss_order") or "")
-        by_hand = row.get("status") == "sourced" and not ss_order
-        ident = "hand" if by_hand else f"{row.get('po', '')}|{ss_order}"
+        other = row.get("source") == "other"
+        by_hand = row.get("status") == "sourced" and not ss_order and not other
+        supplier = str(row.get("supplier") or "")
+        supplier_order = str(row.get("supplier_order") or "")
+        if other:
+            # One box per supplier order, the way the parcel will arrive.
+            ident = f"other|{supplier.casefold()}|{supplier_order}"
+        else:
+            ident = "hand" if by_hand else f"{row.get('po', '')}|{ss_order}"
         g = groups.setdefault(ident, {
-            "by_hand": by_hand, "po": str(row.get("po") or ""), "ss_order": ss_order,
+            "by_hand": by_hand, "other": other, "supplier": supplier,
+            "supplier_order": supplier_order,
+            "po": str(row.get("po") or ""), "ss_order": ss_order,
             "at": row.get("at", ""), "lines": [], "pieces": 0,
             "detail": placed_by_po.get(row.get("po", "")) or {},
         })
@@ -662,14 +791,15 @@ def _groups(tracked: list, placed_by_po: dict) -> list:
             pass
         if not g["at"] or str(row.get("at", "")) < g["at"]:
             g["at"] = str(row.get("at", ""))
-    out = sorted(groups.values(), key=lambda g: (g["by_hand"], g["at"]))
+    out = sorted(groups.values(), key=lambda g: (g["by_hand"], g["other"], g["at"]))
     for g in out:
         g["when"] = local_time(g["at"])
         age = _minutes_since(g["at"])
-        g["cancellable"] = (not g["by_hand"] and bool(g["ss_order"]) and "," not in g["ss_order"]
+        ss = not g["by_hand"] and not g["other"]
+        g["cancellable"] = (ss and bool(g["ss_order"]) and "," not in g["ss_order"]
                             and age is not None and age < CANCEL_WINDOW_MINUTES)
         g["split"] = "," in g["ss_order"]
-        g["no_number"] = not g["by_hand"] and not g["ss_order"]
+        g["no_number"] = ss and not g["ss_order"]
     return out
 
 
@@ -716,6 +846,12 @@ def view() -> dict:
     received = [{**t, "when": local_time(t.get("received_at", ""))}
                 for t in tracked if t.get("status") == "received"]
 
+    other = [g for g in prop.get("other_suppliers") or [] if isinstance(g, dict)]
+    preview = _read("manual_preview.json")
+    since = _minutes_since(preview.get("at", "")) if preview else None
+    if since is None or since > MANUAL_PREVIEW_MINUTES:
+        preview = {}
+
     stores = setup.get("stores") or []
     recommended = prop.get("recommended")
     return {
@@ -734,6 +870,11 @@ def view() -> dict:
         "cards": cards(snap),
         "groups": _groups(awaiting, placed_by_po),
         "received": received,
+        "other": other,
+        "other_count": sum(len(g.get("lines") or []) for g in other),
+        "manual_lines": [m for m in prop.get("manual") or [] if isinstance(m, dict)],
+        "manual_preview": preview,
+        "styles": snap.get("styles") or [],
         "counts": prop.get("counts") or {},
         # Order links only when there is one store: a second store's orders
         # live under a different admin domain than the app's own.

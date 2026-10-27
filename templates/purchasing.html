@@ -102,6 +102,12 @@
   details.pu-more summary{cursor:pointer;color:#7A5C1C;font-weight:600}
   details.pu-more pre{background:#F6F3EC;border-radius:7px;padding:12px;overflow:auto;font-size:12px;max-height:340px}
   .pu-fix{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#3E444D;display:block;margin-top:3px}
+  .pu-addgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 14px;margin-top:12px}
+  .pu-addgrid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;margin:0;min-width:0}
+  .pu-addgrid input{width:100%;box-sizing:border-box}
+  .pu-addgrid .wide-field{grid-column:1/-1}
+  .pu-ext{font-size:13px;font-weight:600;margin-left:8px;white-space:nowrap}
+  tr.bad td{color:#B4443C}
   @media (max-width:699px){
     .pu-lines .wide,.pu-lines .for small{display:none}
     .pu-review dl{grid-template-columns:1fr;gap:2px 0}
@@ -178,8 +184,15 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
     <b>{{ counts.awaiting or 0 }}</b> awaiting product ·
     <b>{{ counts.received or 0 }}</b> received ·
     <b class="{{ 'bad' if counts.unmapped }}">{{ counts.unmapped }}</b> need mapping ·
-    {{ counts.elsewhere }} not from S&amp;S · {{ counts.ignored }} not in-house · {{ counts.unpaid }} unpaid
+    <b class="{{ 'bad' if counts.other_overdue }}">{{ counts.other_to_buy or 0 }}</b> from other suppliers ·
+    {{ counts.manual or 0 }} sample(s) added by hand ·
+    {{ counts.ignored }} not in-house · {{ counts.unpaid }} unpaid
   </p>
+  {% endif %}
+  {% if other_count %}
+    <div class="why"><b>{{ other_count }} line{{ '' if other_count == 1 else 's' }} to buy from other suppliers</b>
+      — not on the S&amp;S order. <a href="#other">See Other suppliers</a>{% if counts.other_overdue %};
+      <b class="bad">{{ counts.other_overdue }} overdue</b>{% endif %}.</div>
   {% endif %}
 
   {% if prop.lines %}
@@ -204,8 +217,13 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
           <td class="num {{ 'bad' if not l.pickup_ok }}">{{ stock(l.pickup_qty) }}</td>
           <td class="num wide">{{ stock(l.ship_qty) }}</td>
           <td class="for">{% for s in l.sources %}
+                {% if s.manual %}
+                <div><b>Sample</b>{% if s.qty != l.qty %} ×{{ s.qty }}{% endif %}
+                  <small>{{ s.reason }} · added by hand</small></div>
+                {% else %}
                 <div>{{ order_ref(s.order, s.order_id) }}{% if s.qty != l.qty %} ×{{ s.qty }}{% endif %}
                   {% if s.title %}<small>{{ s.title }}{% if s.variant_title %} / {{ s.variant_title }}{% endif %}</small>{% endif %}</div>
+                {% endif %}
               {% endfor %}</td>
         </tr>
       {% endfor %}
@@ -352,7 +370,7 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
         <p class="pu-when">Tick the lines whose blanks you bought another way or pulled from stock. They
           leave the proposal and move to Awaiting product.</p>
         <table class="pu-mini">
-          {% for l in prop.lines %}{% for s in l.sources %}
+          {% for l in prop.lines %}{% for s in l.sources if not s.manual %}
             <tr><td class="pu-check"><input type="checkbox" name="key" value="{{ s.key }}" id="mk-{{ loop.index }}-{{ l.sku }}"></td>
                 <td>{{ s.order }}</td><td>{{ s.qty }} × {{ s.title or l.desc }}{% if s.variant_title %} / {{ s.variant_title }}{% endif %}</td></tr>
           {% endfor %}{% endfor %}
@@ -362,8 +380,73 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
     </details>
   </div>
   {% elif snap.ok %}
-    <div class="card empty">Nothing to buy. Every open in-house line already has its blanks.</div>
+    <div class="card empty">Nothing to buy from S&amp;S. Every open in-house line already has its blanks.</div>
   {% endif %}
+
+  {# ---- a line on the S&S order that no Shopify order asked for (doc 61) #}
+  <div class="card" id="manual">
+    <b>Add to S&amp;S order</b> <span class="pu-when">— a sample blank for a customer, say. Not in Shopify; it rides on the next S&amp;S order like any other line.</span>
+    {% if manual_lines %}
+      <table class="pu-mini" style="margin-top:10px">
+        {% for m in manual_lines %}
+          <tr><td class="num">{{ m.qty }}</td>
+              <td>{{ m.desc or m.sku }}<small class="mono"> {{ m.sku }}</small></td>
+              <td>Sample — {{ m.reason }}</td>
+              <td><form method="post" action="{{ url_for('purchasing_manual_remove') }}" style="margin:0">
+                <input type="hidden" name="id" value="{{ m.id }}">
+                <button class="btn btn-quiet" type="submit" {{ 'disabled' if job.state == 'running' }}>Remove</button></form></td></tr>
+        {% endfor %}
+      </table>
+    {% endif %}
+    {% set mp = manual_preview %}
+    {% set mf = mp.form or {} %}
+    <form method="post" action="{{ url_for('purchasing_manual_preview') }}" class="pu-addform"
+          data-style-url="{{ url_for('purchasing_style') }}">
+      <div class="pu-addgrid">
+        <label>S&amp;S style<input type="text" name="style" list="pu-styles" required autocomplete="off"
+               placeholder="Gildan SF000" value="{{ mf.style }}" id="pu-add-style"></label>
+        <label>Colour<input type="text" name="color" list="pu-colors" required autocomplete="off"
+               value="{{ mf.color }}"></label>
+        <label>Size<input type="text" name="size" list="pu-sizes" required autocomplete="off"
+               value="{{ mf.size }}"></label>
+        <label>Qty<input type="number" name="qty" min="1" max="500" required value="{{ mf.qty or 1 }}"></label>
+        <label class="wide-field">Reason<input type="text" name="reason" required maxlength="120"
+               placeholder="Sample — Lighthouse Ministries" value="{{ mf.reason }}"></label>
+      </div>
+      <datalist id="pu-styles">{% for st in styles %}<option value="{{ st }}">{% endfor %}</datalist>
+      <datalist id="pu-colors"></datalist><datalist id="pu-sizes"></datalist>
+      <div class="actions">
+        <button class="btn btn-quiet" type="submit" {{ 'disabled' if job.state == 'running' }}>Preview</button>
+        <span class="pu-when" id="pu-style-note">Colour and size lists fill from S&amp;S once a style is typed. Preview saves nothing.</span>
+      </div>
+    </form>
+    {% if mp %}
+      {% if mp.ok %}
+        {% set pv = mp.preview %}
+        <div class="pu-review" style="margin-bottom:0">
+          <h3>{{ pv.qty }} × {{ pv.desc }}</h3>
+          <dl>
+            <dt>SKU</dt><dd class="mono">{{ pv.sku }}</dd>
+            <dt>Account price</dt><dd>${{ pv.unit_price }} each · ${{ pv.ext }}</dd>
+            <dt>Stock</dt><dd class="{{ 'bad' if pv.pickup_qty < pv.qty }}">{{ stock(pv.pickup_qty) }} at {{ pv.pickup_warehouse }} · {{ stock(pv.total_qty) }} in all</dd>
+            <dt>On the order as</dt><dd>SAMPLE: {{ pv.reason }}</dd>
+          </dl>
+          <form method="post" action="{{ url_for('purchasing_manual_add') }}" style="margin:0">
+            {% for k in ('style', 'qty', 'reason') %}<input type="hidden" name="{{ k }}" value="{{ mf[k] if k != 'qty' else pv.qty }}">{% endfor %}
+            <input type="hidden" name="color" value="{{ pv.color }}"><input type="hidden" name="size" value="{{ pv.size }}">
+            <div class="actions">
+              <button class="btn btn-primary" type="submit" {{ 'disabled' if job.state == 'running' }}>Add to S&amp;S order</button>
+              <button class="btn btn-quiet" type="submit" formaction="{{ url_for('purchasing_manual_clear') }}" formnovalidate>Discard</button>
+              <span class="pu-when">Orders nothing. It joins the proposal, counts toward ${{ prop.free_freight_min or setup.free_freight_min or '200.00' }} free freight, and is placed with everything else.</span>
+            </div>
+          </form>
+        </div>
+      {% else %}
+        <div class="stop"><b>That cannot be added.</b> {{ mp.error }}
+<form method="post" action="{{ url_for('purchasing_manual_clear') }}" style="margin-top:8px"><button class="btn btn-quiet" type="submit">Dismiss</button></form></div>
+      {% endif %}
+    {% endif %}
+  </div>
 
   {% if prop.out_of_stock %}
   <div class="card">
@@ -389,14 +472,8 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
   </div>
   {% endif %}
 
-  {% if prop.elsewhere or prop.unpaid %}
+  {% if prop.unpaid %}
   <div class="card">
-    {% if prop.elsewhere %}
-      <b>Not from S&amp;S — source these yourself</b>
-      <table class="pu-mini">{% for u in prop.elsewhere %}
-        <tr><td>{{ order_ref(u.order, u.order_id) }}</td><td>{{ u.qty }} × {{ u.title }}{% if u.variant_title %} / {{ u.variant_title }}{% endif %}</td></tr>{% endfor %}
-      </table>
-    {% endif %}
     {% if prop.unpaid %}
       <b>Unpaid — held out of the proposal until Shopify says paid</b>
       <table class="pu-mini">{% for u in prop.unpaid %}
@@ -406,6 +483,45 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
   </div>
   {% endif %}
 {% endif %}
+
+{# ------------------------------------------------------------ other suppliers #}
+<h2 id="other">Other suppliers — not from S&amp;S</h2>
+
+{% if not other %}
+  <div class="card empty">{{ 'No open lines need another supplier.' if snap else 'Build a proposal to see this.' }}</div>
+{% endif %}
+{% for g in other %}
+  <div class="pu-group">
+    <form method="post" action="{{ url_for('purchasing_other_mark') }}">
+      <h3>{{ g.label }}
+        {%- if g.supplier_url %} <a class="pu-ext" href="{{ g.supplier_url }}" target="_blank" rel="noopener">Open {{ g.supplier }} ↗</a>{% endif %}</h3>
+      <div class="meta">{{ g.lines|length }} line(s) to buy{% if g.overdue %} · <b class="bad">overdue</b>{% endif %}
+        {%- if not g.supplier %} · <b class="bad">no supplier recorded for this product</b> — type it below{% endif %}</div>
+      <div class="pu-scroll"><table class="pu-mini">
+        <thead><tr><th></th><th>Order</th><th>Item</th><th class="num">Qty</th><th class="num">Age</th></tr></thead>
+        <tbody>
+        {% for u in g.lines %}
+          <tr class="{{ 'bad' if u.overdue }}"><td class="pu-check"><input type="checkbox" name="key" value="{{ u.key }}"></td>
+              <td>{{ order_ref(u.order, u.order_id) }}</td>
+              <td>{{ u.title }}{% if u.variant_title %} / {{ u.variant_title }}{% endif %}</td>
+              <td class="num">{{ u.qty }}</td>
+              <td class="num">{{ u.age_days }} day{{ '' if u.age_days == 1 else 's' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <div class="pu-addgrid" style="margin-top:10px">
+        {% if g.supplier %}<input type="hidden" name="supplier" value="{{ g.supplier }}">
+        {% else %}<label>Supplier<input type="text" name="supplier" required placeholder="Who it was bought from"></label>{% endif %}
+        <label>Their order # <span class="pu-when">(optional)</span><input type="text" name="supplier_order" maxlength="60" autocomplete="off"></label>
+        <label>Unit cost <span class="pu-when">(optional)</span><input type="text" name="cost" inputmode="decimal" placeholder="12.34" autocomplete="off"></label>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Mark ticked as ordered</button>
+        <span class="pu-when">Tick the lines you bought. They move to Awaiting product.</span>
+      </div>
+    </form>
+  </div>
+{% endfor %}
 
 {# ------------------------------------------------------------ awaiting product #}
 <h2 id="awaiting">Awaiting product — bought, not in the shop yet</h2>
@@ -419,6 +535,9 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
       {% if g.by_hand %}
         <h3>Bought by hand</h3>
         <div class="meta">Marked as already bought — not placed through this page.</div>
+      {% elif g.other %}
+        <h3>{{ g.supplier }} — {% if g.supplier_order %}order <span class="mono">{{ g.supplier_order }}</span>{% else %}no order #{% endif %}</h3>
+        <div class="meta">Bought from another supplier · marked {{ g.when }} · {{ g.pieces }} piece(s)</div>
       {% else %}
         <h3>S&amp;S order <span class="mono">{{ g.ss_order or '— no number —' }}</span></h3>
         <div class="meta">PO <span class="mono">{{ g.po }}</span> · {{ 'sent' if g.no_number else 'placed' }} {{ g.when }} · {{ g.pieces }} piece(s)
@@ -434,8 +553,9 @@ If the order is there:<span class="pu-fix">hub: cd {{ ssorder_dir }} &amp;&amp; 
       <table class="pu-mini">
         {% for l in g.lines %}
           <tr><td class="pu-check"><input type="checkbox" name="key" value="{{ l.key }}" checked></td>
-              <td>{{ order_ref(l.order, l.order_id) }}</td>
-              <td>{{ l.qty }} × {{ l.title }}{% if l.variant_title %} / {{ l.variant_title }}{% endif %}</td></tr>
+              <td>{% if l.manual %}<b>Sample</b>{% else %}{{ order_ref(l.order, l.order_id) }}{% endif %}</td>
+              <td>{{ l.qty }} × {{ l.title }}{% if l.variant_title %} / {{ l.variant_title }}{% endif %}
+                {%- if l.unit_cost %} <span class="pu-when">@ ${{ l.unit_cost }}</span>{% endif %}</td></tr>
         {% endfor %}
       </table>
       <div class="actions">
@@ -443,6 +563,9 @@ If the order is there:<span class="pu-fix">hub: cd {{ ssorder_dir }} &amp;&amp; 
         {% if g.by_hand %}
           <button class="btn btn-quiet" type="submit" name="undo" value="1"
                   formaction="{{ url_for('purchasing_mark') }}">Not bought after all — back to Sourcing</button>
+        {% elif g.other %}
+          <button class="btn btn-quiet" type="submit"
+                  formaction="{{ url_for('purchasing_other_unmark') }}">Not bought after all — back to Other suppliers</button>
         {% endif %}
       </div>
     </form>
@@ -466,11 +589,11 @@ If the order is there:<span class="pu-fix">hub: cd {{ ssorder_dir }} &amp;&amp; 
         <tr><td class="pu-check"><input type="checkbox" name="key" value="{{ l.key }}"></td>
             <td>{{ order_ref(l.order, l.order_id) }}</td>
             <td>{{ l.qty }} × {{ l.title }}{% if l.variant_title %} / {{ l.variant_title }}{% endif %}</td>
-            <td class="pu-when">{{ ('S&S ' ~ l.ss_order) if l.ss_order else 'by hand' }} · received {{ l.when }}</td></tr>
+            <td class="pu-when">{{ ('S&S ' ~ l.ss_order) if l.ss_order else (l.supplier if l.source == 'other' else 'by hand') }}{% if l.manual %} · sample{% endif %} · received {{ l.when }}</td></tr>
       {% endfor %}
     </table>
     <button class="btn btn-quiet" type="submit" name="undo" value="1">Ticked ones have not arrived — move back</button>
-    <span class="pu-when">A line drops off this list by itself once Shopify shows it fulfilled.</span>
+    <span class="pu-when">A line drops off this list by itself once Shopify shows it fulfilled. A sample has no Shopify order, so it drops off a week after it is received.</span>
   </form>
 </details>
 {% endif %}
@@ -507,6 +630,32 @@ If the order is there:<span class="pu-fix">hub: cd {{ ssorder_dir }} &amp;&amp; 
       var sub = ev.submitter;
       if(sub === go){ go.disabled = true; go.textContent = "Sending…"; }
     });
+  }
+
+  // The Add form: once a style is typed, fill the colour and size suggestions
+  // from S&S. Only suggestions -- ssorder matches and refuses on Preview.
+  var addStyle = document.getElementById("pu-add-style");
+  if(addStyle){
+    var form = addStyle.form, note = document.getElementById("pu-style-note"), last = "";
+    var fill = function(id, values){
+      var list = document.getElementById(id); list.innerHTML = "";
+      values.forEach(function(v){ var o = document.createElement("option"); o.value = v; list.appendChild(o); });
+    };
+    var load = function(){
+      var style = addStyle.value.trim();
+      if(!style || style === last){ return; }
+      last = style; note.textContent = "Asking S&S for " + style + "…";
+      fetch(form.dataset.styleUrl + "?style=" + encodeURIComponent(style), {cache: "no-store"})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if(!d.ok){ note.textContent = d.error || "S&S has nothing for that style."; fill("pu-colors", []); fill("pu-sizes", []); return; }
+          fill("pu-colors", d.colors || []); fill("pu-sizes", d.sizes || []);
+          note.textContent = (d.colors || []).length + " colour(s), " + (d.sizes || []).length + " size(s) at S&S. Preview saves nothing.";
+        }).catch(function(){ note.textContent = "Could not reach S&S for the lists — type them; Preview checks."; });
+    };
+    addStyle.addEventListener("change", load);
+    addStyle.addEventListener("blur", load);
+    if(addStyle.value){ load(); }
   }
 
   // No confirm() pop-up -- the Claude app's browser pane answers "Cancel" to

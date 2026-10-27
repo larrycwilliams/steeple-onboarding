@@ -740,5 +740,138 @@ class PurchasingTab(unittest.TestCase):
         self.assertEqual(self.purchasing.status()["state"], "failed")      # it never started
 
 
+    # ------------------------------------------------------------ other suppliers (doc 61)
+    def skip_crew(self, supplier="AllDayShirts.com"):
+        """Demo product 103 (#D4) becomes a blank bought from another supplier."""
+        styles = json.loads((self.ss / "styles.json").read_text())
+        styles["products"]["103"] = {"skip": True, "note": "crew from elsewhere",
+                                     **({"supplier": supplier,
+                                         "supplier_url": "https://www.alldayshirts.com"}
+                                        if supplier else {})}
+        (self.ss / "styles.json").write_text(json.dumps(styles))
+
+    def test_other_supplier_lines_have_their_own_section_and_banner(self):
+        self.skip_crew()
+        html = self.post("/purchasing/refresh")
+        self.assertIn("Proposal refreshed — 3 line(s) to buy.", html)      # #D4 left the S&S order
+        self.assertIn('id="other"', html)
+        self.assertIn("1 line to buy from other suppliers", html)
+        self.assertIn("Open AllDayShirts.com ↗", html)
+        self.assertIn("https://www.alldayshirts.com", html)
+        self.assertIn('value="Demo Store|5004"', html)
+        self.assertIn("overdue", html)                                    # the demo orders are old
+        self.assertEqual(self.sent(), [])
+
+    def test_a_skip_without_a_supplier_still_shows_and_asks_for_one(self):
+        self.skip_crew(supplier="")
+        html = self.post("/purchasing/refresh")
+        self.assertIn("Supplier not set", html)
+        self.assertIn('name="supplier" required', html)
+        html = self.post("/purchasing/other/mark", key="Demo Store|5004")
+        self.assertIn("say which supplier", html)
+        self.assertEqual(self.ledger(), {})
+
+    def test_mark_other_ordered_then_received_then_back(self):
+        self.skip_crew()
+        self.post("/purchasing/refresh")
+        html = self.post("/purchasing/other/mark", key="Demo Store|5004", supplier="AllDayShirts.com",
+                         supplier_order="12345", cost="6.50")
+        self.assertIn("1 line(s) marked as ordered", html)
+        e = self.ledger()["Demo Store|5004"]
+        self.assertEqual((e["status"], e["source"], e["supplier_order"], e["unit_cost"]),
+                         ("ordered", "other", "12345", "6.50"))
+        html = self.page()
+        self.assertIn("AllDayShirts.com — order", html)
+        self.assertIn("12345", html)
+        self.assertIn("@ $6.50", html)
+        self.assertNotIn("There is no S&amp;S order number for this PO", html)
+        self.assertIn("No open lines need another supplier", html)
+        # The S&S lines on the proposal are untouched.
+        self.assertEqual(len(self.purchasing.load()["proposal"]["lines"]), 3)
+        self.post("/purchasing/receive", key="Demo Store|5004")
+        self.assertEqual(self.ledger()["Demo Store|5004"]["status"], "received")
+        self.post("/purchasing/receive", key="Demo Store|5004", undo="1")
+        html = self.post("/purchasing/other/unmark", key="Demo Store|5004")
+        self.assertIn("put back in Other suppliers", html)
+        self.assertEqual(self.ledger(), {})
+        self.assertEqual(self.sent(), [])
+
+    def test_mark_other_refuses_an_ss_line(self):
+        self.skip_crew()
+        self.post("/purchasing/refresh")
+        html = self.post("/purchasing/other/mark", key="Demo Store|5001", supplier="X")
+        self.assertIn("bought from S&amp;S", html)
+        self.assertEqual(self.ledger(), {})
+
+    # ------------------------------------------------------------ samples (doc 61)
+    SAMPLE = dict(style="Demo Tee 1000", color="Black", size="3XL", qty="2",
+                  reason="Sample — Lighthouse")
+
+    def test_style_lists_come_from_ss(self):
+        r = self.client.get("/purchasing/style?style=Demo Tee 1000")
+        d = r.get_json()
+        self.assertTrue(d["ok"], d)
+        self.assertIn("Black", d["colors"])
+        self.assertIn("3XL", d["sizes"])
+
+    def test_preview_saves_nothing_and_a_bad_colour_is_refused(self):
+        self.post("/purchasing/refresh")
+        html = self.post("/purchasing/manual/preview", **{**self.SAMPLE, "color": "Pink"})
+        self.assertIn("S&amp;S has", html)
+        html = self.post("/purchasing/manual/preview", **self.SAMPLE)
+        self.assertIn("DEMO100001", html)
+        self.assertIn("SAMPLE: Sample — Lighthouse", html)
+        self.assertIn("Add to S&amp;S order</button>", html)
+        self.assertFalse((self.ss / "state" / "manual_lines.json").exists())
+
+    def test_a_sample_joins_the_proposal_and_is_placed_with_it(self):
+        self.post("/purchasing/refresh")
+        before = self.purchasing.load()["proposal"]["subtotal"]
+        html = self.post("/purchasing/manual/add", **self.SAMPLE)
+        self.assertIn("Added to the S&amp;S order", html)
+        prop = self.purchasing.load()["proposal"]
+        self.assertNotEqual(prop["subtotal"], before)                     # it counts
+        self.assertEqual(len(prop["manual"]), 1)
+        self.assertIn("added by hand", html)
+        state = self.place("will_call")
+        self.assertEqual(state["state"], "done", state)
+        sent = self.sent()[-1]
+        self.assertIn({"identifier": "DEMO100001", "qty": 3, "warehouseAbbr": "OH"}, sent["lines"])
+        manual = [e for k, e in self.ledger().items() if k.startswith("manual|")]
+        self.assertEqual([(e["manual"], e["reason"]) for e in manual], [(True, "Sample — Lighthouse")])
+        lines = json.loads((self.ss / "state" / "manual_lines.json").read_text())["lines"]
+        self.assertEqual(lines, [])
+        self.assertIn("Manual — Sample — Lighthouse", self.page())
+
+    def test_a_sample_can_be_removed_until_it_is_placed(self):
+        self.post("/purchasing/refresh")
+        self.post("/purchasing/manual/add", **self.SAMPLE)
+        ident = self.purchasing.load()["proposal"]["manual"][0]["id"]
+        html = self.post("/purchasing/manual/remove", id=ident)
+        self.assertIn("Removed from the S&amp;S order", html)
+        self.assertEqual(self.purchasing.load()["proposal"]["manual"], [])
+        self.assertIn("Not removed", self.post("/purchasing/manual/remove", id=ident))
+
+    def test_adding_a_sample_after_the_review_voids_it(self):
+        self.post("/purchasing/refresh")
+        self.post("/purchasing/review", option="will_call")
+        po = self.po()
+        self.post("/purchasing/manual/add", **self.SAMPLE)
+        html = self.post("/purchasing/place", po=po, option="will_call", confirm="yes")
+        self.assertIn("changed since it was reviewed", html)
+        self.assertEqual(self.sent(), [])
+
+    def test_operators_can_add_samples_but_still_cannot_place(self):
+        """Add and remove are like Refresh; Place stays owner-only."""
+        self.post("/purchasing/refresh")
+        with mock.patch.object(self.access, "may", return_value=False):
+            self.assertIn("Added to the S&amp;S order",
+                          self.post("/purchasing/manual/add", **self.SAMPLE))
+            self.post("/purchasing/review", option="will_call")
+            self.post("/purchasing/place", po=self.po(), option="will_call", confirm="yes")
+        self.assertEqual(self.sent(), [])
+        self.assertFalse((self.state / "place.job").exists())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

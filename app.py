@@ -50,7 +50,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.65"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.66"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -2320,6 +2320,86 @@ def purchasing_receive():
     else:
         flash(f"Not changed — {result['error']}", "error")
     return _purchasing_back("awaiting")
+
+
+@app.route("/purchasing/other/mark", methods=["POST"])
+@from_this_app
+def purchasing_other_mark():
+    """Lines bought from another supplier (doc 61). Not owner-only, like mark."""
+    result = purchasing.mark_other(request.form.getlist("key"), request.form.get("supplier", ""),
+                                   request.form.get("supplier_order", ""),
+                                   request.form.get("cost", ""))
+    if result["ok"]:
+        flash(f"{result['changed']} line(s) marked as ordered — now in Awaiting product."
+              if result["changed"] else "Nothing changed.", "ok")
+        if result.get("stale"):
+            flash(result["stale"], "error")
+        return _purchasing_back("awaiting" if result["changed"] else "other")
+    flash(f"Not changed — {result['error']}", "error")
+    return _purchasing_back("other")
+
+
+@app.route("/purchasing/other/unmark", methods=["POST"])
+@from_this_app
+def purchasing_other_unmark():
+    result = purchasing.unmark_other(request.form.getlist("key"))
+    if result["ok"]:
+        flash(f"{result['changed']} line(s) put back in Other suppliers."
+              if result["changed"] else "Nothing changed.", "ok")
+        if result.get("stale"):
+            flash(result["stale"], "error")
+    else:
+        flash(f"Not changed — {result['error']}", "error")
+    return _purchasing_back("other")
+
+
+@app.route("/purchasing/style")
+def purchasing_style():
+    """Colours and sizes S&S has for one style -- the Add form's lists. Read-only."""
+    return jsonify(purchasing.style_options(request.args.get("style", "")))
+
+
+@app.route("/purchasing/manual/preview", methods=["POST"])
+@from_this_app
+def purchasing_manual_preview():
+    result = purchasing.manual_preview(request.form)
+    if not result["ok"]:
+        flash(f"Cannot add that — {result['error']}", "error")
+    return _purchasing_back("manual")
+
+
+@app.route("/purchasing/manual/add", methods=["POST"])
+@from_this_app
+def purchasing_manual_add():
+    """Not owner-only (like Refresh): it orders nothing. Place stays owner-only."""
+    result = purchasing.manual_add(request.form)
+    if result["ok"]:
+        flash("Added to the S&S order. It is in the proposal below.", "ok")
+        if result.get("stale"):
+            flash(result["stale"], "error")
+    else:
+        flash(f"Not added — {result['error']}", "error")
+    return _purchasing_back("manual")
+
+
+@app.route("/purchasing/manual/clear", methods=["POST"])
+@from_this_app
+def purchasing_manual_clear():
+    purchasing.clear_manual_preview()
+    return _purchasing_back("manual")
+
+
+@app.route("/purchasing/manual/remove", methods=["POST"])
+@from_this_app
+def purchasing_manual_remove():
+    result = purchasing.manual_remove(request.form.get("id", ""))
+    if result["ok"]:
+        flash("Removed from the S&S order.", "ok")
+        if result.get("stale"):
+            flash(result["stale"], "error")
+    else:
+        flash(f"Not removed — {result['error']}", "error")
+    return _purchasing_back("manual")
 
 
 # ---------------------------------------------------------------- slips
