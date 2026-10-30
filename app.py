@@ -50,7 +50,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.66"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.67"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -2211,9 +2211,29 @@ def purchasing_refresh():
         lines = len((snap.get("proposal") or {}).get("lines") or [])
         flash(f"Proposal refreshed — {lines} line(s) to buy." if lines
               else "Refreshed. Nothing to buy right now.", "ok")
+        # One click updates everything: where the placed orders have got to too.
+        st = purchasing.check_ss_status()
+        if not st["ok"]:
+            flash(f"Could not check S&S order status — {st['error']}", "error")
     else:
         flash(f"Could not build a proposal — {snap['error']}", "error")
     return _purchasing_back()
+
+
+@app.route("/purchasing/ss-status", methods=["POST"])
+@from_this_app
+def purchasing_ss_status():
+    """Where the S&S orders have got to (doc 62). Read-only at S&S, so not owner-only."""
+    st = purchasing.check_ss_status()
+    if st["ok"]:
+        n = len(st.get("orders") or {})
+        flash(f"Checked {n} S&S order(s)." if n else "No S&S orders are on their way.", "ok")
+        if st.get("errors"):
+            flash(f"{st['errors']} order(s) could not be checked — showing the last known status.",
+                  "error")
+    else:
+        flash(f"Could not check S&S order status — {st['error']}", "error")
+    return _purchasing_back("awaiting")
 
 
 @app.route("/purchasing/test", methods=["POST"])

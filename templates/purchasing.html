@@ -108,6 +108,17 @@
   .pu-addgrid .wide-field{grid-column:1/-1}
   .pu-ext{font-size:13px;font-weight:600;margin-left:8px;white-space:nowrap}
   tr.bad td{color:#B4443C}
+  .pu-status{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:13.5px;
+             background:#F6F3EC;border-radius:7px;padding:9px 12px;margin:4px 0 10px}
+  .pu-badge{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.04em;
+            text-transform:uppercase;padding:3px 9px;border-radius:99px;background:#E7E3DA;color:#3E444D}
+  .pu-badge.s-shipped{background:#E3ECF5;color:#2D4E6E}
+  .pu-badge.s-ready_for_pickup{background:#FBF0D6;color:#7A5C1C}
+  .pu-badge.s-picked_up,.pu-badge.s-delivered{background:#E6F2E8;color:#2F6B3A}
+  .pu-badge.s-cancelled,.pu-badge.s-not_found{background:#F8E3E1;color:#8C332C}
+  .pu-status a{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+  .pu-sectionbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:-4px 0 14px}
+  .pu-sectionbar form{margin:0}
   @media (max-width:699px){
     .pu-lines .wide,.pu-lines .for small{display:none}
     .pu-review dl{grid-template-columns:1fr;gap:2px 0}
@@ -526,6 +537,22 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
 {# ------------------------------------------------------------ awaiting product #}
 <h2 id="awaiting">Awaiting product — bought, not in the shop yet</h2>
 
+{% if groups|selectattr('ss_order')|list %}
+<div class="pu-sectionbar">
+  <form method="post" action="{{ url_for('purchasing_ss_status') }}">
+    <button class="btn btn-quiet" type="submit">Check S&amp;S status</button>
+  </form>
+  <span class="pu-when">{% if ss_status.checked %}Last checked {{ ss_status.checked }}{% else %}Not checked yet{% endif %} · Refresh proposal checks it too.</span>
+</div>
+{% if ss_status.error %}
+  <div class="stop">Could not check S&amp;S{% if ss_status.failed %} at {{ ss_status.failed }}{% endif %} — {{ ss_status.error }}{% if ss_status.checked %}
+Showing what S&amp;S said at {{ ss_status.checked }}.{% endif %}</div>
+{% endif %}
+{% if ss_status.arrived %}
+  <div class="pu-ok"><b>{{ ss_status.arrived }} S&amp;S order(s) look like they have arrived</b> — delivered, picked up, or past their delivery date. Tick what is really here and press Mark received.</div>
+{% endif %}
+{% endif %}
+
 {% if not groups %}
   <div class="card empty">{{ 'Nothing on its way.' if snap else 'Build a proposal to see what is on its way.' }}</div>
 {% endif %}
@@ -546,7 +573,31 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
         {% if g.no_number %}
           <div class="stop"><b>There is no S&amp;S order number for this PO, so it is not known whether the order exists.</b> The lines are held so they cannot be ordered twice. Look for PO <b>{{ g.po }}</b> in your S&amp;S order history, then settle it from the hub.
 If the order is there:<span class="pu-fix">hub: cd {{ ssorder_dir }} &amp;&amp; python3 ssorder.py resolve {{ g.po }} --ss-order &lt;number&gt; --commit</span>If it is not:<span class="pu-fix">hub: cd {{ ssorder_dir }} &amp;&amp; python3 ssorder.py resolve {{ g.po }} --not-placed --commit</span></div>
-        {% elif g.split %}
+        {% endif %}
+        {% for st in g.ss_status %}
+          <div class="pu-status">
+            {% if g.split %}<span class="mono">{{ st.order_number }}</span>{% endif %}
+            <span class="pu-badge s-{{ st.state }}">{{ st.label }}</span>
+            {% if st.will_call %}<span>Pickup at West Chester ({{ st.warehouse or 'OH' }})</span>
+            {% elif st.warehouse %}<span>from {{ st.warehouse }}{% if st.method %} · {{ st.method }}{% endif %}</span>{% endif %}
+            {% if st.ship_date and not st.will_call %}<span>shipped {{ st.ship_date }}</span>{% endif %}
+            {% if st.eta and st.state not in ('picked_up', 'delivered', 'cancelled') %}<span>expected {{ st.eta }}</span>{% endif %}
+            {% for t in st.tracking or [] %}
+              {% if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.number }} ↗</a>{% else %}<span class="mono">{{ t.number }}</span>{% endif %}
+            {% endfor %}
+            {% if st.raw_status %}<span class="pu-when">S&amp;S: {{ st.raw_status }}</span>{% endif %}
+            {% if st.stale %}<span class="pu-when bad">last known — {{ st.error }}</span>{% endif %}
+          </div>
+          {% if st.short_shipped %}
+            <div class="why">S&amp;S shipped fewer pieces than were ordered on {{ st.order_number }}:
+              {% for ln in st.lines or [] %}{% if ln.shipped < ln.ordered %}{{ ln.item }} ({{ ln.shipped }} of {{ ln.ordered }}){% if not loop.last %}, {% endif %}{% endif %}{% endfor %}.
+              Check the packing list before marking everything received.</div>
+          {% endif %}
+          {% if st.ledger_mismatch %}
+            <div class="stop"><b>S&amp;S reports order {{ st.order_number }} as “{{ st.label }}”, but its lines are still waiting on it here.</b> They will not be offered for ordering again until this is settled. Check the order on ssactivewear.com; if it really was cancelled, release the lines from the hub:<span class="pu-fix">hub: cd {{ ssorder_dir }} &amp;&amp; python3 ssorder.py unmark --force {{ st.shopify_orders|map('replace', '#', '')|join(' ') }} --commit</span></div>
+          {% endif %}
+        {% endfor %}
+        {% if g.split %}
           <div class="why">S&amp;S split this PO into more than one order. The Cancel button is not offered for a split: cancel each order with S&amp;S directly.</div>
         {% endif %}
       {% endif %}

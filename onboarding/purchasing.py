@@ -22,6 +22,8 @@ Shape mirrors onboarding/clone.py:
                      payload comes back, but nothing is sent.
     place(...)       starts the real order in the background.
     status()         what that background order is doing; records the result.
+    check_ss_status() what S&S says about our placed orders now (doc 62).
+                     Read-only at S&S; the answer is drawn on the next page load.
 
 Decisions:
 
@@ -89,6 +91,7 @@ def _file(name: str) -> Path:
 
 PLAN_TIMEOUT = 120          # Shopify pages plus one S&S call per style
 CALL_TIMEOUT = 90           # a test order, a dry run, a cancel
+STATUS_TIMEOUT = 150        # one S&S GET per order awaiting delivery
 LEDGER_TIMEOUT = 150        # a Shopify read, plus ssorder's own 90 s wait for the ledger lock
 HISTORY_KEEP = 30
 START_GRACE_SECONDS = 20    # how long a job may exist before its process has a pid
@@ -761,6 +764,46 @@ def style_options(style: str) -> dict:
             "sizes": [str(c) for c in doc.get("sizes") or []]}
 
 
+# ------------------------------------------------------------------ S&S order status (doc 62)
+
+def check_ss_status() -> dict:
+    """Ask S&S where every order awaiting delivery has got to. Reads only.
+
+    Its own state file (ss_status.json, one writer), so it never races the
+    proposal snapshot. On a failure the last good answer stays on screen,
+    marked with the error, the same way a failed Refresh keeps the proposal."""
+    with _flock("ss_status.lock"):
+        old = _read("ss_status.json")
+        if setup_problems():
+            result = {"ok": False, "doc": None, "error": " ".join(setup_problems())}
+        else:
+            result = _run(_argv("status"), STATUS_TIMEOUT)
+        doc = result["doc"] or {}
+        rows = [o for o in doc.get("orders") or [] if isinstance(o, dict)]
+        snap = {
+            "at": _stamp(),
+            "ok": result["ok"],
+            "error": result["error"],
+            "errors": int(doc.get("errors") or 0),
+            "orders": {str(o.get("order_number", "")): o for o in rows if o.get("order_number")},
+        }
+        if not result["ok"]:
+            snap["orders"] = old.get("orders") or {}
+            snap["at"] = old.get("at", "")
+            snap["failed_at"] = _stamp()
+        _write("ss_status.json", snap)
+        return snap
+
+
+def _status_for(numbers: str, known: dict) -> list:
+    out = []
+    for n in str(numbers or "").split(","):
+        n = n.strip()
+        if n and isinstance(known.get(n), dict):
+            out.append(known[n])
+    return out
+
+
 # ------------------------------------------------------------------ the page
 
 def _groups(tracked: list, placed_by_po: dict) -> list:
@@ -843,6 +886,8 @@ def view() -> dict:
                     "orders": [o for o in part.get("orders") or [] if isinstance(o, dict)]}
 
     awaiting = [t for t in tracked if t.get("status") != "received"]
+    ss_status = _read("ss_status.json")
+    known = ss_status.get("orders") if isinstance(ss_status.get("orders"), dict) else {}
     received = [{**t, "when": local_time(t.get("received_at", ""))}
                 for t in tracked if t.get("status") == "received"]
 
@@ -851,6 +896,10 @@ def view() -> dict:
     since = _minutes_since(preview.get("at", "")) if preview else None
     if since is None or since > MANUAL_PREVIEW_MINUTES:
         preview = {}
+
+    groups = _groups(awaiting, placed_by_po)
+    for g in groups:
+        g["ss_status"] = ([] if g["by_hand"] or g["other"] else _status_for(g["ss_order"], known))
 
     stores = setup.get("stores") or []
     recommended = prop.get("recommended")
@@ -868,7 +917,15 @@ def view() -> dict:
         "can_order": any(o["placeable"] for o in options),
         "review": review_now, "test": test_now, "job": job,
         "cards": cards(snap),
-        "groups": _groups(awaiting, placed_by_po),
+        "groups": groups,
+        "ss_status": {"checked": local_time(ss_status.get("at", "")),
+                      "error": ss_status.get("error", "") if not ss_status.get("ok", True) else "",
+                      "failed": local_time(ss_status.get("failed_at", "")),
+                      "partial": int(ss_status.get("errors") or 0),
+                      "arrived": sum(1 for g in groups for o in g["ss_status"]
+                                     if o.get("suggest_receive")),
+                      "gone": sum(1 for g in groups for o in g["ss_status"]
+                                  if o.get("ledger_mismatch"))},
         "received": received,
         "other": other,
         "other_count": sum(len(g.get("lines") or []) for g in other),

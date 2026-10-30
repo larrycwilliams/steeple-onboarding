@@ -71,6 +71,28 @@ class FakeSS(real.DemoSS):
             return [order(7700001, "OH"), order(7700101, "IL")]
         return [order(7700000 + nth, "OH")]
 
+    def order(self, number):
+        """GET /orders/<n>: shaped like the live probe of 2026-10-29 (doc 62)."""
+        with (HERE / "fake_status_calls.txt").open("a") as f:
+            f.write(str(number) + "\\n")
+        st = _knob("fake_status.txt", "shipped")
+        if st == "error":
+            raise real.SSError("S&S GET /orders/ -> no complete answer (timeout: timed out)")
+        if st == "missing":
+            return None
+        status, delivery, track = {
+            "shipped": ("Shipped", "", "1ZE9W0610311783689"),
+            "delivered": ("Complete", "Delivered", "1ZE9W0610311783689"),
+            "cancelled": ("Cancelled", "", ""),
+        }[st]
+        return {"orderNumber": str(number), "poNumber": "X", "orderStatus": status,
+                "deliveryStatus": delivery, "shippingCarrier": "UPS",
+                "shippingMethod": "UPS Ground", "trackingNumber": track,
+                "shipDate": "2026-10-29T08:09:17", "expectedDeliveryDate": "2026-10-30T00:00:00",
+                "warehouseAbbr": "OH", "totalPieces": 1, "totalBoxes": 1,
+                "shippingAddress": {"address": "1 Test St"},
+                "lines": [{"sku": "x", "qtyOrdered": 1, "qtyShipped": 1}]}
+
     def cancel_order(self, number):
         with (HERE / "fake_cancelled.txt").open("a") as f:
             f.write(str(number) + "\\n")
@@ -178,6 +200,57 @@ class PurchasingTab(unittest.TestCase):
         self.post("/purchasing/review", option=option)
         self.post("/purchasing/place", po=self.po(), option=option, confirm="yes")
         return self.wait()
+
+
+    # ------------------------------------------------------------ S&S order status (doc 62)
+    def status_calls(self) -> list:
+        path = self.ss / "fake_status_calls.txt"
+        return path.read_text().split() if path.is_file() else []
+
+    def test_status_shows_on_the_order_box_and_page_load_calls_nothing(self):
+        self.knob("status", "shipped")
+        self.place()
+        self.post("/purchasing/refresh")                         # refresh checks status too
+        calls = len(self.status_calls())
+        self.assertGreaterEqual(calls, 1)
+        html = self.page()
+        self.assertEqual(len(self.status_calls()), calls)         # loading the page asked nothing
+        self.assertIn("Check S&amp;S status", html)
+        self.assertIn("s-shipped", html)
+        self.assertIn("ups.com/track?tracknum=1ZE9W0610311783689", html)
+        self.assertIn("expected 2026-10-30", html)
+        self.assertNotIn("1 Test St", html.split('id="awaiting"')[1])   # no address from S&S
+
+    def test_check_button_and_delivered_hint(self):
+        self.place()
+        self.knob("status", "delivered")
+        html = self.post("/purchasing/ss-status")
+        self.assertIn("Checked 1 S&amp;S order(s).", html)
+        self.assertIn("look like they have arrived", html)
+        self.assertIn("s-delivered", html)
+        self.assertTrue(all(v == "ordered" for v in self.statuses()))   # a hint, not a receive
+
+    def test_cancelled_at_ss_is_red_and_lines_stay_held(self):
+        self.place()
+        self.knob("status", "cancelled")
+        html = self.post("/purchasing/ss-status")
+        self.assertIn("Cancelled at S&amp;S", html)
+        self.assertIn("unmark --force", html)
+        self.assertTrue(self.ledger())                           # nothing released by itself
+
+    def test_failed_check_keeps_the_last_answer(self):
+        self.place()
+        self.knob("status", "shipped")
+        self.post("/purchasing/ss-status")
+        self.knob("status", "error")
+        html = self.post("/purchasing/ss-status")
+        self.assertIn("could not be checked", html)
+        self.assertIn("s-shipped", html)                         # last known, still shown
+        self.assertIn("last known", html)
+
+    def test_status_is_not_owner_only_and_refuses_another_site(self):
+        r = self.client.post("/purchasing/ss-status", headers={"Origin": "https://evil.example"})
+        self.assertEqual(r.status_code, 403)
 
     # ------------------------------------------------------------ the page
     def test_empty_page_renders_and_calls_nothing(self):
