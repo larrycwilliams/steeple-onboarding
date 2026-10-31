@@ -35,7 +35,7 @@ from onboarding import dashboard, discovery, discovery_reply, leads, mail_draft,
 from onboarding import docx_pdf, readiness, vector_logo, workflow
 from onboarding import secrets as env_secrets
 from onboarding import settings as company_settings, shopify_sales, store
-from onboarding import clone, purchasing, recommendation, storefront, traveler
+from onboarding import clone, dtf, purchasing, recommendation, storefront, traveler
 from onboarding import statement, statement_email, statement_pdf
 from onboarding import sent as sent_log
 from onboarding import agreement
@@ -50,7 +50,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.67"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.68"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -1971,6 +1971,9 @@ def _traveler_context(run: dict) -> dict:
         "metafields": traveler.PINNED_METAFIELDS,
         "shots": traveler.shots_present(),
         "clone_job": job,
+        # Doc 63: the twin's DTF design, once it has been assigned in the DTF Assignment tool.
+        "dtf_code": dtf.code_for(run.get("twc_product_id")) if run.get("twc_product_id") else "",
+        "dtf_lib": str(dtf.LIB),
         "shop_domain": os.environ.get("SHOPIFY_STORE", ""),
         "clone_preview": run.get("clone_preview"),
         "clone_opts": clone.options(run),
@@ -2194,7 +2197,8 @@ def from_this_app(view):
 
 @app.route("/purchasing")
 def purchasing_page():
-    return render_template("purchasing.html", **purchasing.view())
+    v = purchasing.view()
+    return render_template("purchasing.html", **v, dtf=dtf.view(v.get("prop") or {}))
 
 
 @app.route("/purchasing/refresh", methods=["POST"])
@@ -2371,6 +2375,83 @@ def purchasing_other_unmark():
     else:
         flash(f"Not changed — {result['error']}", "error")
     return _purchasing_back("other")
+
+
+# ---------------------------------------------------------------- DTF transfers
+# Doc 63. Which transfers the open in-house lines need, from the Print
+# Library's designs.json, and a ledger of what has been ordered from the DTF
+# supplier. Nothing here sends anything anywhere: the order goes to the
+# supplier by hand, with the sheet or the ZIP below. See onboarding/dtf.py.
+
+def _dtf_files() -> list[str]:
+    return [f for f in request.args.getlist("file") if f]
+
+
+@app.route("/purchasing/dtf/mark", methods=["POST"])
+@from_this_app
+def purchasing_dtf_mark():
+    result = dtf.mark(request.form.getlist("key"), request.form.get("supplier", ""),
+                      request.form.get("ref", ""))
+    if result["ok"]:
+        flash(f"{result['changed']} transfer line(s) marked as ordered." if result["changed"]
+              else "Nothing changed.", "ok")
+    else:
+        flash(f"Not changed — {result['error']}", "error")
+    return _purchasing_back("dtf")
+
+
+@app.route("/purchasing/dtf/unmark", methods=["POST"])
+@from_this_app
+def purchasing_dtf_unmark():
+    result = dtf.unmark(request.form.getlist("key"))
+    flash(f"{result.get('changed', 0)} transfer line(s) put back in To order." if result["ok"]
+          else f"Not changed — {result['error']}", "ok" if result["ok"] else "error")
+    return _purchasing_back("dtf")
+
+
+@app.route("/purchasing/dtf/receive", methods=["POST"])
+@from_this_app
+def purchasing_dtf_receive():
+    undo = request.form.get("undo") == "1"
+    result = dtf.receive(request.form.getlist("key"), undo=undo)
+    if result["ok"]:
+        flash((f"{result['changed']} transfer line(s) moved back to ordered." if undo else
+               f"{result['changed']} transfer line(s) received.") if result["changed"] else "Nothing changed.",
+              "ok")
+    else:
+        flash(f"Not changed — {result['error']}", "error")
+    return _purchasing_back("dtf")
+
+
+@app.route("/purchasing/dtf/sheet")
+def purchasing_dtf_sheet():
+    """A printable order sheet for the DTF supplier: thumbnail, file, size, qty."""
+    groups = dtf.selected(purchasing.load().get("proposal") or {}, _dtf_files())
+    return render_template("dtf_sheet.html", groups=groups, pieces=sum(g["qty"] for g in groups),
+                           when=_time.strftime("%b %-d, %Y"))
+
+
+@app.route("/purchasing/dtf/zip")
+def purchasing_dtf_zip():
+    groups = dtf.selected(purchasing.load().get("proposal") or {}, _dtf_files())
+    if not groups:
+        flash("No transfers to order, so there is nothing to zip.", "error")
+        return _purchasing_back("dtf")
+    data, missing = dtf.files_zip(groups)
+    if missing:
+        flash(f"{len(missing)} file(s) were not found in the Print Library and are not in the ZIP: "
+              + ", ".join(missing), "error")
+    return send_file(io.BytesIO(data), mimetype="application/zip", as_attachment=True,
+                     download_name=f"{_time.strftime('%Y-%m-%d')}_SteepleStitch_DTF-order_v01.zip")
+
+
+@app.route("/purchasing/dtf/file")
+def purchasing_dtf_file():
+    """One Print Library file (the thumbnails on the page and the sheet). Library only."""
+    p = dtf.library_file(request.args.get("p", ""))
+    if not p:
+        abort(404)
+    return send_file(p, max_age=3600)
 
 
 @app.route("/purchasing/style")

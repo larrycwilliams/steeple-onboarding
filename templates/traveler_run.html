@@ -200,6 +200,14 @@
             {% endif %}
             <small>Finished {{ job.finished }} · {{ job.api_calls or '?' }} API calls</small>
           </div>
+          {% if run.twc_product_id %}
+          <div class="{{ 'cl-ok' if dtf_code else 'stop' }}" style="margin-top:8px">
+            {% if dtf_code %}<b>DTF design {{ dtf_code }}</b> — the slip and the DTF order list will name its transfers.
+            {% else %}<b>No DTF print file assigned yet.</b> Open the DTF Assignment tool on this Mac, click
+              <b>Refresh products</b>, assign this product's file(s), then <b>Build library</b>. Until then its slips
+              say “DTF not assigned” and Purchasing lists it under lines with no design.{% endif %}
+          </div>
+          {% endif %}
           {% if job.events %}
           <details class="cl-log"><summary>What the clone did ({{ job.events|length }} lines)</summary>
             <ul>{% for e in job.events %}<li class="k-{{ e.kind }}">{{ e.msg }}</li>{% endfor %}</ul>

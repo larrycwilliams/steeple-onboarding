@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>DTF order — Steeple &amp; Stitch</title>
+<style>
+  body{font:13px/1.35 -apple-system,Helvetica,Arial,sans-serif;color:#1d2733;margin:24px}
+  h1{font:600 20px Georgia,serif;color:#122A43;margin:0}.sub{color:#6b7280;margin:2px 0 16px}
+  table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:middle}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#C69447}td.n{text-align:right;font-weight:700;font-size:16px}
+  img{width:64px;height:64px;object-fit:contain;background:#f1f1f1;border-radius:4px}.mono{font-family:Menlo,monospace}
+  .tot{margin-top:12px;font-weight:700}.np{margin-bottom:12px}@media print{.np{display:none}body{margin:10mm}}
+</style></head><body>
+<div class="np"><button onclick="print()">Print / Save as PDF</button></div>
+<h1>Steeple &amp; Stitch Co. — DTF transfer order</h1>
+<div class="sub">{{ when }} · {{ groups|length }} file(s) · {{ pieces }} transfer(s) · files attached by name</div>
+{% if not groups %}<p>Nothing to order.</p>{% else %}
+<table><thead><tr><th></th><th>File</th><th>Design</th><th>Placement</th><th>Width</th><th style="text-align:right">Qty</th></tr></thead><tbody>
+{% for g in groups %}
+<tr><td><img src="{{ url_for('purchasing_dtf_file', p=g.file) }}" alt=""></td><td class="mono">{{ g.name }}</td>
+    <td><b>{{ g.code }}</b></td><td>{{ g.where }}{% if g.ink %} · {{ g.ink }}{% endif %}</td>
+    <td>{% if g.width_in %}{{ g.width_in }}"{% else %}—{% endif %}</td><td class="n">{{ g.qty }}</td></tr>
+{% endfor %}</tbody></table>
+<div class="tot">Total: {{ pieces }} transfer(s)</div>{% endif %}
+</body></html>

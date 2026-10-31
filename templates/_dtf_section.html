@@ -1,0 +1,105 @@
+{# ------------------------------------------------------------ DTF transfers (doc 63) #}
+<h2 id="dtf">DTF transfers — from the Print Library</h2>
+
+{% if not dtf.ready %}
+  <div class="card empty">{{ dtf.problem }}</div>
+{% else %}
+  <div class="meta" style="margin:-4px 0 10px">Every open, paid in-house line, matched to its transfers in
+    <span class="mono">designs.json</span>{% if dtf.designs_at %} (built {{ dtf.designs_at }}){% endif %}.
+    Change an assignment in the DTF Assignment tool, run Build library, then Refresh here.</div>
+
+  {% if dtf.unassigned %}
+  <div class="stop"><b>{{ dtf.unassigned|length }} open line(s) have no design assigned</b> — they need a transfer
+    nobody has picked yet. Assign them in the DTF Assignment tool (or mark them Embroidery / No print there).
+    <table class="pu-mini" style="margin-top:6px">
+      {% for l in dtf.unassigned %}
+        <tr><td>{{ order_ref(l.order, l.order_id) }}</td>
+            <td>{{ l.qty }} × {{ l.title }}{% if l.variant_title %} / {{ l.variant_title }}{% endif %}</td></tr>
+      {% endfor %}
+    </table></div>
+  {% endif %}
+
+  <div class="pu-group">
+    <h3>To order — {{ dtf.pieces }} transfer{{ '' if dtf.pieces == 1 else 's' }} across {{ dtf.to_order|length }} file{{ '' if dtf.to_order|length == 1 else 's' }}</h3>
+    {% if not dtf.to_order %}
+      <div class="meta">Nothing to order. Every open in-house line already has its transfers ordered.</div>
+    {% else %}
+    <form method="post" action="{{ url_for('purchasing_dtf_mark') }}">
+      <div class="pu-scroll"><table class="pu-mini">
+        <thead><tr><th></th><th></th><th>Transfer</th><th>Where</th><th class="num">Qty</th><th>For</th></tr></thead>
+        <tbody>
+        {% for g in dtf.to_order %}
+          <tr><td class="pu-check"><input type="checkbox" class="dtf-file" data-file="{{ g.file }}" checked
+                    onchange="for (const b of this.closest('tr').querySelectorAll('input[name=key]')) b.checked = this.checked"></td>
+              <td><img src="{{ url_for('purchasing_dtf_file', p=g.file) }}" alt="" loading="lazy"
+                       style="width:46px;height:46px;object-fit:contain;background:#eee;border-radius:4px"></td>
+              <td><b class="mono">{{ g.code }}</b><br><span class="pu-when">{{ g.name }}</span></td>
+              <td>{{ g.where }} · {{ g.ink }}{% if g.width_in %} · {{ g.width_in }}"{% endif %}</td>
+              <td class="num"><b>{{ g.qty }}</b></td>
+              <td class="pu-when">{% for r in g.lines %}<input type="checkbox" name="key" value="{{ r.key }}" checked hidden>{{ order_ref(r.order, r.order_id) }} ({{ r.qty }}){{ ', ' if not loop.last }}{% endfor %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <div class="actions">
+        <a class="btn" id="dtf-sheet" href="{{ url_for('purchasing_dtf_sheet') }}" target="_blank" rel="noopener">Order sheet ↗</a>
+        <a class="btn" id="dtf-zip" href="{{ url_for('purchasing_dtf_zip') }}">Download files (ZIP)</a>
+        <span class="pu-when">Both follow the ticks. Send them to your DTF supplier, then record the order:</span>
+      </div>
+      <div class="pu-addgrid" style="margin-top:8px">
+        <label>Supplier<input type="text" name="supplier" maxlength="60" value="Local DTF" autocomplete="off"></label>
+        <label>Their order / invoice # <span class="pu-when">(optional)</span><input type="text" name="ref" maxlength="60" autocomplete="off"></label>
+      </div>
+      <div class="actions"><button class="btn btn-primary" type="submit">Mark ticked as ordered</button></div>
+    </form>
+    <script>
+      (function () {
+        const boxes = document.querySelectorAll('.dtf-file');
+        function sync() {
+          const q = [...boxes].filter(b => b.checked).map(b => 'file=' + encodeURIComponent(b.dataset.file)).join('&');
+          for (const id of ['dtf-sheet', 'dtf-zip']) {
+            const a = document.getElementById(id); a.href = a.href.split('?')[0] + (q ? '?' + q : '');
+            a.classList.toggle('disabled', !q);
+          }
+        }
+        boxes.forEach(b => b.addEventListener('change', sync)); sync();
+      })();
+    </script>
+    {% endif %}
+  </div>
+
+  {% for g in dtf.awaiting %}
+  <div class="pu-group">
+    <form method="post" action="{{ url_for('purchasing_dtf_receive') }}">
+      <h3>Ordered — {{ g.supplier or 'DTF supplier' }}{% if g.ref %} · <span class="mono">{{ g.ref }}</span>{% endif %}</h3>
+      <div class="meta">Marked {{ g.when }} · {{ g.pieces }} transfer(s)</div>
+      <table class="pu-mini">
+        {% for r in g.lines %}
+          <tr><td class="pu-check"><input type="checkbox" name="key" value="{{ r.key }}" checked></td>
+              <td>{{ order_ref(r.order, r.order_id) }}</td>
+              <td><b class="mono">{{ r.label }}</b> × {{ r.qty }} <span class="pu-when">— {{ r.title }}{% if r.variant_title %} / {{ r.variant_title }}{% endif %}</span></td></tr>
+        {% endfor %}
+      </table>
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Mark ticked as received</button>
+        <button class="btn btn-quiet" type="submit" formaction="{{ url_for('purchasing_dtf_unmark') }}">Not ordered after all — back to To order</button>
+      </div>
+    </form>
+  </div>
+  {% endfor %}
+
+  {% if dtf.received %}
+  <details class="pu-more">
+    <summary>Transfers received, order not yet fulfilled ({{ dtf.received|length }})</summary>
+    <form method="post" action="{{ url_for('purchasing_dtf_receive') }}" class="card" style="margin-top:10px">
+      <table class="pu-mini">
+        {% for r in dtf.received %}
+          <tr><td class="pu-check"><input type="checkbox" name="key" value="{{ r.key }}"></td>
+              <td>{{ order_ref(r.order, r.order_id) }}</td>
+              <td><b class="mono">{{ r.label }}</b> × {{ r.qty }}</td><td class="pu-when">received {{ r.when }}</td></tr>
+        {% endfor %}
+      </table>
+      <button class="btn btn-quiet" type="submit" name="undo" value="1">Ticked ones have not arrived — move back</button>
+    </form>
+  </details>
+  {% endif %}
+{% endif %}
