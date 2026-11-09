@@ -56,6 +56,7 @@ query Orders($first: Int!, $after: String, $q: String) {
         test
         cancelledAt
         displayFinancialStatus
+        displayFulfillmentStatus
         lineItems(first: 100) {
           edges {
             node {
@@ -233,6 +234,8 @@ def _clean_order(node: dict) -> dict:
         "test": bool(node.get("test")),
         "cancelled": bool(node.get("cancelledAt")),
         "status": node.get("displayFinancialStatus") or "",
+        # Home's "Orders to ship" tile (doc 69). Read-only; still read_orders.
+        "fulfillment": node.get("displayFulfillmentStatus") or "",
         "lines": lines,
     }
 

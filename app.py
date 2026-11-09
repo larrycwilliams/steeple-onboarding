@@ -42,6 +42,8 @@ from onboarding import agreement
 from onboarding import access
 from onboarding import welcome_email
 from onboarding import slips
+from onboarding import today as today_panel
+from onboarding import refresh as refresh_job
 from onboarding.palette import extract_palette
 from onboarding.schema import (DEFAULT_PALETTE, FIELDS, GROUPS, ORG_TYPES,
                                PALETTE_ROLES, derive, normalize, validate)
@@ -50,7 +52,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.68"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.69"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -88,6 +90,10 @@ app.jinja_env.globals["today"] = lambda: datetime.now().strftime("%Y-%m-%d")
 app.jinja_env.globals["HELPER_VERSION"] = mail_draft.EXPECTED_HELPER_VERSION
 # How long an unsigned agreement may sit before the screens turn red.
 app.jinja_env.globals["chase_after"] = agreement.CHASE_AFTER_DAYS
+# The Production Studio, as people reach it over the tailnet (doc 65). Its own
+# process and port; this is only where the menu link points.
+STUDIO_URL = os.environ.get("STUDIO_URL", "https://imac.tail8aaf17.ts.net:8444")
+app.jinja_env.globals["STUDIO_URL"] = STUDIO_URL
 
 
 # Anything slower than this gets a line in the error log. Low enough that a
@@ -255,7 +261,13 @@ def home():
         step["url"] = (url_for(step["endpoint"], pid=entry["pid"])
                        if step["pid_route"] else
                        url_for(step["endpoint"]) if step["endpoint"] else "")
-    return render_template("home.html", phases=workflow.PHASES, **state)
+    # The Today panel (doc 69): every tile reads a saved file, so this adds no
+    # network call to the page people open first.
+    today = today_panel.tiles(studio_url=STUDIO_URL)
+    for tile in today["tiles"]:
+        tile["href"] = (tile["link"] if tile["external"] or not tile["link"]
+                        else url_for(tile["link"]))
+    return render_template("home.html", phases=workflow.PHASES, today=today, **state)
 
 
 @app.route("/partners")
@@ -2193,6 +2205,18 @@ def from_this_app(view):
             abort(403)
         return view(*args, **kwargs)
     return guarded
+
+
+@app.route("/today/refresh", methods=["POST"])
+@from_this_app
+def today_refresh():
+    """Home's Refresh now. Runs in the background: a Shopify pull can take a
+    minute, and a request held open that long reads as a hung page. The run
+    lock in onboarding/refresh.py makes a second press harmless."""
+    Thread(target=refresh_job.run_all, kwargs={"trigger": "manual"}, daemon=True).start()
+    flash("Refreshing Shopify, leads, S&S status and the Studio. "
+          "Reload Home in a minute.", "ok")
+    return redirect(url_for("home"))
 
 
 @app.route("/purchasing")

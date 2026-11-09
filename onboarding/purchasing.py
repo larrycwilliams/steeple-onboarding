@@ -795,6 +795,12 @@ def check_ss_status() -> dict:
         return snap
 
 
+def ss_status_cached() -> dict:
+    """The last S&S status answer as saved, for readers outside this page
+    (Home's Today panel). Reads the file only; never asks S&S."""
+    return _read("ss_status.json")
+
+
 def _status_for(numbers: str, known: dict) -> list:
     out = []
     for n in str(numbers or "").split(","):

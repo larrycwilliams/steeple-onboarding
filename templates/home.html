@@ -12,6 +12,93 @@
 
    It does not enforce the order. Steps get skipped for good reasons. #}
 
+{# ------------------------------------------------------------- Today --
+   Doc 69. The whole business on one screen: red first, then amber. Every
+   tile reads a saved file -- this panel never calls Shopify, S&S or the
+   Studio -- and each tile's link goes to the page that fixes it. #}
+{% if today %}
+<div class="td-head">
+  <h2 style="margin:8px 0 0;border:0;padding:0">Today</h2>
+  <span class="td-summary">
+    {% if today.red %}<span class="td-chip td-red">{{ today.red }} need{{ 's' if today.red == 1 }} you now</span>{% endif %}
+    {% if today.amber %}<span class="td-chip td-amber">{{ today.amber }} to watch</span>{% endif %}
+    {% if not today.red and not today.amber %}<span class="td-chip td-ok">All clear</span>{% endif %}
+  </span>
+  <form method="post" action="{{ url_for('today_refresh') }}" class="td-refresh">
+    <button class="btn btn-quiet" type="submit"
+      {% if today.refresh.running %}disabled title="A refresh is running now"{% endif %}>
+      {{ 'Refreshing…' if today.refresh.running else 'Refresh now' }}</button>
+  </form>
+</div>
+<div class="td-grid">
+  {% for t in today.tiles %}
+  <a class="td-tile td-{{ t.state }}" id="today-{{ t.key }}" href="{{ t.href or '#' }}"
+     {% if t.external %}target="_blank" rel="noopener"{% endif %}>
+    <div class="td-title">{{ t.title }}</div>
+    <div class="td-value">{{ t.value }}</div>
+    <div class="td-sub">{{ t.sub }}</div>
+    {% if t["items"] %}
+    <ul class="td-items">
+      {% for i in t["items"] %}
+      <li><span class="td-iname">{{ i.name }}</span>
+        <span class="td-idetail">{{ i.detail }}</span>
+        {% if i.flag %}<span class="td-flag">{{ i.flag }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if t.note %}<div class="td-note">{{ t.note }}</div>{% endif %}
+    {% if t.link_label %}<div class="td-go">{{ t.link_label }}{{ ' ↗' if t.external else ' →' }}</div>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+<p class="help td-fresh">
+  Updated:
+  {% for f in today.fresh %}{{ f.label }} {{ f.when }}{{ ' · ' if not loop.last }}{% endfor %}.
+  {% if today.refresh.finished %}Last automatic refresh {{ today.refresh.finished }}{% if today.refresh.failed %}
+  — <strong style="color:var(--bad)">failed: {{ today.refresh.failed|join(', ') }}</strong>{% endif %}.{% endif %}
+</p>
+<style>
+  .td-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .td-summary{display:flex;gap:8px;flex-wrap:wrap}
+  .td-chip{font-size:12px;font-weight:700;letter-spacing:.04em;padding:3px 10px;border-radius:99px}
+  .td-chip.td-red{background:#F8E3E1;color:#8C332C}
+  .td-chip.td-amber{background:#FBF0D6;color:#7A5C1C}
+  .td-chip.td-ok{background:#E4F0E8;color:#265B41}
+  .td-refresh{margin-left:auto}
+  .td-refresh .btn{padding:8px 14px;font-size:13px}
+  .td-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+  .td-tile{display:flex;flex-direction:column;background:#fff;border:1px solid #E2DDD2;
+    border-top:4px solid #C9C3B6;border-radius:var(--radius);padding:14px 16px;
+    color:inherit;text-decoration:none;min-width:0}
+  .td-tile:hover{border-color:var(--gold);box-shadow:0 2px 10px rgba(20,24,31,.06)}
+  .td-tile.td-red{border-top-color:var(--bad)}
+  .td-tile.td-amber{border-top-color:var(--gold)}
+  .td-tile.td-ok{border-top-color:var(--ok)}
+  .td-title{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .td-value{font:400 30px/1.15 Georgia,"Times New Roman",serif;margin:4px 0 2px;
+    font-variant-numeric:tabular-nums}
+  .td-red .td-value{color:var(--bad)}
+  .td-sub{font-size:13px;color:#4B525C}
+  .td-items{list-style:none;margin:8px 0 0;padding:8px 0 0;border-top:1px solid #EFEBE2;font-size:12.5px}
+  .td-items li{display:flex;gap:6px;align-items:baseline;padding:2px 0;min-width:0}
+  .td-iname{flex:0 0 auto;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50%}
+  .td-idetail{flex:1 1 auto;min-width:0;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .td-flag{margin-left:auto;font-size:10.5px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.06em;color:var(--bad);white-space:nowrap}
+  .td-note{font-size:12px;color:#6A5B33;background:#FBF3DF;border-radius:6px;padding:6px 8px;margin-top:8px}
+  .td-go{margin-top:auto;padding-top:10px;font-size:12.5px;font-weight:600;color:#7A5C1C}
+  .td-fresh{margin:10px 0 0}
+  @media (max-width:699px){
+    .td-grid{grid-template-columns:1fr 1fr;gap:10px}
+    .td-tile{padding:12px}
+    .td-value{font-size:24px}
+    .td-items,.td-note{display:none}
+    .td-refresh{margin-left:0}
+  }
+  @media (max-width:420px){ .td-grid{grid-template-columns:1fr} }
+</style>
+{% endif %}
+
 {% if needing_you %}
 <h2>Needs you</h2>
 {% for p in needing_you %}

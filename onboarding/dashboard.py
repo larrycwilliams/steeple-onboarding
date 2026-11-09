@@ -3,7 +3,6 @@
 The one rule this module exists to enforce: **a missing cost is not a zero
 cost.** Shopify's `unitCost` is blank on a fair number of items -- deleted
 variants, hand-created products, some POD imports. Treating a blank as $0 would
-from datetime import date as _date_cls
 make margin equal revenue and inflate what a partner is owed by exactly the
 cost of goods. Nobody would notice until a church asked how the number was
 reached.
@@ -34,6 +33,11 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timezone
+# Was stranded inside the module docstring, where it never ran: every
+# paid-through date failed to parse (the NameError was swallowed by _day), so
+# the billing panel showed every billed partner as "never paid" and none as
+# behind. Found by tools/check_today.py (doc 69).
+from datetime import date as _date_cls
 
 from . import store
 
