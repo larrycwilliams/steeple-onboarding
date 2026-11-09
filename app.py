@@ -1800,7 +1800,7 @@ URL = f"http://127.0.0.1:{PORT}"
 # Must match the Shopify app VERSION's declared scopes exactly. Asking for a
 # scope the app version does not declare is a silent no-op, not an error --
 # the connect appears to do nothing at all. See claude/ops/18.
-SHOPIFY_SCOPES = ("read_companies,read_customers,read_files,read_inventory,"
+SHOPIFY_SCOPES = ("read_all_orders,read_companies,read_customers,read_files,read_inventory,"
                   "read_locations,read_orders,read_products,read_publications,"
                   "write_content,write_inventory,"
                   "write_online_store_navigation,write_products,"
