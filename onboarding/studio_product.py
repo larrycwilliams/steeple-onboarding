@@ -61,6 +61,7 @@ SIZE_ORDER = ["YXS", "YS", "YM", "YL", "YXL", "XS", "S", "M", "L", "XL",
 LADDER = {"2XL": 2.0, "3XL": 3.0, "4XL": 4.0, "5XL": 5.0, "6XL": 6.0}
 ACCESSORY = {"hat", "beanie"}
 PRINTED = {"dtf", "screen_print"}          # anything else is embroidery / patch work
+# A suggestion only, shown as the placeholder of the Special instructions box.
 SIZE_UP_NOTE = "Comfort Colors runs small — please order one size up."
 # Size chart columns, in the order Larry's listings use; anything else S&S
 # reports (neck size, inseam…) follows.
@@ -69,18 +70,19 @@ SPEC_ORDER = ["Chest", "Body Width", "Chest Width", "Body Length", "Full Body Le
 
 
 def description_html(export: dict, f: dict, sizes: list[str]) -> str:
-    """The listing description, built like the Lighthouse crewnecks: optional
-    intro, the Comfort Colors size-up note, the blank's name and S&S bullets,
-    and the size chart for the sizes being sold. Garment care is NOT included:
+    """The listing description, built like the Lighthouse crewnecks: the
+    optional special instructions (red, bold, at the top -- one line each),
+    the blank's name and S&S bullets, and the size chart for the sizes being
+    sold. Garment care is NOT included:
     the theme adds it under the description (doc 47 -- it would show twice)."""
     ss = export.get("ss") or {}
     def esc(text):                       # text nodes only, so quotes stay as typed (28")
         return html.escape(str(text), quote=False)
     parts = []
-    if f.get("intro"):
-        parts.append(f"<p>{esc(f['intro'])}</p>")
-    if f.get("size_up"):
-        parts.append(f'<h3><span style="color: rgb(255, 42, 0);"><strong>{esc(SIZE_UP_NOTE)}</strong></span></h3>')
+    lines = [ln.strip() for ln in (f.get("special") or "").splitlines() if ln.strip()]
+    if lines:
+        parts.append('<h3><span style="color: rgb(255, 42, 0);"><strong>'
+                     + "<br>".join(esc(ln) for ln in lines) + "</strong></span></h3>")
     if f.get("details") and ss:
         name = " ".join(x for x in (ss.get("brand"), ss.get("style_name"), ss.get("title")) if x) or ss.get("style", "")
         parts.append(f"<p><strong>{esc(name)}</strong></p>")
@@ -357,9 +359,8 @@ def defaults(export: dict, record: dict | None) -> dict:
     blank = item.get("blank") or ""
     return {
         "title": f"{short} - {item['name']} TWC",
-        "intro": "",
+        "special": "",
         "details": True,
-        "size_up": (ss.get("brand") or blank).lower().startswith("comfort colors"),
         "price": "", "compare_at": "", "cost": "",
         "up": {s: f"{v:.2f}" for s, v in LADDER.items()},
         "colors": [color] if color else [],
@@ -375,9 +376,11 @@ def read_form(form, base: dict) -> dict:
     if form is None:
         return base
     out = dict(base)
-    for k in ("title", "intro", "price", "compare_at", "cost", "fallback_weight"):
+    for k in ("title", "price", "compare_at", "cost", "fallback_weight"):
         if k in form:
             out[k] = (form.get(k) or "").strip()
+    if "special" in form:
+        out["special"] = (form.get("special") or "").strip()[:600]
     out["up"] = {s: (form.get(f"up_{s}") or "").strip() for s in LADDER} if any(
         f"up_{s}" in form for s in LADDER) else base["up"]
     if hasattr(form, "getlist"):
@@ -390,7 +393,6 @@ def read_form(form, base: dict) -> dict:
     out["status"] = "ACTIVE" if form.get("status") == "ACTIVE" else "DRAFT"
     if "options_sent" in form:
         out["details"] = bool(form.get("details"))
-        out["size_up"] = bool(form.get("size_up"))
     return out
 
 

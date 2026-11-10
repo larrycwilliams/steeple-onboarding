@@ -56,7 +56,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.79"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.80"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -540,7 +540,7 @@ def studio_item_shopify(iid):
     data = studio_product.preview(iid, form)
     return render_template("studio_product.html", d=data, iid=iid, outcome=outcome,
                            run=studio_product.load_run(iid), admin_url=studio_product.admin_url,
-                           ladder=list(studio_product.LADDER))
+                           ladder=list(studio_product.LADDER), size_up_hint=studio_product.SIZE_UP_NOTE)
 
 
 @app.route("/partner/<pid>/products")

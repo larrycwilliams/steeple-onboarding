@@ -105,11 +105,11 @@
     {% if d.ministries %}<label>Ministry (sub-collections)</label>
     <div class="sp-checks">{% for m in d.ministries %}<label><input type="checkbox" name="ministries" value="{{ m.tag }}" {{ 'checked' if m.tag in f.ministries }}>{{ m.label }}</label>{% endfor %}</div>{% endif %}
     <label>Fallback weight, lb (only where S&amp;S has none)</label><input type="text" name="fallback_weight" value="{{ f.fallback_weight }}" inputmode="decimal" style="max-width:140px">
-    <label>Description</label>
-    <input type="text" name="intro" value="{{ f.intro }}" placeholder="Optional opening line, e.g. Our 2026 VBS shirt">
+    <label for="sp-special">Special instructions (optional)</label>
+    <textarea id="sp-special" name="special" rows="2" maxlength="600" placeholder="e.g. {{ size_up_hint }}&#10;or: Pre-orders close March 1 — shirts ship the week of March 15.">{{ f.special }}</textarea>
+    <p class="small" style="margin:4px 0 0">Shown at the top of the description in red, bold. One line each. Leave blank for none.</p>
     <div class="sp-checks" style="margin-top:8px">
-      <label><input type="checkbox" name="details" value="1" {{ 'checked' if f.details }}>Blank details &amp; size chart from S&amp;S</label>
-      <label><input type="checkbox" name="size_up" value="1" {{ 'checked' if f.size_up }}>“Comfort Colors runs small” note</label></div>
+      <label><input type="checkbox" name="details" value="1" {{ 'checked' if f.details }}>Blank details &amp; size chart from S&amp;S</label></div>
     <p class="small">Garment care is added by the theme under the description on printed items, so it is not repeated here.</p>
     <label>Status after create</label>
     <div class="sp-checks"><label><input type="radio" name="status" value="DRAFT" {{ 'checked' if f.status != 'ACTIVE' }}>Draft — check it first (recommended)</label>

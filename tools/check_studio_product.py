@@ -188,8 +188,8 @@ class Form(dict):
 
 def form(**kw):
     base = {"title": "HOH - Logo Crewneck TWC", "price": "22", "compare_at": "", "cost": "11",
-            "fallback_weight": "", "intro": "Our fall church shirt", "options_sent": "1", "details": "1",
-            "size_up": "1",
+            "fallback_weight": "", "options_sent": "1", "details": "1",
+            "special": "Comfort Colors runs small — please order one size up.\nPre-orders close March 1.",
             "up_2XL": "2", "up_3XL": "3", "up_4XL": "4", "up_5XL": "5", "up_6XL": "6",
             "colors_sent": "1", "sizes_sent": "1", "ministries_sent": "1",
             "colors": ["White"], "sizes": ["S", "M", "L", "XL", "2XL", "3XL"],
@@ -223,8 +223,9 @@ check("defaults: title from the short name, the item's colour, all its sizes",
       and sp.preview(7, None)["form"]["colors"] == ["White"] and "3XL" in sp.preview(7, None)["form"]["sizes"])
 check("no writes during preview", not any(n.startswith("mutation") for n, _ in CALLS))
 desc = p["description"]
-check("description: intro, size-up note, blank name and S&S bullets",
-      "<p>Our fall church shirt</p>" in desc and "Comfort Colors runs small" in desc
+check("description: special instructions in red, one line each, then blank name and S&S bullets",
+      desc.startswith('<h3><span style="color: rgb(255, 42, 0);"><strong>Comfort Colors runs small')
+      and "one size up.<br>Pre-orders close March 1.</strong>" in desc
       and "<strong>Comfort Colors 1717 Garment-Dyed Heavyweight T-Shirt</strong>" in desc
       and "<li>6.1 oz./yd², 100% ring-spun cotton</li>" in desc)
 check("size chart: S&S specs, width before length, inches marked, only sizes sold",
@@ -232,9 +233,12 @@ check("size chart: S&S specs, width before length, inches marked, only sizes sol
       and '28 1/2"' in desc and ">3XL<" in desc
       and ">3XL<" not in sp.preview(7, form(sizes=["S", "M"]))["plan"]["description"])
 check("garment care is left to the theme, never in the description", "GARMENT CARE" not in desc.upper().replace("CARE INSTRUCTIONS", ""))
-check("Comfort Colors gets the size-up note by default", sp.preview(7, None)["form"]["size_up"] is True)
-check("details and note can be switched off", "sizechart" not in sp.preview(7, form(details="", size_up=""))["plan"]["description"]
-      and "runs small" not in sp.preview(7, form(details="", size_up=""))["plan"]["description"])
+check("special instructions are blank by default, for every blank", sp.preview(7, None)["form"]["special"] == ""
+      and "<h3>" not in sp.preview(7, None)["plan"]["description"])
+check("blank instructions add nothing; details can be switched off",
+      "rgb(255, 42, 0)" not in sp.preview(7, form(special="  \n "))["plan"]["description"]
+      and "sizechart" not in sp.preview(7, form(details=""))["plan"]["description"])
+check("instructions are escaped, not run as HTML", "&lt;script&gt;" in sp.preview(7, form(special="<script>x</script>"))["plan"]["description"])
 check("printed items carry no care tag", "no-print-care" not in p["tags"])
 EXPORT["data"] = export(method="embroidery")
 check("an embroidered item is tagged no-print-care", "no-print-care" in sp.preview(7, form())["plan"]["tags"])
@@ -363,7 +367,7 @@ html = page.get_data(as_text=True)
 check("Create from the page makes the product and shows the result", "Created in Shopify" in html
       and "/admin/products/555" in html or "Open in Shopify" in html)
 check("the result says it is a draft and gives the ssorder mapping", "draft" in html and "ssorder map set 555" in html)
-check("version is 3.79 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 79))
+check("version is 3.80 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 80))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")

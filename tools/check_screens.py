@@ -146,7 +146,9 @@ def fake_studio_product(rec):
                           {"tag": "ministry:youth", "label": "NexGen Youth Ministry"}],
            "swatches": None, "dupes": [], "has_inhouse_def": True, "siblings": 3, "sort": "MANUAL"}
     f = sp.defaults(export, rec)
-    f.update({"price": "34.99", "cost": "19.50", "compare_at": "39.99",
+    f.update({"special": "Comfort Colors runs small — please order one size up.\n"
+                         "Pre-orders close March 1; shirts ship the week of March 15 from the Dayton shop.",
+              "price": "34.99", "cost": "19.50", "compare_at": "39.99",
               "colors": ["Heather Charcoal", "Blue Spruce"], "ministries": ["ministry:womens"]})
 
     def preview(iid, form=None):
