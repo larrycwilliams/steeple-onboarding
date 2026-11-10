@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ record.org_name }} — Products{% endblock %}
+{% block content %}
+{# doc 71: read from the saved Shopify catalog; nothing is copied into the record. #}
+<style>
+  .pp-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px;margin:8px 0 14px}
+  .pp-head h2{margin:0;border:0;padding:0}
+  .pp-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 14px}
+  .pp-stat{background:var(--card,#fff);border:1px solid var(--line,#e5ded3);border-radius:10px;padding:12px 14px}
+  .pp-k{display:block;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .pp-v{display:block;font-size:1.5rem;font-family:Georgia,serif;margin-top:2px}
+  .pp-s{display:block;font-size:.85rem;color:var(--muted)}
+  .pp-filter{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+  .pp-filter a{padding:6px 12px;border-radius:999px;border:1px solid var(--line,#e5ded3);text-decoration:none;color:inherit;font-size:.9rem}
+  .pp-filter a.on{background:var(--ink,#161a22);color:#fff;border-color:transparent}
+  .pp-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+  .pp-card{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;background:var(--card,#fff);
+           border:1px solid var(--line,#e5ded3);border-radius:10px;padding:12px}
+  .pp-img{width:72px;height:72px;border-radius:8px;background:#f1ece4;object-fit:cover;display:block}
+  .pp-t{font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+  .pp-meta{font-size:.85rem;color:var(--muted);margin:2px 0 6px}
+  .pp-pill{display:inline-block;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:999px;margin-right:6px}
+  .pp-ACTIVE{background:#e3f1e6;color:#1d6b33}.pp-DRAFT{background:#f6ecd6;color:#7a5a12}.pp-ARCHIVED{background:#eceae6;color:#666}
+  .pp-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 10px;font-size:.88rem}
+  .pp-facts span{color:var(--muted);display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
+  .pp-bad{color:var(--bad,#a33);font-weight:600}
+  .pp-links{margin-top:8px;font-size:.88rem;display:flex;flex-wrap:wrap;gap:4px 14px}
+  @media (max-width:899px){.pp-sum{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:599px){.pp-list{grid-template-columns:1fr}.pp-card{grid-template-columns:56px minmax(0,1fr)}
+    .pp-img{width:56px;height:56px}.pp-v{font-size:1.25rem}}
+</style>
+
+<div class="pp-head">
+  <h2>{{ record.org_name }} — Shopify products</h2>
+  <a href="{{ url_for('edit_partner', pid=pid) }}">Record</a>
+  <a href="{{ url_for('partner_files', pid=pid) }}">Files</a>
+  <a href="{{ url_for('orders_page') }}?p={{ pid }}">Orders</a>
+  <a href="{{ url_for('programs_page') }}">Programs</a>
+</div>
+
+{% if not have_shopify %}
+<div class="note">No Shopify data on file yet. Press <strong>Refresh now</strong> on <a href="{{ url_for('home') }}">Home</a>.</div>
+{% else %}
+
+{% if collision %}
+<div class="note">Two partner records both look like the Shopify vendor for {{ collision }}. Products may be showing under the wrong one.
+  Put the exact Shopify vendor in <strong>Shopify vendor</strong> on the <a href="{{ url_for('edit_partner', pid=pid) }}">record</a> to settle it.</div>
+{% endif %}
+
+<div class="pp-sum">
+  <div class="pp-stat"><span class="pp-k">Live</span><span class="pp-v">{{ counts.ACTIVE }}</span>
+    <span class="pp-s">{{ counts.DRAFT }} draft{% if counts.ARCHIVED %} · {{ counts.ARCHIVED }} archived{% endif %}</span></div>
+  <div class="pp-stat"><span class="pp-k">Units sold</span><span class="pp-v">{{ units }}</span><span class="pp-s">all orders on file</span></div>
+  <div class="pp-stat"><span class="pp-k">Sales</span><span class="pp-v">{{ revenue }}</span><span class="pp-s">after discounts</span></div>
+  <div class="pp-stat"><span class="pp-k">Live, no cost</span><span class="pp-v {{ 'pp-bad' if no_cost }}">{{ no_cost }}</span>
+    <span class="pp-s">{{ 'giveback can’t be worked out' if no_cost else 'all costed' }}</span></div>
+</div>
+
+<div class="pp-filter">
+  {% for key, label in [('all','All · ' ~ total), ('active','Live'), ('draft','Draft'), ('archived','Archived')] %}
+  <a class="{{ 'on' if status == key }}" href="?show={{ key }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+{% if not products %}
+<div class="note">{% if total %}None in this view.{% else %}No products in Shopify under
+  {% if vendors %}{{ vendors|join(', ') }}{% else %}this partner’s vendor name{% endif %} yet.
+  If they exist under a different vendor, set <strong>Shopify vendor</strong> on the <a href="{{ url_for('edit_partner', pid=pid) }}">record</a>.{% endif %}</div>
+{% else %}
+<div class="pp-list">
+  {% for p in products %}
+  <div class="pp-card">
+    {% if p.image %}<img class="pp-img" src="{{ p.image }}" alt="" loading="lazy">{% else %}<div class="pp-img"></div>{% endif %}
+    <div>
+      <div class="pp-t">{{ p.title }}</div>
+      <div class="pp-meta"><span class="pp-pill pp-{{ p.status }}">{{ p.status_label }}</span>{{ p.type or '' }}{% if p.variants %} · {{ p.variants }} variant{{ 's' if p.variants != 1 }}{% endif %}</div>
+      <div class="pp-facts">
+        <div><span>Price</span>{{ p.price }}</div>
+        <div><span>Cost</span>{% if p.cost == '—' and p.status == 'ACTIVE' %}<b class="pp-bad">none</b>{% else %}{{ p.cost }}{% endif %}</div>
+        <div><span>Margin</span><b class="{{ 'pp-bad' if p.margin_bad }}">{{ p.margin }}</b></div>
+        <div><span>Sold</span>{{ p.units }}</div>
+        <div><span>Sales</span>{{ p.revenue }}</div>
+        <div><span>Last sold</span>{{ p.last_sold }}</div>
+      </div>
+      <div class="pp-links">
+        {% if p.admin_url %}<a href="{{ p.admin_url }}" target="_blank" rel="noopener">Edit in Shopify ↗</a>{% endif %}
+        {% if p.store_url %}<a href="{{ p.store_url }}" target="_blank" rel="noopener">View in store ↗</a>{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+<p class="pp-s" style="margin-top:14px">From Shopify as of {{ pulled_at }} · updates every 15 minutes, or press Refresh now on Home.
+  Vendor{{ 's' if vendors|length != 1 }}: {{ vendors|join(', ') or '—' }}.</p>
+{% endif %}
+{% endblock %}

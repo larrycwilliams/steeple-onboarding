@@ -58,7 +58,7 @@
     <dt>Agreement</dt><dd class="{{ 'pg-bad' if c.agreement.overdue }}">{{ c.agreement.label }}</dd>
     <dt>Setup fee</dt><dd>{{ c.setup }} · {{ c.billing.setup }}</dd>
     <dt>Monthly fee</dt><dd class="{{ 'pg-bad' if c.billing.behind }}">{{ c.billing.monthly }}</dd>
-    <dt>Store</dt><dd>{% if c.store %}{{ c.store.live }} live{% if c.store.draft %} · {{ c.store.draft }} draft{% endif %}{% else %}—{% endif %}</dd>
+    <dt>Store</dt><dd>{% if c.store %}<a href="{{ url_for('partner_products_page', pid=c.pid) }}">{{ c.store.live }} live{% if c.store.draft %} · {{ c.store.draft }} draft{% endif %}</a>{% else %}—{% endif %}</dd>
     <dt>Studio</dt>
     <dd>{% if c.studio %}{{ c.studio.projects }} project{{ 's' if c.studio.projects != 1 }}{% if c.studio.sent %} · {{ c.studio.sent }} with customer{% endif %}{% if c.studio.changes %} · <span class="pg-bad">{{ c.studio.changes }} changes asked</span>{% endif %}{% if c.studio.approved %} · {{ c.studio.approved }} approved{% endif %}{% if c.studio.production %} · {{ c.studio.production }} in production{% endif %}
       {% elif have_studio %}<span class="pg-muted">No linked projects</span>{% else %}—{% endif %}</dd>
@@ -72,6 +72,7 @@
   <div class="pg-links">
     <a href="{{ url_for('edit_partner', pid=c.pid) }}">Record</a>
     <a href="{{ url_for('partner_files', pid=c.pid) }}">Files</a>
+    <a href="{{ url_for('partner_products_page', pid=c.pid) }}">Products</a>
     <a href="{{ url_for('orders_page', p=c.name) }}">Orders</a>
     <a href="{{ url_for('dashboard_page') }}#fees">Billing</a>
     <a href="{{ STUDIO_URL }}" target="_blank" rel="noopener">Studio&nbsp;↗</a>

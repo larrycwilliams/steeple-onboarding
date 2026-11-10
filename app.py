@@ -41,6 +41,7 @@ from onboarding import sent as sent_log
 from onboarding import agreement
 from onboarding import access
 from onboarding import welcome_email
+from onboarding import products as partner_products
 from onboarding import slips
 from onboarding import today as today_panel
 from onboarding import refresh as refresh_job
@@ -54,7 +55,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.75"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.76"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -519,6 +520,18 @@ def tools_relativise():
     flash("Rewrote file paths in %d manifest(s)." % len(touched)
           if touched else "All manifests already use relative paths.")
     return redirect(url_for("tools_page"))
+
+
+@app.route("/partner/<pid>/products")
+def partner_products_page(pid):
+    """The partner's Shopify products, from the saved catalog (doc 71)."""
+    show = request.args.get("show", "all").lower()
+    if show not in ("all", "active", "draft", "archived"):
+        show = "all"
+    data = partner_products.for_partner(pid, show)
+    if data is None:
+        abort(404)
+    return render_template("partner_products.html", **data)
 
 
 @app.route("/partner/<pid>/files")

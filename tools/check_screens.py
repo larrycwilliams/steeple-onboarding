@@ -80,7 +80,14 @@ def seed(work: Path) -> list[str]:
     cache = work / "cache"
     (cache / "purchasing").mkdir(parents=True, exist_ok=True)
     (cache / "shopify_sales.json").write_text(json.dumps({
-        "pulled_at": ago(0.01), "orders": orders, "catalog": [], "collections": [],
+        "pulled_at": ago(0.01), "orders": orders, "collections": [],
+        # products with the longest titles and widest price ranges a card can carry (doc 71)
+        "catalog": [{"id": f"gid://shopify/Product/{900 + i}", "vendor": names[i % 3],
+                     "title": f"{names[i % 3]} Logo Mascot Hoodie — Extended Title Garment-Dyed Heavyweight {i}",
+                     "status": ("ACTIVE", "DRAFT", "ARCHIVED")[i % 3], "handle": f"item-{i}",
+                     "type": "Hoodies & Sweatshirts", "variants": 48, "price_min": 24.0,
+                     "price_max": 1249.0, "unit_cost": None if i % 4 == 0 else 19.5,
+                     "unit_costs": [], "image": "", "updated_at": ago(i)} for i in range(12)],
         "locations": ["Shop Pickup – Dayton"]}))
     (cache / "shopify_leads.json").write_text(json.dumps({"pulled_at": ago(0.02), "leads": [
         {"id": f"gid://shopify/Company/{i}", "key": str(i), "org_name": n, "created_at": ago(i),
@@ -98,7 +105,9 @@ def seed(work: Path) -> list[str]:
         # the longest Studio line a Programs card can carry (doc 69 phase 4)
         "partners": {store.partner_id(recs[0]): {"projects": 12, "sent": 14, "changes": 3, "approved": 27,
                                                  "production": 9, "oldest_sent_days": 8}}}))
-    return [f"/partner/{store.partner_id(recs[2])}", f"/partner/{store.partner_id(recs[2])}/files"]
+    return [f"/partner/{store.partner_id(recs[2])}", f"/partner/{store.partner_id(recs[2])}/files",
+            f"/partner/{store.partner_id(recs[2])}/products",
+            f"/partner/{store.partner_id(recs[0])}/products?show=active"]
 
 
 def serve(work: Path):

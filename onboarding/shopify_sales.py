@@ -88,6 +88,12 @@ query Catalog($first: Int!, $after: String) {
         title
         vendor
         status
+        handle
+        productType
+        updatedAt
+        variantsCount { count }
+        priceRangeV2 { minVariantPrice { amount } maxVariantPrice { amount } }
+        featuredMedia { preview { image { url(transform: {maxWidth: 160}) } } }
         variants(first: 100) {
           edges { node { inventoryItem { unitCost { amount } } } }
         }
@@ -276,6 +282,16 @@ def _clean_product(node: dict) -> dict:
         # Every costed variant, so a line whose own variant has been deleted
         # can be estimated from its siblings instead of vanishing.
         "unit_costs": costs,
+        # For the partner's Products page (doc 71). Older caches lack these;
+        # that page shows a dash until the next refresh.
+        "handle": node.get("handle") or "",
+        "type": node.get("productType") or "",
+        "updated_at": node.get("updatedAt") or "",
+        "variants": ((node.get("variantsCount") or {}).get("count")),
+        "price_min": _amount((node.get("priceRangeV2") or {}).get("minVariantPrice")),
+        "price_max": _amount((node.get("priceRangeV2") or {}).get("maxVariantPrice")),
+        "image": ((((node.get("featuredMedia") or {}).get("preview") or {}).get("image") or {})
+                  .get("url") or ""),
     }
 
 

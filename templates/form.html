@@ -6,6 +6,8 @@
    thing this screen could not tell you. #}
 {% if not is_new %}
   {% include "_agreement.html" %}
+  <p style="margin:6px 0 14px"><a href="{{ url_for('partner_products_page', pid=record.id) }}">Shopify products →</a>
+     · <a href="{{ url_for('partner_files', pid=record.id) }}">Files</a></p>
 {% endif %}
 
 <form method="post" enctype="multipart/form-data">
