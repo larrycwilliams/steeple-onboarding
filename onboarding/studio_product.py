@@ -450,6 +450,87 @@ def context_twc(export: dict, title: str) -> dict:
     return ctx
 
 
+# ------------------------------------------------------------- swatches
+
+# Shopify's standard colour values (checked against the API, 3.84): note 6 is
+# Beige and 7 is Brown.
+TAXONOMY = {"black": 1, "blue": 2, "white": 3, "gold": 4, "silver": 5, "beige": 6, "brown": 7, "gray": 8,
+            "green": 9, "orange": 10, "pink": 11, "purple": 12, "red": 13, "yellow": 14, "navy": 15}
+SOLID = "gid://shopify/TaxonomyValue/2874"
+# words in an S&S colour family or name -> taxonomy colour; first match wins
+_WORDS = [("navy", "navy"), ("black", "black"), ("jet", "black"), ("white", "white"),
+          ("natural", "beige"), ("ivory", "beige"), ("cream", "beige"), ("beige", "beige"), ("khaki", "beige"),
+          ("sand", "beige"), ("tan", "beige"), ("oatmeal", "beige"), ("bone", "beige"),
+          ("brown", "brown"), ("chocolate", "brown"), ("espresso", "brown"), ("coffee", "brown"),
+          ("maroon", "red"), ("burgundy", "red"), ("cardinal", "red"), ("crimson", "red"), ("red", "red"),
+          ("pink", "pink"), ("fuchsia", "pink"), ("magenta", "pink"), ("coral", "pink"),
+          ("purple", "purple"), ("violet", "purple"), ("lavender", "purple"), ("orchid", "purple"),
+          ("orange", "orange"), ("yellow", "yellow"), ("gold", "yellow"), ("mustard", "yellow"),
+          ("olive", "green"), ("forest", "green"), ("kelly", "green"), ("sage", "green"), ("mint", "green"),
+          ("military", "green"), ("green", "green"), ("teal", "blue"), ("turquoise", "blue"), ("aqua", "blue"),
+          ("royal", "blue"), ("sapphire", "blue"), ("sky", "blue"), ("blue", "blue"),
+          ("grey", "gray"), ("gray", "gray"), ("charcoal", "gray"), ("ash", "gray"), ("heather", "gray"),
+          ("silver", "gray"), ("smoke", "gray"), ("pepper", "gray"), ("graphite", "gray")]
+
+
+# Shopify only accepts a Color option linked to swatches on a product whose
+# category has a colour attribute: the NFG tee (no category) was refused with
+# "At least one value for the option linked to the 'shopify.color-pattern'
+# metafield is invalid". Every linked product on the S&S store has one (3.85).
+CATEGORY = {
+    "tshirt": "gid://shopify/TaxonomyCategory/aa-1-13-8",       # Clothing Tops > T-Shirts
+    "longsleeve": "gid://shopify/TaxonomyCategory/aa-1-13-8",
+    "crewneck": "gid://shopify/TaxonomyCategory/aa-1-13-14",    # Clothing Tops > Sweatshirts
+    "hoodie": "gid://shopify/TaxonomyCategory/aa-1-1-7-2",      # Activewear ... > Hoodies
+    "polo": "gid://shopify/TaxonomyCategory/aa-1-13-6",         # Clothing Tops > Polos
+    "hat": "gid://shopify/TaxonomyCategory/aa-2-17-1",          # Hats > Baseball Caps
+    "beanie": "gid://shopify/TaxonomyCategory/aa-2-17-2",       # Hats > Beanies
+}
+CATEGORY_DEFAULT = "gid://shopify/TaxonomyCategory/aa-1-13"     # Clothing Tops
+
+
+def norm_hex(value) -> str:
+    h = (value or "").strip().lstrip("#")
+    if len(h) == 3:
+        h = "".join(ch * 2 for ch in h)
+    return f"#{h.upper()}" if re.fullmatch(r"[0-9A-Fa-f]{6}", h) else ""
+
+
+def _hue_word(hx: str) -> str:
+    import colorsys
+    r, g, b = (int(hx[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    h, sat, v = colorsys.rgb_to_hsv(r, g, b)
+    h *= 360
+    if sat < 0.15 or v < 0.12:
+        return "black" if v < 0.2 else "white" if v > 0.9 and sat < 0.08 else "beige" if sat >= 0.08 and 20 <= h <= 60 and v > 0.7 else "gray"
+    if 20 <= h <= 50 and sat < 0.35 and v > 0.7:
+        return "beige"
+    if h < 15 or h >= 345:
+        return "red"
+    if h < 45:
+        return "brown" if v < 0.6 else "orange"
+    if h < 70:
+        return "yellow"
+    if h < 170:
+        return "green"
+    if h < 250:
+        return "navy" if v < 0.45 else "blue"
+    if h < 290:
+        return "purple"
+    return "pink"
+
+
+def color_taxonomy(family: str, name: str, hx: str) -> str:
+    """The taxonomy colour a swatch filters under: S&S colour family first,
+    then the colour's own name, then the hue of its hex."""
+    for text in (family or "", name or ""):
+        t = text.casefold()
+        for word, tax in _WORDS:
+            if re.search(rf"\b{word}", t):
+                return f"gid://shopify/TaxonomyValue/{TAXONOMY[tax]}"
+    return f"gid://shopify/TaxonomyValue/{TAXONOMY[_hue_word(hx)]}" if hx else ""
+
+
 # ------------------------------------------------------------------- the plan
 
 def defaults(export: dict, record: dict | None) -> dict:
@@ -514,8 +595,16 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
     if not item.get("ready"):
         blocking.append(f"{item['code']} is “{item['status'].replace('_', ' ')}”. Only an item the "
                         "customer approved can become a product.")
+    gone = ctx.get("gone") or ""
     if item.get("shopify_product") or (run.get("result") or {}).get("product"):
         gid = item.get("shopify_product") or run["result"]["product"]
+    else:
+        gid = ""
+    if gid and gid == gone:
+        warnings.append(f"{item['code']} was in Shopify ({gid.rsplit('/', 1)[-1]}) but that product has been "
+                        "deleted there, so it can be created again. ssorder needs the new product number "
+                        "afterwards (the line at the bottom of the result).")
+    elif gid:
         blocking.append(f"{item['code']} is already in Shopify ({gid.rsplit('/', 1)[-1]}). "
                         "Open it from the link above instead of creating a second one.")
     if record is None and not business:
@@ -628,7 +717,7 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
 
     # --- swatches
     sw = ctx.get("swatches")
-    swatch = {}
+    swatch, swatch_new = {}, {}
     if sw is not None:
         missing = []
         for cname in colors:
@@ -638,15 +727,32 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
             else:
                 missing.append(cname)
         if missing and business:
-            # The TWC store has no swatch set to speak of; refusing every
-            # product until one exists would stop the business side cold. The
-            # Color option is created plain (unlinked) and the S&S hexes are
+            # The TWC store starts with no swatches. With write_metaobjects the
+            # missing ones are made from the S&S hex (never a guess, doc 50 C2);
+            # without it the Color option is created plain and the hexes are
             # given so swatches can be added later (doc 73).
-            hexes = ", ".join(f"{c} {(by_color.get(c) or {}).get('hex') or '(no hex from S&S)'}" for c in missing)
-            warnings.append(f"The TWC store has no colour swatch for {', '.join(missing)}, so Color will be a "
-                            f"plain dropdown with no swatches. To add them later: Content › Metaobjects › "
-                            f"Color, using the S&S colours — {hexes}.")
-            swatch = {}
+            can_make = "write_metaobjects" in ctx.get("scopes", set())
+            new, cant = {}, []
+            for cname in missing:
+                info = by_color.get(cname) or {}
+                hx = norm_hex(info.get("hex"))
+                tax = color_taxonomy(info.get("family") or "", cname, hx) if hx else ""
+                if hx and tax:
+                    new[cname] = {"hex": hx, "taxonomy": tax}
+                else:
+                    cant.append(cname)
+            if can_make and not cant:
+                swatch_new = new
+                warnings.append("New colour swatches will be made in the TWC store from the S&S hex codes: " +
+                                ", ".join(f"{c} {v['hex']}" for c, v in new.items()) + ".")
+            else:
+                hexes = ", ".join(f"{c} {(by_color.get(c) or {}).get('hex') or '(no hex from S&S)'}" for c in missing)
+                why = ("S&S gave no usable hex for " + ", ".join(cant)) if can_make else \
+                      ("the TWC connection cannot make swatches yet (it needs write_metaobjects — add it to the "
+                       "app version, then Reconnect in Settings)")
+                warnings.append(f"The TWC store has no colour swatch for {', '.join(missing)} and {why}, so Color "
+                                f"will be a plain dropdown with no swatches. S&S colours — {hexes}.")
+                swatch = {}
         else:
             for cname in missing:
                 blocking.append(f"No Shopify colour swatch is called “{cname}”. Create it in "
@@ -654,11 +760,30 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
                                 "renders confidently and wrong (doc 50 C2).")
 
     # --- images
+    # Each colour gets its own images: the item's colour uses the saved
+    # mockups, every other colour its 🎨 Colours render from the Studio. Each
+    # variant then shows its colour's front image (doc 72, 3.84).
     mockups = export.get("mockups") or []
-    if not mockups:
+    rendered = {k.strip().casefold(): v for k, v in (export.get("colourways") or {}).items()}
+    own = (item.get("color") or "").strip().casefold()
+    images, no_render = [], []
+    for cname in colors:
+        key = cname.strip().casefold()
+        imgs = mockups if key == own else rendered.get(key) or []
+        if not imgs:
+            no_render.append(cname)
+        images += [{"view": m["view"], "url": m["url"], "preview": m.get("preview", ""), "color": cname}
+                   for m in imgs]
+    if not images:
+        images = [{"view": m["view"], "url": m["url"], "preview": m.get("preview", ""), "color": ""}
+                  for m in mockups]
+    if not mockups and not images:
         warnings.append("No saved mockups, so the product will have no images. Save the mockup in the Studio editor first.")
-    if len(colors) > 1:
-        warnings.append(f"The mockups show {item.get('color')} only; the other colours will use the same images.")
+    elif no_render:
+        warnings.append(f"No colour render for {', '.join(no_render)}, so "
+                        f"{'it shows' if len(no_render) == 1 else 'they show'} the first image. To fix: Studio "
+                        "editor › 🎨 Colours › tick "
+                        f"{'it' if len(no_render) == 1 else 'them'} › Render, then refresh this preview.")
 
     # Only ministries this church actually offers (published sub-collections);
     # a business has none.
@@ -693,12 +818,13 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
     plan = {
         "title": title, "vendor": ctx.get("vendor") or "",
         "collection": coll, "type": "Accessories" if item["category"] in ACCESSORY else "Apparel",
+        "category": CATEGORY.get(item["category"], CATEGORY_DEFAULT),
         "tags": tags, "status": f["status"], "description": description,
         "colors": colors, "sizes": sizes_sold,
-        "variants": variants, "swatch": swatch, "metafields": metafields,
+        "variants": variants, "swatch": swatch, "swatch_new": swatch_new, "metafields": metafields,
         "house": ctx.get("house"), "keep": ctx.get("keep") or [], "keep_names": ctx.get("keep_names") or [],
         "profile": ctx.get("profile"), "publications": ctx.get("publications") or [],
-        "images": [{"view": m["view"], "url": m["url"], "preview": m.get("preview", "")} for m in mockups],
+        "images": images,
         "ss_style": ss.get("style") or item.get("ss_style") or "",
         "store": "twc" if business else "ss", "new_collection": ctx.get("new_collection"),
         "storefront": ctx.get("storefront") or "",
@@ -708,7 +834,7 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
 
 def fingerprint(plan: dict) -> str:
     keep = {k: plan.get(k) for k in ("title", "vendor", "tags", "status", "variants", "images", "description",
-                                     "store", "new_collection")}
+                                     "store", "new_collection", "swatch_new")}
     return hashlib.sha256(json.dumps(keep, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
@@ -729,6 +855,15 @@ def preview(iid: int, form=None) -> dict:
     else:
         ctx = {"errors": [], "scopes": set(), "locations": [], "ministries": []}
     run = load_run(iid)
+    old = export["item"].get("shopify_product") or (run.get("result") or {}).get("product") or ""
+    if old and not ctx.get("errors"):
+        # deleted in the admin since? then it may be made again (3.85)
+        g = _gql("query G($id: ID!) { product(id: $id) { id } }", {"id": old},
+                 store=(run.get("result") or {}).get("store") or ("twc" if business else "ss"))
+        if g["ok"] and (g.get("data") or {}).get("product") is None:
+            ctx["gone"] = old
+            if (run.get("result") or {}).get("product") == old:
+                run = {k: v for k, v in run.items() if k not in ("result", "plan")}
     out = build_plan(export, record, ctx, f, run)
     out.update({"ok": not out["blocking"], "export": export, "record": record, "form": f, "business": business,
                 "ministries": ctx.get("ministries") or [], "fingerprint": fingerprint(out["plan"]),
@@ -773,8 +908,12 @@ mutation Create($input: ProductSetInput!) {
 }"""
 
 
-def product_input(plan: dict, files: list[dict]) -> dict:
-    linked = bool(plan["swatch"]) and all(c in plan["swatch"] for c in plan["colors"])
+def product_input(plan: dict, files: list[dict], front: dict | None = None, plain: bool = False) -> dict:
+    """front: colour -> the staged URL of its first image (the variant photo).
+    plain: no swatch links and no variant photos -- the fallback when
+    Shopify refuses either, so the product is still made."""
+    front = {} if plain else (front or {})
+    linked = not plain and bool(plan["swatch"]) and all(c in plan["swatch"] for c in plan["colors"])
     color_opt: dict = {"name": "Color", "position": 1}
     if linked:
         color_opt["linkedMetafield"] = {"namespace": "shopify", "key": "color-pattern",
@@ -792,6 +931,8 @@ def product_input(plan: dict, files: list[dict]) -> dict:
                                  "measurement": {"weight": {"value": v["weight"], "unit": "POUNDS"}}}}
         if v.get("compare_at"):
             row["compareAtPrice"] = f"{v['compare_at']:.2f}"
+        if front.get(v["color"]):
+            row["file"] = {"originalSource": front[v["color"]], "contentType": "IMAGE"}
         variants.append(row)
     return {
         "title": plan["title"], "descriptionHtml": plan["description"], "vendor": plan["vendor"],
@@ -799,7 +940,56 @@ def product_input(plan: dict, files: list[dict]) -> dict:
         "productOptions": [color_opt, {"name": "Size", "position": 2,
                                        "values": [{"name": s} for s in plan["sizes"]]}],
         "variants": variants, "metafields": plan["metafields"], "files": files,
+        **({"category": plan["category"]} if plan.get("category") and not plain else {}),
     }
+
+
+SWATCH_CREATE = """
+mutation M($m: MetaobjectCreateInput!) { metaobjectCreate(metaobject: $m) {
+  metaobject { id } userErrors { field message code } } }"""
+
+
+def _swatch_input(name: str, s: dict, publish: bool) -> dict:
+    m = {"type": "shopify--color-pattern", "fields": [
+        {"key": "label", "value": name},
+        {"key": "color", "value": s["hex"]},
+        {"key": "color_taxonomy_reference", "value": json.dumps([s["taxonomy"]])},
+        {"key": "pattern_taxonomy_reference", "value": SOLID}]}
+    if publish:
+        m["capabilities"] = {"publishable": {"status": "ACTIVE"}}
+    return m
+
+
+def _create_swatch(name: str, s: dict, shop: str) -> tuple[str, str]:
+    err = ""
+    for publish in (True, False):           # some stores' definition is not publishable
+        r = _gql(SWATCH_CREATE, {"m": _swatch_input(name, s, publish)}, store=shop)
+        node = ((r.get("data") or {}).get("metaobjectCreate") or {}) if r["ok"] else {}
+        if node.get("metaobject"):
+            return node["metaobject"]["id"], ""
+        err = r.get("error") or "; ".join(x["message"] for x in node.get("userErrors") or []) or "no swatch returned"
+        if "capabilit" not in err.lower() and "publishable" not in err.lower():
+            break
+    return "", err
+
+
+def make_swatches(new: dict, shop: str) -> tuple[dict, list[str]]:
+    """Create shopify--color-pattern entries. ({name: gid}, [failures]).
+    If the store has never had swatches, Shopify's standard Color definition
+    is turned on once and the create tried again (write_metaobject_definitions)."""
+    made, failed, enabled = {}, [], False
+    for name, s in new.items():
+        gid, err = _create_swatch(name, s, shop)
+        if not gid and not enabled:
+            _gql("""mutation E { standardMetaobjectDefinitionEnable(type: "shopify--color-pattern") {
+                     metaobjectDefinition { id } userErrors { message } } }""", store=shop)
+            enabled = True
+            gid, err = _create_swatch(name, s, shop)
+        if gid:
+            made[name] = gid
+        else:
+            failed.append(f"{name}: {err}")
+    return made, failed
 
 
 def commit(iid: int, form, expected: str, by: str) -> dict:
@@ -854,24 +1044,49 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
     elif plan.get("store") == "twc" and plan.get("collection"):
         result["collection"] = {"id": plan["collection"]["id"], "url": plan["collection"]["url"]}
 
-    # 1. images
-    files = []
+    # 1. images, colour by colour
+    files, front = [], {}
+    stem = re.sub(r'[^a-z0-9]+', '-', plan['title'].lower()).strip('-')
     for m in plan["images"]:
+        color = m.get("color") or ""
+        label = f"{color} {m['view']}".strip() if color else m["view"]
         try:
             blob = fetch_mockup(m["url"])
         except Exception as exc:                              # noqa: BLE001
-            step(f"Image: {m['view']}", False, f"could not read it from the Studio ({exc})")
+            step(f"Image: {label}", False, f"could not read it from the Studio ({exc})")
             continue
-        url, err = _upload(f"{re.sub(r'[^a-z0-9]+', '-', plan['title'].lower()).strip('-')}-{m['view']}.jpg", blob, store=shop)
-        if step(f"Image: {m['view']}", not err, err or "uploaded"):
-            files.append({"originalSource": url, "contentType": "IMAGE",
-                          "alt": f"{plan['title'].removesuffix(' TWC')}, {m['view'].replace('_', ' ')}"})
+        cslug = re.sub(r'[^a-z0-9]+', '-', color.lower()).strip('-')
+        url, err = _upload(f"{stem}{'-' + cslug if cslug else ''}-{m['view']}.jpg", blob, store=shop)
+        if step(f"Image: {label}", not err, err or "uploaded"):
+            alt = ", ".join(x for x in (plan['title'].removesuffix(' TWC'), color, m['view'].replace('_', ' ')) if x)
+            files.append({"originalSource": url, "contentType": "IMAGE", "alt": alt})
+            if color and color not in front:
+                front[color] = url
 
-    # 2. the product itself
-    r = _gql(PRODUCT_SET, {"input": product_input(plan, files)}, store=shop)
+    # 1b. colour swatches the TWC store lacks, from the S&S hex
+    if plan.get("swatch_new"):
+        made, failed = make_swatches(plan["swatch_new"], shop)
+        plan["swatch"] = {**(plan.get("swatch") or {}), **made}
+        step(f"Colour swatches: {', '.join(plan['swatch_new'])}", not failed,
+             "created" if not failed else "; ".join(failed) + " — Color will be a plain dropdown")
+
+    # 2. the product itself; if Shopify refuses the swatch links or the
+    #    variant photos, make it plain rather than not at all
+    linked = bool(plan["swatch"]) and all(c in plan["swatch"] for c in plan["colors"])
+    r = _gql(PRODUCT_SET, {"input": product_input(plan, files, front)}, store=shop)
     node = (r.get("data") or {}).get("productSet") if r["ok"] else None
     errs = (node or {}).get("userErrors") or []
     product = (node or {}).get("product")
+    if (not r["ok"] or errs or not product) and (linked or front):
+        first = r.get("error") or "; ".join(e["message"] for e in errs) or "no product returned"
+        r = _gql(PRODUCT_SET, {"input": product_input(plan, files, front, plain=True)}, store=shop)
+        node = (r.get("data") or {}).get("productSet") if r["ok"] else None
+        errs = (node or {}).get("userErrors") or []
+        product = (node or {}).get("product")
+        if r["ok"] and not errs and product:
+            step("Swatches and variant photos skipped", False,
+                 f"Shopify refused them ({first}), so Color is a plain dropdown and the variants have no "
+                 "photo of their own. Set them in the admin.")
     if not r["ok"] or errs or not product:
         msg = r.get("error") or "; ".join(e["message"] for e in errs) or "Shopify returned no product."
         step("Create product", False, msg)

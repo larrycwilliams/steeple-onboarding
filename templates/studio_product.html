@@ -44,14 +44,14 @@
 {% if res and res.product %}
 <div class="sp-card">
   <h3>{% if res.partial %}Created — with steps to finish by hand{% else %}Created in Shopify{% endif %}</h3>
-  <p><a class="btn" href="{{ admin_url(res.product, res.store or 'ss') }}" target="_blank" rel="noopener">Open in Shopify ↗</a>
+  <p><a class="btn btn-gold" href="{{ admin_url(res.product, res.store or 'ss') }}" target="_blank" rel="noopener">Open in Shopify ↗</a>
      <span class="small">{{ res.finished or res.started }} · {{ res.by }}</span></p>
   {% if res.collection %}<p>Share this link with the business — their collection, not in the menus or search:<br>
     <a href="{{ res.collection.url }}" target="_blank" rel="noopener"><b>{{ res.collection.url }}</b></a></p>{% endif %}
   <ul class="sp-steps">{% for s in res.steps %}<li>{{ '✓' if s.ok else '✗' }} <b>{{ s.step }}</b> — {{ s.detail }}</li>{% endfor %}</ul>
   {% if run.plan and run.plan.status == 'DRAFT' %}<p class="small">It is a <b>draft</b>: check it on the product page, then set it Active in Shopify.</p>{% endif %}
   {% if run.plan and run.plan.ss_style %}<p class="small">For ssorder, map it to its blank on the hub:
-    <code>ssorder map set {{ res.product.rsplit('/',1)[-1] }} "{{ run.plan.ss_style }}"</code></p>{% endif %}
+    <code>cd ~/Dev/ssorder &amp;&amp; python3 ssorder.py map set {{ res.product.rsplit('/',1)[-1] }} "{{ run.plan.ss_style }}"</code></p>{% endif %}
 </div>
 {% elif res and not res.ok %}
 <div class="sp-bad"><b>The last attempt failed:</b> {{ res.error }}. Nothing was created.</div>
@@ -71,7 +71,7 @@
 <div class="sp-grid">
 <div>
   <div class="sp-card"><h3>Mockups → product images</h3>
-    {% if p.images %}<div class="sp-imgs">{% for m in p.images %}<figure>{% if m.preview %}<a href="{{ STUDIO_URL }}{{ m.preview }}" target="_blank" rel="noopener"><img src="{{ STUDIO_URL }}{{ m.preview }}" alt="" loading="lazy"></a>{% endif %}{{ m.view|replace('_',' ') }}</figure>{% endfor %}</div>
+    {% if p.images %}<div class="sp-imgs">{% for m in p.images %}<figure>{% if m.preview %}<a href="{{ STUDIO_URL }}{{ m.preview }}" target="_blank" rel="noopener"><img src="{{ STUDIO_URL }}{{ m.preview }}" alt="" loading="lazy"></a>{% endif %}{% if m.color %}{{ m.color }} · {% endif %}{{ m.view|replace('_',' ') }}</figure>{% endfor %}</div>
       <p class="small">As they will be uploaded: 3200 × 3200, white background, garment centred. Click one to see it full size.</p>
     {% else %}<p class="small">No saved mockups.</p>{% endif %}
   </div>

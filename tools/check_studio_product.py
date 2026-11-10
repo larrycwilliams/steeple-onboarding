@@ -310,8 +310,8 @@ EXPORT["data"]["project"]["portal_pid"] = store.partner_id({"org_name": "Brand N
 check("blocks: a church not in pod2twc's registry", blocks("not in pod2twc's org registry"))
 EXPORT["data"] = export()
 r = sp.preview(7, form(colors=["White", "Pepper"], sizes=["S", "M", "L", "XL", "2XL", "3XL"]))
-check("two colours make twelve variants and warn that mockups show one", len(r["plan"]["variants"]) == 12
-      and any("show White only" in w for w in r["warnings"]))
+check("two colours make twelve variants and warn that Pepper has no colour render", len(r["plan"]["variants"]) == 12
+      and any("No colour render for Pepper" in w and "🎨 Colours" in w for w in r["warnings"]))
 r = sp.preview(7, form(title="HOH - Logo Crewneck"))
 check("a title without “ TWC” warns", any("does not end in" in w for w in r["warnings"]))
 
@@ -346,7 +346,7 @@ check("Color option linked to the swatch metaobjects",
       and v0["optionValues"][0] == {"optionName": "Color", "linkedMetafieldValue": "gid://shopify/Metaobject/1"})
 check("description goes to Shopify as built", ps["descriptionHtml"] == desc)
 check("both store images uploaded as JPEG and attached, front first, with alt text",
-      len(UPLOADS) == 2 and UPLOADS[0][2]["file"][2] == "image/jpeg" and ps["files"][0]["originalSource"].endswith("-front.jpg") and [f["alt"] for f in ps["files"]] == ["HOH - Logo Crewneck, front", "HOH - Logo Crewneck, back"])
+      len(UPLOADS) == 2 and UPLOADS[0][2]["file"][2] == "image/jpeg" and ps["files"][0]["originalSource"].endswith("-front.jpg") and [f["alt"] for f in ps["files"]] == ["HOH - Logo Crewneck, White, front", "HOH - Logo Crewneck, White, back"])
 toggles = [v for n, v in CALLS if n == "mutation T"]
 check("every variant detached from every other location (Germantown, Revive)",
       len(toggles) == 6 and all(u == [{"locationId": GCS_PICKUP, "activate": False},
@@ -384,7 +384,7 @@ page = client.post("/studio-item/7/shopify", data=dict(form(), action="create", 
 html = page.get_data(as_text=True)
 check("Create from the page makes the product and shows the result", "Created in Shopify" in html
       and "/admin/products/555" in html or "Open in Shopify" in html)
-check("the result says it is a draft and gives the ssorder mapping", "draft" in html and "ssorder map set 555" in html)
+check("the result says it is a draft and gives the ssorder mapping", "draft" in html and "python3 ssorder.py map set 555" in html)
 # ------------------------------------------- a business, in the TWC store (doc 73)
 from onboarding import twc_shop  # noqa: E402
 sp._run_path(7).unlink(missing_ok=True)
@@ -516,7 +516,166 @@ with client.session_transaction() as sess:
 html = client.get("/settings?twc=1").get_data(as_text=True)
 check("TWC connect messages show on the TWC card, not at the top of the page",
       html.count("did not verify") == 1 and html.index("did not verify") > html.index('id="twc-store"'))
-check("version is 3.83 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 83))
+
+# ------------------------------------------- 3.84: colour renders + swatches
+check("taxonomy: Natural is Beige (6), not Brown (7)", sp.color_taxonomy("Natural", "Natural", "#EFE6D2").endswith("/6"))
+check("taxonomy: family words map (Navy 15, Heather Grey 8, Maroon 13)",
+      sp.color_taxonomy("Navy", "Navy", "#1F2A44").endswith("/15") and sp.color_taxonomy("", "Sport Grey", "#9B9B9B").endswith("/8")
+      and sp.color_taxonomy("Maroon", "Maroon", "#5B1A22").endswith("/13"))
+check("taxonomy: an unknown name falls back to the hex hue (orange 10, dark navy 15)",
+      sp.color_taxonomy("", "Sunset", "#FF8800").endswith("/10") and sp.color_taxonomy("", "Midnight", "#14213D").endswith("/15"))
+check("hex is normalised (#fff -> #FFFFFF; junk -> empty)", sp.norm_hex("#fff") == "#FFFFFF" and sp.norm_hex("nope") == "")
+
+CW = {"Pepper": [{"view": "front", "url": "/api/items/7/cw/11.jpg", "preview": "/i/7/cw/11.jpg", "hex": "#555"},
+                 {"view": "back", "url": "/api/items/7/cw/12.jpg", "preview": "/i/7/cw/12.jpg", "hex": "#555"}]}
+EXPORT["data"] = export()
+EXPORT["data"]["colourways"] = CW
+sp._run_path(7).unlink(missing_ok=True)
+f2 = form(title="HOH - Logo Crewneck TWC", colors=["White", "Pepper"])
+pre = sp.preview(7, f2)
+imgs = pre["plan"]["images"]
+check("each colour gets its own images, colour by colour, front first",
+      [(m["color"], m["view"]) for m in imgs] == [("White", "front"), ("White", "back"), ("Pepper", "front"), ("Pepper", "back")]
+      and imgs[2]["url"] == "/api/items/7/cw/11.jpg")
+check("with every colour rendered there is no 'no colour render' warning",
+      not any("No colour render" in w for w in pre["warnings"]))
+CALLS.clear(); UPLOADS.clear()
+res = sp.commit(7, f2, pre["fingerprint"], "Larry")
+ps = next(v for n, v in CALLS if n == "mutation Create")["input"]
+check("four images uploaded, named by colour", res["ok"] and len(UPLOADS) == 4
+      and [f["originalSource"].rsplit("/", 1)[-1] for f in ps["files"]][2] == "hoh-logo-crewneck-twc-pepper-front.jpg")
+vf = {v["optionValues"][0].get("linkedMetafieldValue"): v["file"]["originalSource"] for v in ps["variants"]}
+check("every variant shows its own colour's front image",
+      vf["gid://shopify/Metaobject/1"].endswith("-white-front.jpg") and vf["gid://shopify/Metaobject/2"].endswith("-pepper-front.jpg")
+      and all(v["file"]["originalSource"] in {f["originalSource"] for f in ps["files"]} for v in ps["variants"]))
+
+# productSet refuses the links -> made plain, flagged
+sp._run_path(7).unlink(missing_ok=True)
+_base = fake_gql
+SEEN = []
+
+
+def refuse_links(query, variables=None, store="ss"):
+    if "productSet" in query:
+        inp = variables["input"]
+        SEEN.append(inp)
+        if "linkedMetafield" in inp["productOptions"][0] or any("file" in v for v in inp["variants"]):
+            return {"ok": True, "data": {"productSet": {"product": None, "userErrors": [
+                {"field": ["x"], "message": "Product must have a category to link a metafield"}]}}}
+    return _base(query, variables, store)
+
+
+sp._gql = refuse_links
+pre = sp.preview(7, f2)
+res = sp.commit(7, f2, pre["fingerprint"], "Larry")
+r = res["run"]["result"]
+check("swatch links refused: the product is still made, plain, and the step says why",
+      res["ok"] and r["product"] and len(SEEN) == 2 and "values" in SEEN[1]["productOptions"][0]
+      and not any("file" in v for v in SEEN[1]["variants"]) and SEEN[1]["files"] == SEEN[0]["files"]
+      and any(s["step"].startswith("Swatches and variant photos skipped") and "category" in s["detail"] for s in r["steps"])
+      and r["partial"])
+sp._gql = fake_gql
+
+# TWC with write_metaobjects: missing swatches are made from the S&S hex
+EXPORT["data"] = nfg_export(colors=[{"name": "White", "hex": "#fff", "family": "White", "sizes": TEE},
+                                    {"name": "Sport Grey", "hex": "#9b9b9b", "family": "Grey", "sizes": TEE}])
+EXPORT["data"]["colourways"] = {"Sport Grey": CW["Pepper"]}
+TWC["collections"] = []
+sp._run_path(7).unlink(missing_ok=True)
+MADE, ENABLED = [], []
+TWC_SCOPES = ["read_metaobjects", "write_metaobjects"]
+FAIL_FIRST = {"on": False}
+
+
+def twc_sw(query, variables=None, store="ss"):
+    r = _base(query, variables, store)
+    if "query T(" in query:
+        r["data"]["currentAppInstallation"]["accessScopes"] += [{"handle": h} for h in TWC_SCOPES]
+    if "query Swatches" in query and store == "twc":
+        return {"ok": True, "data": {"metaobjects": {"nodes": [{"id": "gid://shopify/Metaobject/W", "field": {"value": "White"}}],
+                                                     "pageInfo": {"hasNextPage": False}}}}
+    if "metaobjectCreate" in query:
+        if FAIL_FIRST["on"] and not ENABLED:
+            return {"ok": True, "data": {"metaobjectCreate": {"metaobject": None, "userErrors": [
+                {"field": ["type"], "message": "No metaobject definition exists for type", "code": "UNDEFINED_OBJECT_TYPE"}]}}}
+        MADE.append(variables["m"])
+        return {"ok": True, "data": {"metaobjectCreate": {"userErrors": [], "metaobject": {"id": f"gid://shopify/Metaobject/N{len(MADE)}"}}}}
+    if "standardMetaobjectDefinitionEnable" in query:
+        ENABLED.append(1)
+        return {"ok": True, "data": {"standardMetaobjectDefinitionEnable": {"userErrors": [], "metaobjectDefinition": {"id": "x"}}}}
+    return r
+
+
+sp._gql = twc_sw
+twc_shop.house_location_name = lambda: "TWC Shop"
+TWC["locations"] = TWC["locations"][:1]
+f3 = form(title="NFG - Staff tee TWC", colors=["White", "Sport Grey"])
+pre = sp.preview(7, f3)
+check("TWC + write_metaobjects: the missing swatch is planned from the S&S hex, not blocked",
+      pre["ok"] and pre["plan"]["swatch_new"] == {"Sport Grey": {"hex": "#9B9B9B", "taxonomy": "gid://shopify/TaxonomyValue/8"}}
+      and pre["plan"]["swatch"] == {"White": "gid://shopify/Metaobject/W"}
+      and any("New colour swatches" in w and "#9B9B9B" in w for w in pre["warnings"]))
+FAIL_FIRST["on"] = True
+CALLS.clear()
+res = sp.commit(7, f3, pre["fingerprint"], "Larry")
+ps = next(v for n, v in CALLS if n == "mutation Create")["input"]
+m = MADE[0]
+fields = {x["key"]: x["value"] for x in m["fields"]}
+check("a store with no swatch definition gets Shopify's standard one turned on, then the swatch made",
+      res["ok"] and ENABLED and len(MADE) == 1 and m["type"] == "shopify--color-pattern")
+check("the swatch: label, S&S hex, Gray taxonomy, Solid pattern, published",
+      fields == {"label": "Sport Grey", "color": "#9B9B9B", "color_taxonomy_reference": '["gid://shopify/TaxonomyValue/8"]',
+                 "pattern_taxonomy_reference": "gid://shopify/TaxonomyValue/2874"}
+      and m["capabilities"]["publishable"]["status"] == "ACTIVE")
+check("Color is linked to the old and the new swatch",
+      ps["productOptions"][0]["linkedMetafield"]["values"] == ["gid://shopify/Metaobject/W", "gid://shopify/Metaobject/N1"]
+      and any(s["step"].startswith("Colour swatches") and s["ok"] for s in res["run"]["result"]["steps"]))
+TWC_SCOPES[:] = ["read_metaobjects"]
+sp._run_path(7).unlink(missing_ok=True)
+pre = sp.preview(7, f3)
+check("without write_metaobjects: plain dropdown, and the warning says what to add",
+      pre["ok"] and pre["plan"]["swatch_new"] == {} and pre["plan"]["swatch"] == {}
+      and any("write_metaobjects" in w and "Reconnect" in w for w in pre["warnings"]))
+check("the TWC connection asks for write_metaobjects and write_metaobject_definitions",
+      "write_metaobjects" in twc_shop.SCOPES and "write_metaobject_definitions" in twc_shop.SCOPES)
+sp._gql = fake_gql
+EXPORT["data"] = export()
+
+# ------------------------------------------- 3.85: category, re-create after delete
+sp._run_path(7).unlink(missing_ok=True)
+EXPORT["data"] = export()
+pre = sp.preview(7, form())
+CALLS.clear()
+res = sp.commit(7, form(), pre["fingerprint"], "Larry")
+ps = next(v for n, v in CALLS if n == "mutation Create")["input"]
+check("a tee goes in as Clothing Tops › T-Shirts (so its Color can link to swatches)",
+      ps.get("category") == "gid://shopify/TaxonomyCategory/aa-1-13-8")
+check("plain fallback drops the category as well as the links",
+      "category" not in sp.product_input(pre["plan"], [], {}, plain=True))
+EXPORT["data"] = export(shopify="gid://shopify/Product/555")
+check("an item still in Shopify blocks a second create", blocks("already in Shopify"))
+_b2 = fake_gql
+
+
+def deleted(query, variables=None, store="ss"):
+    if query.startswith("query G"):
+        return {"ok": True, "data": {"product": None}}
+    return _b2(query, variables, store)
+
+
+sp._gql = deleted
+r = sp.preview(7, form())
+check("deleted in the admin: it can be created again, with a warning about ssorder",
+      r["ok"] and any("has been deleted there" in w and "ssorder" in w for w in r["warnings"]))
+CALLS.clear()
+res = sp.commit(7, form(), r["fingerprint"], "Larry")
+check("…and Create makes it again", res["ok"] and any(n == "mutation Create" for n, _ in CALLS))
+sp._gql = fake_gql
+EXPORT["data"] = export()
+page = portal.app.test_client().get("/studio-item/7/shopify").get_data(as_text=True)
+check("Open in Shopify is a real button; the ssorder line is runnable",
+      'class="btn btn-gold"' in page and "python3 ssorder.py map set" in page)
+check("version is 3.85 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 85))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")
