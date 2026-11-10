@@ -21,9 +21,14 @@ Reads saved files only, like Home. A missing number is a dash, never $0.
 """
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 from . import agreement, dashboard, sent, shopify_sales, statement, store, terms
+
+STUDIO_SUMMARY = Path(__file__).resolve().parents[1] / "cache" / "studio_summary.json"
+APPROVAL_RED_DAYS = 5          # same line as Home's Studio tile
 
 # A closed quarter's statement is expected within this many days of its end.
 STATEMENT_DUE_DAYS = 30
@@ -108,6 +113,19 @@ def _open_orders(snap: dict, records: list[dict]) -> dict[str, int]:
     return out
 
 
+def _studio_by_partner() -> tuple[dict, bool]:
+    """({portal pid: counts}, whether the Studio summary is on file). Projects
+    are linked to a partner in the Studio (New project, or Project details)."""
+    try:
+        data = json.loads(STUDIO_SUMMARY.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}, False
+    if not isinstance(data, dict) or not data.get("ok"):
+        return {}, False
+    parts = data.get("partners")
+    return (parts if isinstance(parts, dict) else {}), True
+
+
 def build(now: datetime | None = None) -> dict:
     """Everything /programs draws."""
     now = now or datetime.now(timezone.utc)
@@ -130,6 +148,7 @@ def build(now: datetime | None = None) -> dict:
         pid = m.get("id") or by_name.get((m.get("org") or "").casefold(), "")
         if pid:
             mismatch_by_pid[pid] = m
+    studio, have_studio = _studio_by_partner()
     catalog = _catalog_counts(snap, records) if have_shopify else {}
     open_orders = _open_orders(snap, records) if have_shopify else {}
 
@@ -199,6 +218,16 @@ def build(now: datetime | None = None) -> dict:
         if q_now and q_now.get("uncosted_revenue"):
             flags.append(("amber", f"{_money(q_now['uncosted_revenue'])} of {this_q} sales has no cost yet."))
 
+        # Studio work linked to this partner
+        sw = studio.get(pid) or {}
+        if sw:
+            oldest = sw.get("oldest_sent_days")
+            if sw.get("sent") and oldest is not None and oldest >= APPROVAL_RED_DAYS:
+                flags.append(("red", f"Studio: mockups with the customer for approval {oldest} days."))
+            if sw.get("changes"):
+                n_ch = sw["changes"]
+                flags.append(("amber", f"Studio: customer asked for changes on {n_ch} item{'s' if n_ch != 1 else ''}."))
+
         worst = min((s for s, _ in flags), key=lambda s: RANK[s], default="ok")
         cards.append({
             "pid": pid,
@@ -225,6 +254,9 @@ def build(now: datetime | None = None) -> dict:
                 "not_sent": "Not sent"}.get(ag["stage"], ag["stage"]), "overdue": ag["overdue"]},
             "store": cat if have_shopify else None,
             "open_orders": open_orders.get(pid, 0) if have_shopify else None,
+            "studio": ({"projects": int(sw.get("projects") or 0), "sent": int(sw.get("sent") or 0),
+                        "changes": int(sw.get("changes") or 0), "approved": int(sw.get("approved") or 0),
+                        "production": int(sw.get("production") or 0)} if sw else None),
             "this_q": {"label": this_q,
                        "revenue": _money(q_now["revenue"]) if q_now else ("$0.00" if have_shopify else "—"),
                        "giveback": (_money(q_now["payout"]) if q_now and q_now.get("payout") is not None
@@ -258,5 +290,6 @@ def build(now: datetime | None = None) -> dict:
         "statements_open": sum(1 for c in cards if c["last_q"]["statement_needed"]
                                and not c["last_q"]["statement"].startswith("sent")),
         "have_shopify": have_shopify,
+        "have_studio": have_studio,
         "orders_at": (snap.get("pulled_at") or "")[:16].replace("T", " "),
     }

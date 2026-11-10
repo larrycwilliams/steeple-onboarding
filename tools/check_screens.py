@@ -94,7 +94,10 @@ def seed(work: Path) -> list[str]:
     (cache / "studio_summary.json").write_text(json.dumps({
         "ok": True, "version": "1.9.0", "at": ago(0.05), "oldest_sent_days": 3,
         "total": {"sent": 2, "changes": 1, "approved": 4, "production": 1},
-        "brands": {"ss": {"sent": 2}}}))
+        "brands": {"ss": {"sent": 2}},
+        # the longest Studio line a Programs card can carry (doc 69 phase 4)
+        "partners": {store.partner_id(recs[0]): {"projects": 12, "sent": 14, "changes": 3, "approved": 27,
+                                                 "production": 9, "oldest_sent_days": 8}}}))
     return [f"/partner/{store.partner_id(recs[2])}", f"/partner/{store.partner_id(recs[2])}/files"]
 
 

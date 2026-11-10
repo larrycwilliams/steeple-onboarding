@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline check of the program scorecard (doc 69, phase 3).
+"""Offline check of the program scorecard (doc 69, phases 3 and 4).
 
     hub:  cd ~/Dev/steeple-onboarding
           ~/.venvs/steeple-onboarding-312/bin/python tools/check_scorecard.py
@@ -157,6 +157,29 @@ check("no Shopify cache: store and sales are dashes, nothing crashes",
     "pulled_at": NOW.isoformat(timespec="seconds"), "orders": orders, "catalog": catalog,
     "collections": [], "locations": []}))
 
+# Studio work linked to partners (doc 69 phase 4): read from the Studio's summary.
+(cache / "studio_summary.json").write_text(json.dumps({"ok": True, "partners": {
+    pid[GCS]: {"projects": 2, "items": 9, "sent": 3, "changes": 1, "approved": 4,
+               "production": 1, "oldest_sent_days": 6},
+    pid[HOH]: {"projects": 1, "items": 2, "sent": 1, "changes": 0, "approved": 0,
+               "production": 0, "oldest_sent_days": 2}}}))
+st = scorecard.build(now=NOW)
+sc = {c["name"]: c for c in st["cards"]}
+stext = {n: " ".join(f["text"] for f in c["flags"]) for n, c in sc.items()}
+check("Studio counts reach the partner's card", sc[GCS]["studio"] == {
+      "projects": 2, "sent": 3, "changes": 1, "approved": 4, "production": 1})
+check("mockups with the customer 6 days is red", "for approval 6 days" in stext[GCS])
+check("changes asked is an amber flag", "asked for changes on 1 item." in stext[GCS])
+check("2 days out for approval is not flagged", "Studio" not in stext[HOH] and sc[HOH]["studio"]["sent"] == 1)
+check("a partner with no linked projects has no Studio line", sc[REV]["studio"] is None and st["have_studio"])
+(cache / "studio_summary.json").write_text(json.dumps({"ok": False, "error": "down"}))
+check("Studio unreachable: no Studio counts, no false flags",
+      not scorecard.build(now=NOW)["have_studio"]
+      and all(c["studio"] is None for c in scorecard.build(now=NOW)["cards"]))
+(cache / "studio_summary.json").write_text(json.dumps({"ok": True, "partners": {
+    pid[GCS]: {"projects": 2, "sent": 3, "changes": 1, "approved": 4, "production": 1,
+               "oldest_sent_days": 6}}}))
+
 client = portal.app.test_client()
 page = client.get("/programs")
 html = page.get_data(as_text=True)
@@ -167,7 +190,10 @@ check("Programs is in the menu", 'href="/programs"' in client.get("/").get_data(
 check("Home's Platform fees tile opens Programs", 'href="/programs"' in client.get("/").get_data(as_text=True))
 check("each card links to the partner's record, files and orders",
       f'/partner/{pid[GCS]}"' in html and f"/partner/{pid[GCS]}/files" in html and "/orders?p=" in html)
-check("version is 3.74 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 74))
+check("cards show the Studio line and link to the Studio",
+      "3 with customer" in html and "1 changes asked" in html and "No linked projects" in html
+      and "Studio&nbsp;↗" in html)
+check("version is 3.75 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 75))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")

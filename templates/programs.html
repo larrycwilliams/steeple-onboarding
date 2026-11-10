@@ -59,6 +59,9 @@
     <dt>Setup fee</dt><dd>{{ c.setup }} · {{ c.billing.setup }}</dd>
     <dt>Monthly fee</dt><dd class="{{ 'pg-bad' if c.billing.behind }}">{{ c.billing.monthly }}</dd>
     <dt>Store</dt><dd>{% if c.store %}{{ c.store.live }} live{% if c.store.draft %} · {{ c.store.draft }} draft{% endif %}{% else %}—{% endif %}</dd>
+    <dt>Studio</dt>
+    <dd>{% if c.studio %}{{ c.studio.projects }} project{{ 's' if c.studio.projects != 1 }}{% if c.studio.sent %} · {{ c.studio.sent }} with customer{% endif %}{% if c.studio.changes %} · <span class="pg-bad">{{ c.studio.changes }} changes asked</span>{% endif %}{% if c.studio.approved %} · {{ c.studio.approved }} approved{% endif %}{% if c.studio.production %} · {{ c.studio.production }} in production{% endif %}
+      {% elif have_studio %}<span class="pg-muted">No linked projects</span>{% else %}—{% endif %}</dd>
     <dt>Open orders</dt><dd>{% if c.open_orders is not none %}{{ c.open_orders }}{% else %}—{% endif %}</dd>
     <dt>{{ c.this_q.label }}</dt><dd>{{ c.this_q.revenue }} sales · {{ c.this_q.giveback }} giveback</dd>
     <dt>{{ c.last_q.label }}</dt><dd>{{ c.last_q.revenue }} sales · {{ c.last_q.giveback }} giveback</dd>
@@ -71,6 +74,7 @@
     <a href="{{ url_for('partner_files', pid=c.pid) }}">Files</a>
     <a href="{{ url_for('orders_page', p=c.name) }}">Orders</a>
     <a href="{{ url_for('dashboard_page') }}#fees">Billing</a>
+    <a href="{{ STUDIO_URL }}" target="_blank" rel="noopener">Studio&nbsp;↗</a>
   </div>
 </article>
 {% else %}
@@ -116,6 +120,7 @@
   .pg-facts dt{color:var(--muted);font-weight:600;white-space:nowrap}
   .pg-facts dd{margin:0;font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere}
   .pg-bad{color:var(--bad);font-weight:600}
+  .pg-muted{color:var(--muted)}
   .pg-links{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid #EFEBE2;font-size:13px;font-weight:600}
   @media (max-width:899px){ .pg-sum{grid-template-columns:repeat(2,minmax(0,1fr))} }
   @media (max-width:599px){

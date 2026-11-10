@@ -10,6 +10,8 @@ way each cache gets written:
   * Leads            -> leads.snapshot(refresh=True)           (Pipeline's Refresh)
   * S&S order status -> purchasing.check_ss_status()           (Check S&S status)
   * Studio summary   -> GET <studio>/api/summary, saved to cache/studio_summary.json
+  * Press Station    -> GET <studio>/api/pressed: runs that named a Shopify order
+                        mark that order Pressed on the Orders board (doc 69 phase 4)
 
 Every one of those keeps the previous good answer when it fails, so a failed
 run never blanks Home. Steps run one after another and a failure in one never
@@ -30,13 +32,14 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import leads, purchasing, shopify_sales
+from . import leads, orders, purchasing, shopify_sales
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / "cache"
 STATE = CACHE / "refresh.json"
 LOCK = CACHE / "refresh.lock"
 STUDIO_SUMMARY = CACHE / "studio_summary.json"
+PRESS_SEEN = CACHE / "press_seen.json"      # the last Studio press-log id already applied
 
 # The studio process on the hub, reached over loopback -- not the tailnet URL
 # people click, which goes through `tailscale serve` and its certificate.
@@ -123,11 +126,51 @@ def fetch_studio_summary() -> tuple[bool, str]:
         return False, message
 
 
+def order_key_for(ref: str) -> str:
+    """'#1136' -> 'ss|#1136'; 'TWC #1050' -> 'twc|#1050' (the Studio's clean_order_ref forms)."""
+    ref = (ref or "").strip()
+    if ref.upper().startswith("TWC"):
+        return orders.order_key("twc", "#" + ref.split("#", 1)[-1].strip())
+    return orders.order_key("ss", ref if ref.startswith("#") else "#" + ref)
+
+
+def apply_press_runs() -> tuple[bool, str]:
+    """Mark Pressed on the Orders board for every Studio press run that named an
+    order (doc 69 phase 4). Reads the Studio's /api/pressed; writes only the
+    board's own tick file. A run for an order already ticked changes nothing."""
+    seen = _read(PRESS_SEEN)
+    after = int(seen.get("last_id") or 0)
+    try:
+        with urllib.request.urlopen(f"{STUDIO_INTERNAL}/api/pressed?after={after}",
+                                    timeout=STUDIO_TIMEOUT) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        if not isinstance(data, dict) or not data.get("ok"):
+            raise ValueError("the Studio answered, but not with its press log")
+    except Exception as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    ticks = orders.load_ticks()
+    marked = 0
+    last = after
+    for run in data.get("runs") or []:
+        last = max(last, int(run.get("id") or 0))
+        key = order_key_for(run.get("order") or "")
+        if not key.split("|", 1)[1].lstrip("#") or "pressed" in ticks.get(key, {}):
+            continue
+        by = " · ".join(x for x in (run.get("station"), run.get("by")) if x)
+        ok, _message = orders.tick(key, "pressed", by=by or "Press Station")
+        if ok:
+            marked += 1
+            ticks.setdefault(key, {})["pressed"] = True
+    _write(PRESS_SEEN, {"last_id": last, "at": _stamp()})
+    return True, f"{marked} order{'s' if marked != 1 else ''} marked pressed"
+
+
 STEPS = (
     ("Shopify orders", _shopify),
     ("Leads", _leads),
     ("S&S order status", _ss_status),
     ("Studio", fetch_studio_summary),
+    ("Press Station", apply_press_runs),
 )
 
 
