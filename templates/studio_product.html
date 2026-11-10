@@ -10,7 +10,7 @@
   .sp-card h3{margin:0 0 10px;font-size:1rem}
   .sp-imgs{display:flex;flex-wrap:wrap;gap:8px}
   .sp-imgs figure{margin:0;text-align:center;font-size:.78rem;color:var(--muted)}
-  .sp-imgs img{width:110px;height:110px;object-fit:contain;background:#f6f2ea;border-radius:8px;display:block}
+  .sp-imgs img{width:110px;height:110px;object-fit:contain;background:#fff;border:1px solid var(--line,#e5ded3);border-radius:8px;display:block}
   .sp-f label{display:block;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:10px 0 4px}
   .sp-f input[type=text],.sp-f textarea{width:100%;box-sizing:border-box}
   .sp-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
@@ -24,6 +24,8 @@
   .sp-dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0}
   .sp-dl dt{color:var(--muted)} .sp-dl dd{margin:0;overflow-wrap:anywhere}
   .sp-steps li{margin:4px 0}
+  .sp-desc{overflow-wrap:anywhere}.sp-desc table{width:100%;border-collapse:collapse;font-size:.9rem}
+  .sp-desc h3{font-size:1rem;margin:0 0 8px}.sp-desc ul{margin:6px 0 10px 18px;padding:0}
   .sp-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
   @media (max-width:899px){.sp-grid{grid-template-columns:minmax(0,1fr)}}
   @media (max-width:599px){.sp-row{grid-template-columns:minmax(0,1fr)}}
@@ -61,11 +63,12 @@
 <form method="post" class="sp-f">
 <input type="hidden" name="fingerprint" value="{{ d.fingerprint }}">
 <input type="hidden" name="colors_sent" value="1"><input type="hidden" name="sizes_sent" value="1">
-<input type="hidden" name="ministries_sent" value="1">
+<input type="hidden" name="ministries_sent" value="1"><input type="hidden" name="options_sent" value="1">
 <div class="sp-grid">
 <div>
   <div class="sp-card"><h3>Mockups → product images</h3>
-    {% if p.images %}<div class="sp-imgs">{% for m in p.images %}<figure>{% if m.preview %}<img src="{{ STUDIO_URL }}{{ m.preview }}" alt="" loading="lazy">{% endif %}{{ m.view|replace('_',' ') }}</figure>{% endfor %}</div>
+    {% if p.images %}<div class="sp-imgs">{% for m in p.images %}<figure>{% if m.preview %}<a href="{{ STUDIO_URL }}{{ m.preview }}" target="_blank" rel="noopener"><img src="{{ STUDIO_URL }}{{ m.preview }}" alt="" loading="lazy"></a>{% endif %}{{ m.view|replace('_',' ') }}</figure>{% endfor %}</div>
+      <p class="small">As they will be uploaded: 3200 × 3200, white background, garment centred. Click one to see it full size.</p>
     {% else %}<p class="small">No saved mockups.</p>{% endif %}
   </div>
   <div class="sp-card"><h3>Where it goes</h3>
@@ -102,7 +105,12 @@
     {% if d.ministries %}<label>Ministry (sub-collections)</label>
     <div class="sp-checks">{% for m in d.ministries %}<label><input type="checkbox" name="ministries" value="{{ m.tag }}" {{ 'checked' if m.tag in f.ministries }}>{{ m.label }}</label>{% endfor %}</div>{% endif %}
     <label>Fallback weight, lb (only where S&amp;S has none)</label><input type="text" name="fallback_weight" value="{{ f.fallback_weight }}" inputmode="decimal" style="max-width:140px">
-    <label>Description</label><textarea name="description" rows="3">{{ f.description }}</textarea>
+    <label>Description</label>
+    <input type="text" name="intro" value="{{ f.intro }}" placeholder="Optional opening line, e.g. Our 2026 VBS shirt">
+    <div class="sp-checks" style="margin-top:8px">
+      <label><input type="checkbox" name="details" value="1" {{ 'checked' if f.details }}>Blank details &amp; size chart from S&amp;S</label>
+      <label><input type="checkbox" name="size_up" value="1" {{ 'checked' if f.size_up }}>“Comfort Colors runs small” note</label></div>
+    <p class="small">Garment care is added by the theme under the description on printed items, so it is not repeated here.</p>
     <label>Status after create</label>
     <div class="sp-checks"><label><input type="radio" name="status" value="DRAFT" {{ 'checked' if f.status != 'ACTIVE' }}>Draft — check it first (recommended)</label>
       <label><input type="radio" name="status" value="ACTIVE" {{ 'checked' if f.status == 'ACTIVE' }}>Active — live straight away</label></div>
@@ -112,6 +120,9 @@
         onclick="return confirm('Create “{{ p.title|e }}” in Shopify as {{ p.status|lower }}?')">Create in Shopify</button>
     </div>
     <p class="small">Change anything, then <b>Update preview</b> — Create stays off until the preview is clean, and refuses if the form changed since.</p>
+  </div>
+  <div class="sp-card"><h3>Description preview</h3>
+    <div class="sp-desc">{% if p.description %}{{ p.description|safe }}{% else %}<p class="small">Empty.</p>{% endif %}</div>
   </div>
   <div class="sp-card"><h3>Variants · {{ p.variants|length }}</h3>
     <div class="tscroll"><table>

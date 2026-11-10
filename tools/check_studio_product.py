@@ -74,17 +74,22 @@ TEE = sizes(("S", 4.10, 0.40), ("M", 4.10, 0.44), ("L", 4.10, 0.48), ("XL", 4.10
             ("2XL", 6.10, 0.58), ("3XL", 7.40, 0.64))
 
 
-def export(status="approved", portal_pid=None, shopify="", mockups=True, ss=True, colors=None):
+def export(status="approved", portal_pid=None, shopify="", mockups=True, ss=True, colors=None, method="dtf"):
     return {"ok": True, "item": {"id": 7, "code": "TS-01", "name": "Logo Crewneck", "category": "tshirt",
-                                 "method": "dtf", "status": status, "ready": status in sp_ready,
+                                 "method": method, "status": status, "ready": status in sp_ready,
                                  "approved_by": "Pastor Ray", "blank": "Comfort Colors 1717",
                                  "color": "White", "ss_style": "Comfort Colors 1717", "shopify_product": shopify},
             "project": {"id": 1, "org_name": "Haven of Hope", "project_name": "Fall", "brand": "ss",
                         "portal_pid": pid["hoh"] if portal_pid is None else portal_pid},
-            "mockups": ([{"view": "front", "url": "/api/items/7/mockup/front.png", "preview": "/m/front.png"},
-                         {"view": "back", "url": "/api/items/7/mockup/back.png", "preview": "/m/back.png"}]
+            "mockups": ([{"view": "front", "url": "/api/items/7/mockup/front.jpg", "preview": "/i/7/shop-image/front.jpg"},
+                         {"view": "back", "url": "/api/items/7/mockup/back.jpg", "preview": "/i/7/shop-image/back.jpg"}]
                         if mockups else []),
-            "ss": ({"style": "Comfort Colors 1717", "title": "Heavyweight Tee",
+            "ss": ({"style": "Comfort Colors 1717", "title": "Garment-Dyed Heavyweight T-Shirt",
+                    "brand": "Comfort Colors", "style_name": "1717",
+                    "bullets": ["6.1 oz./yd², 100% ring-spun cotton", "Garment-dyed for a lived-in look"],
+                    "specs": {"names": ["Body Length", "Body Width"], "rows": [
+                        {"size": z, "values": {"Body Width": str(20 + i), "Body Length": f"{28 + i} 1/2"}}
+                        for i, z in enumerate(["S", "M", "L", "XL", "2XL", "3XL"])]},
                     "colors": colors or [{"name": "White", "hex": "#fff", "sizes": TEE},
                                          {"name": "Pepper", "hex": "#555", "sizes": TEE}]} if ss else None)}
 
@@ -183,7 +188,8 @@ class Form(dict):
 
 def form(**kw):
     base = {"title": "HOH - Logo Crewneck TWC", "price": "22", "compare_at": "", "cost": "11",
-            "fallback_weight": "", "description": "<p>Logo Crewneck.</p>",
+            "fallback_weight": "", "intro": "Our fall church shirt", "options_sent": "1", "details": "1",
+            "size_up": "1",
             "up_2XL": "2", "up_3XL": "3", "up_4XL": "4", "up_5XL": "5", "up_6XL": "6",
             "colors_sent": "1", "sizes_sent": "1", "ministries_sent": "1",
             "colors": ["White"], "sizes": ["S", "M", "L", "XL", "2XL", "3XL"],
@@ -216,6 +222,23 @@ check("defaults: title from the short name, the item's colour, all its sizes",
       sp.preview(7, None)["form"]["title"] == "HOH - Logo Crewneck TWC"
       and sp.preview(7, None)["form"]["colors"] == ["White"] and "3XL" in sp.preview(7, None)["form"]["sizes"])
 check("no writes during preview", not any(n.startswith("mutation") for n, _ in CALLS))
+desc = p["description"]
+check("description: intro, size-up note, blank name and S&S bullets",
+      "<p>Our fall church shirt</p>" in desc and "Comfort Colors runs small" in desc
+      and "<strong>Comfort Colors 1717 Garment-Dyed Heavyweight T-Shirt</strong>" in desc
+      and "<li>6.1 oz./yd², 100% ring-spun cotton</li>" in desc)
+check("size chart: S&S specs, width before length, inches marked, only sizes sold",
+      'id="sizechart"' in desc and desc.index("Body Width") < desc.index("Body Length")
+      and '28 1/2"' in desc and ">3XL<" in desc
+      and ">3XL<" not in sp.preview(7, form(sizes=["S", "M"]))["plan"]["description"])
+check("garment care is left to the theme, never in the description", "GARMENT CARE" not in desc.upper().replace("CARE INSTRUCTIONS", ""))
+check("Comfort Colors gets the size-up note by default", sp.preview(7, None)["form"]["size_up"] is True)
+check("details and note can be switched off", "sizechart" not in sp.preview(7, form(details="", size_up=""))["plan"]["description"]
+      and "runs small" not in sp.preview(7, form(details="", size_up=""))["plan"]["description"])
+check("printed items carry no care tag", "no-print-care" not in p["tags"])
+EXPORT["data"] = export(method="embroidery")
+check("an embroidered item is tagged no-print-care", "no-print-care" in sp.preview(7, form())["plan"]["tags"])
+EXPORT["data"] = export()
 
 
 def blocks(text, **kw):
@@ -299,8 +322,9 @@ check("every variant: untracked, DENY, ships, taxable, cost and weight, no SKU",
 check("Color option linked to the swatch metaobjects",
       ps["productOptions"][0]["linkedMetafield"]["values"] == ["gid://shopify/Metaobject/1"]
       and v0["optionValues"][0] == {"optionName": "Color", "linkedMetafieldValue": "gid://shopify/Metaobject/1"})
-check("both mockups uploaded and attached, front first, with alt text",
-      len(UPLOADS) == 2 and [f["alt"] for f in ps["files"]] == ["HOH - Logo Crewneck, front", "HOH - Logo Crewneck, back"])
+check("description goes to Shopify as built", ps["descriptionHtml"] == desc)
+check("both store images uploaded as JPEG and attached, front first, with alt text",
+      len(UPLOADS) == 2 and UPLOADS[0][2]["file"][2] == "image/jpeg" and ps["files"][0]["originalSource"].endswith("-front.jpg") and [f["alt"] for f in ps["files"]] == ["HOH - Logo Crewneck, front", "HOH - Logo Crewneck, back"])
 toggles = [v for n, v in CALLS if n == "mutation T"]
 check("every variant detached from every other location (Germantown, Revive)",
       len(toggles) == 6 and all(u == [{"locationId": GCS_PICKUP, "activate": False},
@@ -339,7 +363,7 @@ html = page.get_data(as_text=True)
 check("Create from the page makes the product and shows the result", "Created in Shopify" in html
       and "/admin/products/555" in html or "Open in Shopify" in html)
 check("the result says it is a draft and gives the ssorder mapping", "draft" in html and "ssorder map set 555" in html)
-check("version is 3.78 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 78))
+check("version is 3.79 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 79))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")

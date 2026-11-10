@@ -34,6 +34,7 @@ product exists is reported as PARTIAL with the product id, never as success.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -59,6 +60,49 @@ SIZE_ORDER = ["YXS", "YS", "YM", "YL", "YXL", "XS", "S", "M", "L", "XL",
 # a $22 tee is 2XL $24 · 3XL $25 · 4XL $26.
 LADDER = {"2XL": 2.0, "3XL": 3.0, "4XL": 4.0, "5XL": 5.0, "6XL": 6.0}
 ACCESSORY = {"hat", "beanie"}
+PRINTED = {"dtf", "screen_print"}          # anything else is embroidery / patch work
+SIZE_UP_NOTE = "Comfort Colors runs small — please order one size up."
+# Size chart columns, in the order Larry's listings use; anything else S&S
+# reports (neck size, inseam…) follows.
+SPEC_ORDER = ["Chest", "Body Width", "Chest Width", "Body Length", "Full Body Length", "Length",
+              "Sleeve Length", "Sleeve Length (from center back)"]
+
+
+def description_html(export: dict, f: dict, sizes: list[str]) -> str:
+    """The listing description, built like the Lighthouse crewnecks: optional
+    intro, the Comfort Colors size-up note, the blank's name and S&S bullets,
+    and the size chart for the sizes being sold. Garment care is NOT included:
+    the theme adds it under the description (doc 47 -- it would show twice)."""
+    ss = export.get("ss") or {}
+    def esc(text):                       # text nodes only, so quotes stay as typed (28")
+        return html.escape(str(text), quote=False)
+    parts = []
+    if f.get("intro"):
+        parts.append(f"<p>{esc(f['intro'])}</p>")
+    if f.get("size_up"):
+        parts.append(f'<h3><span style="color: rgb(255, 42, 0);"><strong>{esc(SIZE_UP_NOTE)}</strong></span></h3>')
+    if f.get("details") and ss:
+        name = " ".join(x for x in (ss.get("brand"), ss.get("style_name"), ss.get("title")) if x) or ss.get("style", "")
+        parts.append(f"<p><strong>{esc(name)}</strong></p>")
+        if ss.get("bullets"):
+            parts.append("<ul>\n" + "\n".join(f"<li>{esc(b)}</li>" for b in ss["bullets"]) + "\n</ul>")
+        chart = ss.get("specs") or {}
+        rows = [r for r in chart.get("rows") or [] if r["size"] in sizes]
+        names = sorted(chart.get("names") or [],
+                       key=lambda n: SPEC_ORDER.index(n) if n in SPEC_ORDER else len(SPEC_ORDER))
+        if rows and names:
+            cell = 'style="padding: 8px; text-align: left;"'
+
+            def val(v):
+                v = v.strip()
+                return v if not v or v[-1] in '"”' or not v[-1].isdigit() else v + '"'
+            head = "".join(f"<th {cell}>{esc(n.capitalize() if n.isupper() else n)}</th>" for n in names)
+            body = "".join("<tr>" + f"<td {cell}>{esc(r['size'])}</td>" +
+                           "".join(f"<td {cell}>{esc(val(r['values'].get(n, '')))}</td>" for n in names) + "</tr>\n"
+                           for r in rows)
+            parts.append(f'<table id="sizechart" style="width: 100%; border-collapse: collapse;" border="1">\n'
+                         f"<tbody>\n<tr><th {cell}>Size</th>{head}</tr>\n{body}</tbody>\n</table>")
+    return "\n".join(parts)
 
 NEEDED_SCOPES = ["write_products", "write_inventory"]
 SOFT_SCOPES = {
@@ -129,7 +173,8 @@ def fetch_item(iid: int) -> tuple[dict | None, str]:
 
 
 def fetch_mockup(url: str) -> bytes:
-    with urllib.request.urlopen(f"{STUDIO_INTERNAL}{url}", timeout=20) as r:
+    """The 3200 px store image the Studio renders from the saved mockup."""
+    with urllib.request.urlopen(f"{STUDIO_INTERNAL}{url}", timeout=60) as r:
         return r.read()
 
 
@@ -312,7 +357,9 @@ def defaults(export: dict, record: dict | None) -> dict:
     blank = item.get("blank") or ""
     return {
         "title": f"{short} - {item['name']} TWC",
-        "description": f"<p>{item['name']}.</p>" + (f"<p>Printed in-house on the {blank}.</p>" if blank else ""),
+        "intro": "",
+        "details": True,
+        "size_up": (ss.get("brand") or blank).lower().startswith("comfort colors"),
         "price": "", "compare_at": "", "cost": "",
         "up": {s: f"{v:.2f}" for s, v in LADDER.items()},
         "colors": [color] if color else [],
@@ -328,7 +375,7 @@ def read_form(form, base: dict) -> dict:
     if form is None:
         return base
     out = dict(base)
-    for k in ("title", "description", "price", "compare_at", "cost", "fallback_weight"):
+    for k in ("title", "intro", "price", "compare_at", "cost", "fallback_weight"):
         if k in form:
             out[k] = (form.get(k) or "").strip()
     out["up"] = {s: (form.get(f"up_{s}") or "").strip() for s in LADDER} if any(
@@ -341,6 +388,9 @@ def read_form(form, base: dict) -> dict:
         if "ministries_sent" in form:
             out["ministries"] = form.getlist("ministries")
     out["status"] = "ACTIVE" if form.get("status") == "ACTIVE" else "DRAFT"
+    if "options_sent" in form:
+        out["details"] = bool(form.get("details"))
+        out["size_up"] = bool(form.get("size_up"))
     return out
 
 
@@ -483,6 +533,14 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
         warnings.append(f"The mockups show {item.get('color')} only; the other colours will use the same images.")
 
     tags = ([ctx["org_tag"]] if ctx.get("org_tag") else []) + list(f["ministries"])
+    if (item.get("method") or "dtf") not in PRINTED:
+        # The theme's print-care block (doc 47) is for printed items. An
+        # embroidered or patch piece says so in its tags, whatever its title.
+        tags.append("no-print-care")
+    sizes_sold = sorted({v["size"] for v in variants}, key=_size_rank)
+    description = description_html(export, f, sizes_sold)
+    if f.get("details") and ss and not (ss.get("specs") or {}).get("rows"):
+        warnings.append("S&S has no size chart for this style, so the description has none. Add one in the admin if it needs it.")
     coll = ctx.get("collection") or {}
     metafields = []
     if coll:
@@ -500,8 +558,8 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
     plan = {
         "title": title, "vendor": ctx.get("vendor") or "",
         "collection": coll, "type": "Accessories" if item["category"] in ACCESSORY else "Apparel",
-        "tags": tags, "status": f["status"], "description": f["description"],
-        "colors": colors, "sizes": sorted({v["size"] for v in variants}, key=_size_rank),
+        "tags": tags, "status": f["status"], "description": description,
+        "colors": colors, "sizes": sizes_sold,
         "variants": variants, "swatch": swatch, "metafields": metafields,
         "house": ctx.get("house"), "keep": ctx.get("keep") or [], "keep_names": ctx.get("keep_names") or [],
         "profile": ctx.get("profile"), "publications": ctx.get("publications") or [],
@@ -541,7 +599,7 @@ def _upload(name: str, data: bytes) -> tuple[str, str]:
     """(resourceUrl, error) through a staged upload."""
     r = _gql("""mutation S($input: [StagedUploadInput!]!) { stagedUploadsCreate(input: $input) {
                   stagedTargets { url resourceUrl parameters { name value } } userErrors { message } } }""",
-             {"input": [{"resource": "IMAGE", "filename": name, "mimeType": "image/png",
+             {"input": [{"resource": "IMAGE", "filename": name, "mimeType": "image/jpeg",
                          "httpMethod": "POST", "fileSize": str(len(data))}]})
     if not r["ok"]:
         return "", r["error"]
@@ -553,7 +611,7 @@ def _upload(name: str, data: bytes) -> tuple[str, str]:
         return "", "Shopify gave no upload target."
     try:
         resp = requests.post(t["url"], data={p["name"]: p["value"] for p in t["parameters"]},
-                             files={"file": (name, data, "image/png")}, timeout=60)
+                             files={"file": (name, data, "image/jpeg")}, timeout=60)
     except Exception as exc:                                  # noqa: BLE001
         return "", f"upload failed: {exc}"
     if resp.status_code >= 300:
@@ -630,7 +688,7 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
         except Exception as exc:                              # noqa: BLE001
             step(f"Image: {m['view']}", False, f"could not read it from the Studio ({exc})")
             continue
-        url, err = _upload(f"{re.sub(r'[^a-z0-9]+', '-', plan['title'].lower()).strip('-')}-{m['view']}.png", blob)
+        url, err = _upload(f"{re.sub(r'[^a-z0-9]+', '-', plan['title'].lower()).strip('-')}-{m['view']}.jpg", blob)
         if step(f"Image: {m['view']}", not err, err or "uploaded"):
             files.append({"originalSource": url, "contentType": "IMAGE",
                           "alt": f"{plan['title'].removesuffix(' TWC')}, {m['view'].replace('_', ' ')}"})

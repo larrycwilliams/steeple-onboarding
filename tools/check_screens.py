@@ -126,6 +126,14 @@ def fake_studio_product(rec):
                           "portal_pid": "x"},
               "mockups": [{"view": v, "url": "", "preview": ""} for v in ("front", "back", "left_sleeve")],
               "ss": {"style": "Comfort Colors 1567", "title": "Garment-Dyed Hooded Sweatshirt",
+                     "brand": "Comfort Colors", "style_name": "1567",
+                     "bullets": ["9.5 oz./yd², 80/20 ring-spun cotton/polyester, soft-washed garment-dyed fleece",
+                                 "Double-needle neck, shoulder, armhole, cuffs and hems"] * 3,
+                     "specs": {"names": ["Chest", "Full Body Length", "Sleeve Length (from center back)", "Neck Size"],
+                               "rows": [{"size": z, "values": {"Chest": "21 1/2", "Full Body Length": "27 1/2",
+                                                               "Sleeve Length (from center back)": "31 1/2",
+                                                               "Neck Size": "16"}}
+                                        for z in ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]]},
                      "colors": [{"name": n, "hex": "#555", "sizes": sizes}
                                 for n in ("Heather Charcoal", "Blue Spruce", "Crimson", "Ivory", "Black")]}}
     ctx = {"errors": [], "scopes": {"write_products", "write_inventory"}, "vendor": rec["org_name"],
