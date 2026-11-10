@@ -28,9 +28,51 @@
          display:flex;align-items:center;gap:18px;flex-wrap:wrap}
   header h1{font-size:17px;margin:0;letter-spacing:.14em;text-transform:uppercase}
   header h1 span{color:var(--gold)}
-  header nav{margin-left:auto;display:flex;gap:18px;font-size:13px}
-  header nav a{color:var(--gold-soft);text-decoration:none}
-  header nav a:hover{color:#fff}
+  header nav{margin-left:auto;display:flex;gap:6px 16px;font-size:13px;align-items:center;flex-wrap:wrap}
+  header nav a{color:var(--gold-soft);text-decoration:none;white-space:nowrap}
+  header nav a:hover,header nav a.on{color:#fff}
+  header nav a.on{box-shadow:0 2px 0 var(--gold)}
+  .nav-me{color:#7B8494;white-space:nowrap}
+
+  /* ------------------------------------------------- the menu, by width --
+     Doc 70. Below 700px: Home, Orders, Pipeline + More. 700-1279px: the six
+     most-used pages + Studio + More. From 1280px: everything inline. */
+  .nav-more{position:relative}
+  .nav-more summary{list-style:none;cursor:pointer;color:var(--gold-soft);padding:2px 10px;
+    border:1px solid #3A4250;border-radius:99px;white-space:nowrap}
+  .nav-more summary::-webkit-details-marker{display:none}
+  .nav-more summary::after{content:" ▾";font-size:10px}
+  .nav-more[open] summary{color:#fff;border-color:var(--gold)}
+  .nav-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:20;min-width:200px;
+    background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:6px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;flex-direction:column}
+  .nav-menu a{padding:10px 12px;border-radius:7px;font-size:14px}
+  .nav-menu a:hover{background:#2A3240}
+  header nav > a.n2, header nav > a.n3{display:none}
+  .nav-menu a.m-n2{display:block}
+  @media (min-width:700px){
+    header nav > a.n2{display:inline}
+    .nav-menu a.m-n2{display:none}
+  }
+  @media (min-width:1280px){
+    header nav > a.n3{display:inline}
+    .nav-more{display:none}
+  }
+
+  /* ------------------------------------------------- big screens and TVs --
+     Doc 70. A 1080p TV across the shop and a 4K TV at 1x read like a laptop
+     held at arm's length: scale the whole page rather than chase every size. */
+  @media (min-width:1600px){ main{max-width:1320px} }
+  @media (min-width:1800px){ main{max-width:1560px} }
+  @media (min-width:1800px){ body{zoom:1.2} }
+  @media (min-width:2400px){ body{zoom:1.6} }
+  @media (min-width:3200px){ body{zoom:2} }
+
+  /* Wide tables scroll inside their own box instead of pushing the page
+     sideways on a phone. The wrapper is added by the script at the bottom. */
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+  .tscroll > table{min-width:100%}
+  select{max-width:100%}
   main{max-width:1080px;margin:0 auto;padding:28px}
   h2{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
      margin:34px 0 12px;border-bottom:1px solid #DAD4C8;padding-bottom:8px}
@@ -101,7 +143,10 @@
   @media (max-width:699px){
     main{padding:18px 14px}
     header{padding:14px 16px;gap:10px}
-    header nav{margin-left:0;width:100%;gap:14px;flex-wrap:wrap}
+    header nav{margin-left:0;width:100%;gap:8px 16px}
+    header h1{font-size:14px;letter-spacing:.1em}
+    .nav-me{display:none}
+    .nav-menu{right:auto;left:0}
     h2{margin:26px 0 10px}
     .card{padding:16px}
     table{font-size:15px}
@@ -120,6 +165,11 @@
       padding:12px 11px;font-size:16px}
     button,.btn{padding:12px 18px}
   }
+  @media (max-width:380px){
+    main{padding:14px 10px}
+    .card{padding:12px}
+    th,td{padding:8px 4px}
+  }
   /* iOS zooms the whole page in when a focused field is under 16px, and then
      leaves it zoomed. Setting the base size on the fields above is the fix;
      this keeps the rest of the type where it was. */
@@ -130,29 +180,38 @@
   <h1>STEEPLE <span>&amp;</span> STITCH - BUSINESS OPERATIONS PORTAL
     <span style="font-size:11px;letter-spacing:.06em;color:#7B8494;margin-left:8px;
                  text-transform:none">v{{ APP_VERSION }}</span></h1>
-  <nav>
-    <a href="{{ url_for('home') }}">Home</a>
-    <a href="{{ url_for('orders_page') }}">Orders</a>
-    <a href="{{ url_for('index') }}">Partners</a>
-    <a href="{{ url_for('dashboard_page') }}">Dashboard</a>
-    <a href="{{ url_for('readiness_page') }}">Readiness</a>
-    <a href="{{ url_for('statements_page') }}">Statements</a>
-    <a href="{{ url_for('pipeline_page') }}">Pipeline</a>
-    <a href="{{ url_for('discovery_index') }}">Discovery</a>
-    <a href="{{ url_for('traveler_index') }}">Traveler</a>
-    <a href="{{ url_for('purchasing_page') }}">Purchasing</a>
-    <a href="{{ url_for('slips_page') }}">Slips</a>
-    <a href="{{ STUDIO_URL }}" target="_blank" rel="noopener" title="Production Studio — mockups, approvals, press">Studio&nbsp;↗</a>
-    <a href="{{ url_for('new_partner') }}">New partner</a>
-    <a href="{{ url_for('redirects') }}">Redirect CSV</a>
-    <a href="{{ url_for('tools_page') }}">Tools</a>
+  {# Doc 70. One menu for every screen: the pages used most stay in view; the
+     rest are under More until the screen is wide enough for all of them.
+       n1  always shown                 n2  shown from 700px, else under More
+       n3  shown from 1280px, else under More #}
+  {% set links = [
+      ('home', 'Home', 'n1'), ('orders_page', 'Orders', 'n1'), ('pipeline_page', 'Pipeline', 'n1'),
+      ('index', 'Partners', 'n2'), ('purchasing_page', 'Purchasing', 'n2'), ('dashboard_page', 'Dashboard', 'n2'),
+      ('readiness_page', 'Readiness', 'n3'), ('statements_page', 'Statements', 'n3'),
+      ('discovery_index', 'Discovery', 'n3'), ('traveler_index', 'Traveler', 'n3'),
+      ('slips_page', 'Slips', 'n3'), ('new_partner', 'New partner', 'n3'),
+      ('redirects', 'Redirect CSV', 'n3'), ('tools_page', 'Tools', 'n3')] %}
+  {% set show_settings = not me or not me.enforced or me.is_owner %}
+  <nav aria-label="Main">
+    {% for endpoint, label, tier in links %}
+      <a class="{{ tier }}{{ ' on' if request.endpoint == endpoint }}" href="{{ url_for(endpoint) }}">{{ label }}</a>
+    {% endfor %}
+    <a class="n2" href="{{ STUDIO_URL }}" target="_blank" rel="noopener" title="Production Studio — mockups, approvals, press">Studio&nbsp;↗</a>
     {# Owner-only once enforcement is on, so the link goes too. A link that
        always refuses is worse than no link. #}
-    {% if not me or not me.enforced or me.is_owner %}
-      <a href="{{ url_for('settings_page') }}">Settings</a>
-    {% endif %}
+    {% if show_settings %}<a class="n3" href="{{ url_for('settings_page') }}">Settings</a>{% endif %}
+    <details class="nav-more">
+      <summary>More</summary>
+      <div class="nav-menu">
+        {% for endpoint, label, tier in links if tier != 'n1' %}
+          <a class="m-{{ tier }}" href="{{ url_for(endpoint) }}">{{ label }}</a>
+        {% endfor %}
+        <a class="m-n2" href="{{ STUDIO_URL }}" target="_blank" rel="noopener">Studio&nbsp;↗</a>
+        {% if show_settings %}<a class="m-n3" href="{{ url_for('settings_page') }}">Settings</a>{% endif %}
+      </div>
+    </details>
     {% if me %}
-      <span style="color:#7B8494" title="{{ me.login or me.machine or 'not identified' }}
+      <span class="nav-me" title="{{ me.login or me.machine or 'not identified' }}
 {%- if me.enforced %} · {{ me.role }}{% else %} · roles not enforced yet{% endif %}">
         {%- if me.stamp_name %}{{ me.stamp_name }}
         {%- else %}not identified{% endif %}
@@ -168,5 +227,20 @@
   {% endwith %}
   {% block content %}{% endblock %}
 </main>
+<script>
+  // Doc 70: any table wider than its card scrolls inside a box of its own.
+  document.querySelectorAll('main table').forEach(function (t) {
+    var p = t.parentElement;
+    if (p.classList.contains('tscroll') || getComputedStyle(p).overflowX !== 'visible') return;
+    var box = document.createElement('div'); box.className = 'tscroll';
+    p.insertBefore(box, t); box.appendChild(t);
+  });
+  // Close the More menu when tapping anywhere else.
+  document.addEventListener('click', function (e) {
+    document.querySelectorAll('.nav-more[open]').forEach(function (d) {
+      if (!d.contains(e.target)) d.removeAttribute('open');
+    });
+  });
+</script>
 </body>
 </html>

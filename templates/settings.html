@@ -18,6 +18,8 @@
       <dd style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">
         {{ remote_addr or 'none' }}
         {%- if ':' in remote_addr %} <span class="help">(IPv6)</span>{% endif %}</dd>
+      <dt>This screen</dt>
+      <dd id="this-screen" style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">—</dd>
       <dt>Identified by</dt>
       <dd>
         {% if me.source == 'local' %}the machine itself
@@ -233,4 +235,19 @@
   in the email body and can break the <code>tel:</code> link.
 </div>
 
+<script>
+  // Doc 70: the size this browser lays pages out at, in CSS pixels -- the
+  // number the device standard (tools/devices.py) is written in. Read it on
+  // each phone and tablet, folded and unfolded, and send it to Claude.
+  (function () {
+    var el = document.getElementById('this-screen');
+    if (!el) return;
+    function show() {
+      var o = (screen.orientation && screen.orientation.type) || (innerWidth > innerHeight ? 'landscape' : 'portrait');
+      el.textContent = innerWidth + ' × ' + innerHeight + ' CSS px · ' +
+        (window.devicePixelRatio || 1) + 'x · ' + o.replace('-primary', '').replace('-secondary', '');
+    }
+    show(); addEventListener('resize', show);
+  })();
+</script>
 {% endblock %}

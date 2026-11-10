@@ -121,9 +121,13 @@
   .ob-count{font-size:13px;color:var(--muted)}
   .ob-late{color:var(--bad)}
   .ob-filters{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
-  .ob-filters select{width:auto;padding:7px 10px;font-size:13px}
+  .ob-filters select{width:auto;max-width:100%;min-width:0;padding:7px 10px;font-size:13px}
   main{max-width:1320px}
+  /* Doc 70: five lanes on a laptop or TV, three on an iPad held sideways or
+     the Duo open, two on a portrait iPad, one on a phone. */
   .ob-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:start}
+  @media (max-width:1199px){ .ob-board{grid-template-columns:repeat(3,minmax(0,1fr))} }
+  @media (max-width:899px){ .ob-board{grid-template-columns:repeat(2,minmax(0,1fr))} }
   .ob-lane{background:#EDE9E0;border-radius:var(--radius);padding:10px;min-height:120px}
   .ob-lanehead{display:flex;justify-content:space-between;align-items:center}
   .ob-lanename{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
@@ -155,11 +159,10 @@
   .ob-list .ob-row,.ob-done .ob-row{display:grid;grid-template-columns:90px 1fr auto;gap:10px;
     padding:6px 0;border-bottom:1px solid #EFEBE2;font-size:14px}
   .ob-done summary{cursor:pointer;font-weight:600}
-  @media (max-width:1050px){ .ob-board{grid-template-columns:repeat(2,minmax(0,1fr))} }
   @media (max-width:699px){
     .ob-board{grid-template-columns:1fr}
     .ob-filters{margin-left:0;width:100%}
-    .ob-filters select{flex:1}
+    .ob-filters select{flex:1 1 0}
     .ob-lane:has(.ob-empty){min-height:0}
     .ob-list .ob-row,.ob-done .ob-row{grid-template-columns:70px 1fr;}
     .ob-list .ob-row .help,.ob-done .ob-row .help{grid-column:2}
