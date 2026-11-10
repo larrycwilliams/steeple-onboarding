@@ -229,6 +229,57 @@
   </div>
 </div>
 
+<h2 id="twc-store">The Williams Collective store</h2>
+<div class="card">
+  <p style="margin-top:0">Businesses — NFG - National Fuel and the like — are TWC customers, not Steeple &amp; Stitch
+    partners: no payout, made in-house, sold from TWC's own store. A TWC project's
+    <strong>Create Shopify product</strong> writes here (doc 73).</p>
+  {% if twc_token %}
+    <div class="flash ok" style="margin-bottom:14px">Connected as <code>{{ twc_token }}</code> to
+      <code>{{ twc.SHOPIFY_STORE }}</code>{% if twc.TWC_HOUSE_LOCATION %} · ships from <strong>{{ twc.TWC_HOUSE_LOCATION }}</strong>{% endif %}.</div>
+  {% endif %}
+  <form method="post" action="{{ url_for('save_twc_shopify') }}">
+    <div class="grid">
+      <div class="field">
+        <label for="twc_store">Store domain</label>
+        <input type="text" id="twc_store" name="store" value="{{ twc.SHOPIFY_STORE or '' }}"
+               placeholder="xxxxxx-xx.myshopify.com" autocomplete="off" spellcheck="false">
+        <div class="help">The generated <code>.myshopify.com</code> handle — in the TWC admin, Settings › Domains.
+          Not thewilliamscollective.com.</div>
+      </div>
+      <div class="field">
+        <label for="twc_client_id">Client ID</label>
+        <input type="text" id="twc_client_id" name="client_id" value="{{ twc.SHOPIFY_CLIENT_ID or '' }}"
+               autocomplete="off" spellcheck="false" placeholder="32 hex characters">
+        <div class="help">From the TWC app in Dev Dashboard → App settings.</div>
+      </div>
+      <div class="field">
+        <label for="twc_client_secret">Client secret</label>
+        <input type="password" id="twc_client_secret" name="client_secret" autocomplete="off" spellcheck="false"
+               placeholder="{% if twc_secret %}{{ twc_secret }} — saved{% else %}shpss_…{% endif %}">
+      </div>
+      <div class="field">
+        <label for="twc_house">Ships from (location name)</label>
+        <input type="text" id="twc_house" name="house_location" value="{{ twc.TWC_HOUSE_LOCATION or '' }}"
+               placeholder="only needed if the store has more than one location">
+        <div class="help">Exactly as in the TWC admin, Settings › Locations. New products are stocked here only.</div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Save TWC store settings</button>
+      {% if twc.SHOPIFY_CLIENT_ID and twc_secret and twc.SHOPIFY_STORE %}
+        <a class="btn btn-gold" href="{{ url_for('twc_shopify_connect') }}">{{ 'Reconnect' if twc_token else 'Connect the TWC store' }}</a>
+      {% endif %}
+    </div>
+  </form>
+  <details style="margin-top:12px"><summary class="small">What the TWC app needs in Dev Dashboard</summary>
+    <p class="small">Scopes (one line, copy exactly):</p><code class="small" style="overflow-wrap:anywhere">{{ twc_scopes }}</code>
+    <p class="small">Allowed redirection URL(s), comma-separated, one line:</p>
+    <code class="small" style="overflow-wrap:anywhere">http://127.0.0.1:5000/shopify/twc/callback, http://localhost:5000/shopify/twc/callback, http://100.119.56.54:5000/shopify/twc/callback, https://imac.tail8aaf17.ts.net/shopify/twc/callback</code>
+  </details>
+  <div class="help" style="margin-top:12px">Stored in <code>.env.twc</code> beside the app — in <code>.gitignore</code>, never displayed.</div>
+</div>
+
 <div class="note">
   Pasted phone numbers and addresses are cleaned on save — copying from
   Contacts or Messages wraps them in invisible characters that otherwise end up

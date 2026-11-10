@@ -43,6 +43,7 @@ from onboarding import access
 from onboarding import welcome_email
 from onboarding import products as partner_products
 from onboarding import studio_product
+from onboarding import twc_shop
 from onboarding import slips
 from onboarding import today as today_panel
 from onboarding import refresh as refresh_job
@@ -56,7 +57,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.80"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.81"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -639,6 +640,8 @@ def settings_page():
         shopify_token=env_secrets.masked(),
         client_id=env_secrets.app_credentials()["client_id"],
         client_secret=env_secrets.masked_secret(),
+        twc=twc_shop.values(), twc_token=env_secrets.masked(twc_shop.PATH),
+        twc_secret=env_secrets.masked_secret(twc_shop.PATH), twc_scopes=twc_shop.SCOPES,
         people=access.config(),
         people_path=str(access.PEOPLE_PATH),
         tailscale_cli=access.cli(),
@@ -1948,6 +1951,72 @@ def shopify_callback():
 
     flash("Connected to Shopify. Refreshing the dashboard now.", "ok")
     return redirect(url_for("dashboard_page", refresh=1))
+
+
+# ---------------------------------------------- The Williams Collective store
+# Doc 73. The same OAuth dance as Steeple & Stitch's store above, against a
+# second Dev Dashboard app installed on the TWC store; the token lands in
+# .env.twc. Kept as separate routes (not a parameter) so a callback can never
+# write one store's token into the other's file.
+
+@app.route("/settings/twc-shopify", methods=["POST"])
+@owner_only
+def save_twc_shopify():
+    f = request.form
+    ok, message = env_secrets.save_app_credentials(
+        f.get("client_id", ""), f.get("client_secret", ""), path=twc_shop.PATH,
+        store=f.get("store", ""), extra={"TWC_HOUSE_LOCATION": f.get("house_location", "")})
+    flash(message.replace("App credentials", "TWC store settings"), "ok" if ok else "error")
+    return redirect(url_for("settings_page") + "#twc-store")
+
+
+@app.route("/shopify/twc/connect")
+@owner_only
+def twc_shopify_connect():
+    creds = env_secrets.app_credentials(twc_shop.PATH)
+    store = twc_shop.domain()
+    if not creds["client_id"] or not creds["client_secret"] or not store:
+        flash("Save the TWC store domain, Client ID and Client secret first.", "error")
+        return redirect(url_for("settings_page") + "#twc-store")
+    state = secrets_module.token_urlsafe(24)
+    session["twc_shopify_state"] = state
+    query = urlencode({"client_id": creds["client_id"], "scope": twc_shop.SCOPES,
+                       "redirect_uri": request.host_url.rstrip("/") + "/shopify/twc/callback",
+                       "state": state})
+    return redirect(f"https://{store}/admin/oauth/authorize?{query}")
+
+
+@app.route("/shopify/twc/callback")
+def twc_shopify_callback():
+    creds = env_secrets.app_credentials(twc_shop.PATH)
+    params = request.args.to_dict()
+    back = url_for("settings_page") + "#twc-store"
+    expected = session.pop("twc_shopify_state", None)
+    if not expected or params.get("state") != expected:
+        flash("That response did not match the request this app started. Nothing was saved.", "error")
+        return redirect(back)
+    if not _valid_hmac(params, creds["client_secret"]):
+        flash("Shopify's signature on that response did not verify. Nothing was saved.", "error")
+        return redirect(back)
+    shop = params.get("shop", "")
+    if shop != twc_shop.domain():
+        flash(f"That response came from {shop}, not the TWC store configured here. Nothing was saved.", "error")
+        return redirect(back)
+    try:
+        response = requests.post(f"https://{shop}/admin/oauth/access_token",
+                                 json={"client_id": creds["client_id"], "client_secret": creds["client_secret"],
+                                       "code": params.get("code", "")}, timeout=20)
+        response.raise_for_status()
+        token = response.json().get("access_token", "")
+    except Exception as exc:                                  # noqa: BLE001
+        flash(f"Could not exchange the code for a token: {exc}", "error")
+        return redirect(back)
+    if not token:
+        flash("Shopify returned no access token.", "error")
+        return redirect(back)
+    ok, message = env_secrets.save_token(token, path=twc_shop.PATH)
+    flash("Connected to The Williams Collective store." if ok else message, "ok" if ok else "error")
+    return redirect(back)
 
 
 @app.route("/settings/shopify-app", methods=["POST"])

@@ -102,6 +102,7 @@ TOLD = []
 sp.tell_studio = lambda iid, product, title, by: TOLD.append((iid, product, title, by)) or ""
 
 CALLS: list[tuple[str, dict]] = []
+STORES_HIT: list[str] = []
 SHOP = {"scopes": ["write_products", "write_inventory", "write_publications", "write_shipping",
                    "read_metaobjects"],
         "dupes": [], "profile": {"id": "gid://shopify/DeliveryProfile/5", "name": "Haven of Hope – Freight"},
@@ -109,10 +110,27 @@ SHOP = {"scopes": ["write_products", "write_inventory", "write_publications", "w
         "inhouse_def": True, "fail_create": "", "kids": True}
 
 
-def fake_gql(query, variables=None):
+TWC = {"locations": [{"id": "gid://shopify/Location/T1", "name": "TWC Shop", "isActive": True}],
+       "collections": [], "dupes": []}
+
+
+def fake_gql(query, variables=None, store="ss"):
     variables = variables or {}
     CALLS.append((query.split("(")[0].split("{")[0].strip(), variables))
+    STORES_HIT.append(store)
     q = query
+    if "query T(" in q:
+        return {"ok": True, "data": {
+            "currentAppInstallation": {"accessScopes": [{"handle": h} for h in
+                                                        ("write_products", "write_inventory", "write_publications")]},
+            "shop": {"name": "The Williams Collective", "primaryDomain": {"url": "https://thewilliamscollective.com"}},
+            "locations": {"nodes": TWC["locations"]},
+            "publications": {"nodes": [{"id": "gid://shopify/Publication/T9", "name": "Online Store"},
+                                       {"id": "gid://shopify/Publication/T8", "name": "Shop"}]},
+            "collections": {"nodes": TWC["collections"]}, "dupes": {"nodes": TWC["dupes"]}}}
+    if "collectionCreate" in q:
+        return {"ok": True, "data": {"collectionCreate": {"userErrors": [], "collection": {
+            "id": "gid://shopify/Collection/T77", "handle": variables["input"]["handle"]}}}}
     if "query Ctx" in q:
         return {"ok": True, "data": {
             "currentAppInstallation": {"accessScopes": [{"handle": h} for h in SHOP["scopes"]]},
@@ -367,7 +385,103 @@ html = page.get_data(as_text=True)
 check("Create from the page makes the product and shows the result", "Created in Shopify" in html
       and "/admin/products/555" in html or "Open in Shopify" in html)
 check("the result says it is a draft and gives the ssorder mapping", "draft" in html and "ssorder map set 555" in html)
-check("version is 3.80 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 80))
+# ------------------------------------------- a business, in the TWC store (doc 73)
+from onboarding import twc_shop  # noqa: E402
+sp._run_path(7).unlink(missing_ok=True)
+TOLD.clear()
+
+
+def nfg_export(**kw):
+    e = export(portal_pid="", **kw)
+    e["project"].update({"org_name": "NFG - National Fuel", "brand": "twc", "project_name": "Employee Merch"})
+    return e
+
+
+EXPORT["data"] = nfg_export()
+twc_shop.configured = lambda: False
+r = sp.preview(7, None)
+check("TWC project, store not connected: says where to connect it", not r["ok"]
+      and any("not connected yet" in b for b in r["blocking"]) and r["business"])
+twc_shop.configured = lambda: True
+twc_shop.domain = lambda: "twc-test.myshopify.com"
+twc_shop.house_location_name = lambda: ""
+STORES_HIT.clear()
+r = sp.preview(7, form(title="NFG - Staff tee TWC"))
+p = r["plan"]
+check("a business needs no Portal partner link", r["ok"] and not any("Portal partner" in b for b in r["blocking"]))
+check("defaults: the short name is the part before ' - '", sp.preview(7, None)["form"]["title"].startswith("NFG - Logo Crewneck"))
+check("every read goes to the TWC store, none to Steeple & Stitch", STORES_HIT and set(STORES_HIT) == {"twc"})
+check("vendor is the business; tag is its slug; no ministry, no church fields",
+      p["vendor"] == "NFG - National Fuel" and p["tags"] == ["nfg-national-fuel"] and p["store"] == "twc"
+      and [m["key"] for m in p["metafields"]] == ["hidden"])
+check("the single TWC location is where it is stocked", p["keep"] == ["gid://shopify/Location/T1"])
+check("published to the Online Store only (not Shop)", p["publications"] == ["gid://shopify/Publication/T9"])
+check("first product: a link-only collection is planned, with an unguessable handle",
+      p["new_collection"]["handle"].startswith("nfg-national-fuel-") and len(p["new_collection"]["handle"]) == 24
+      and any("link-only collection" in w for w in r["warnings"]))
+check("the handle is the same on every preview", sp.preview(7, form(title="NFG - Staff tee TWC"))["plan"]["new_collection"]
+      == p["new_collection"])
+check("no delivery-profile or shipping warnings for TWC", not any("write_shipping" in w or "delivery profile" in w
+                                                                  for w in r["warnings"]))
+TWC["locations"].append({"id": "gid://shopify/Location/T2", "name": "Dayton Office", "isActive": True})
+check("two TWC locations and none named: asks for Ships from", any("Ships from" in b for b in
+                                                                   sp.preview(7, form(title="NFG - Staff tee TWC"))["blocking"]))
+twc_shop.house_location_name = lambda: "TWC Shop"
+check("Ships from picks the named location", sp.preview(7, form(title="NFG - Staff tee TWC"))["plan"]["keep"]
+      == ["gid://shopify/Location/T1"])
+
+CALLS.clear(); STORES_HIT.clear(); UPLOADS.clear()
+pre = sp.preview(7, form(title="NFG - Staff tee TWC"))
+res = sp.commit(7, form(title="NFG - Staff tee TWC"), pre["fingerprint"], "Larry")
+r = res["run"]["result"]
+names = [n for n, _ in CALLS]
+check("commit writes only to the TWC store", res["ok"] and set(STORES_HIT) == {"twc"})
+check("the collection is created first, VENDOR EQUALS the business, hidden from search",
+      names.index("mutation C") < names.index("mutation Create")
+      and next(v for n, v in CALLS if n == "mutation C")["input"]["ruleSet"]["rules"][0] ==
+      {"column": "VENDOR", "relation": "EQUALS", "condition": "NFG - National Fuel"}
+      and next(v for n, v in CALLS if n == "mutation C")["input"]["metafields"][0]["key"] == "hidden")
+check("the collection is published to the Online Store", any(n == "mutation P" and v["id"].endswith("T77") for n, v in CALLS))
+ps = next(v for n, v in CALLS if n == "mutation Create")["input"]
+check("the product: business vendor, hidden from search, no church metafields",
+      ps["vendor"] == "NFG - National Fuel" and ps["metafields"] == [
+          {"namespace": "seo", "key": "hidden", "type": "number_integer", "value": "1"}])
+check("no delivery-profile call for a TWC product", "mutation D" not in names)
+check("the result keeps the store and the private link",
+      r["store"] == "twc" and r["collection"]["url"].startswith("https://thewilliamscollective.com/collections/nfg-national-fuel-"))
+check("the admin link points at the TWC store", sp.admin_url(r["product"], "twc").startswith("https://twc-test.myshopify.com/admin/"))
+page = portal.app.test_client().get("/studio-item/7/shopify").get_data(as_text=True)
+check("the page shows the collection link to share", "Share this link with the business" in page
+      and "thewilliamscollective.com/collections/nfg-national-fuel-" in page)
+sp._run_path(7).unlink()
+TWC["collections"] = [{"id": "gid://shopify/Collection/T77", "title": "NFG - National Fuel", "handle": "nfg-national-fuel-abc123",
+                       "ruleSet": {"rules": [{"column": "VENDOR", "relation": "EQUALS", "condition": "NFG - National Fuel"}]}}]
+p2 = sp.preview(7, form(title="NFG - Polo TWC"))["plan"]
+check("second product: the existing collection is reused, none created", p2["new_collection"] is None
+      and p2["collection"]["id"].endswith("T77"))
+
+# ------------------------------------------------- Settings: the TWC store card
+client = portal.app.test_client()
+html = client.get("/settings").get_data(as_text=True)
+check("Settings has The Williams Collective store card with its scopes and callback URLs",
+      'id="twc-store"' in html and "/shopify/twc/callback" in html and "read_all_orders,read_orders" in html)
+resp = client.post("/settings/twc-shopify", data={"store": "https://twc-test.myshopify.com/", "client_id": "a" * 32,
+                                                  "client_secret": "shpss_" + "b" * 32, "house_location": "TWC Shop"})
+from onboarding import secrets as es  # noqa: E402
+v = es.read_env(es.TWC_ENV_PATH)
+check("saving writes .env.twc only, never .env", v.get("SHOPIFY_STORE") == "twc-test.myshopify.com"
+      and v.get("TWC_HOUSE_LOCATION") == "TWC Shop" and not es.read_env().get("SHOPIFY_CLIENT_ID", "").startswith("aaaa"))
+check("a non-.myshopify.com domain is refused", "not a .myshopify.com domain" in client.post(
+      "/settings/twc-shopify", data={"store": "thewilliamscollective.com"}, follow_redirects=True).get_data(as_text=True))
+c = client.get("/shopify/twc/connect")
+check("Connect sends the TWC store its own scopes and callback", c.status_code == 302
+      and c.headers["Location"].startswith("https://twc-test.myshopify.com/admin/oauth/authorize")
+      and "shopify%2Ftwc%2Fcallback" in c.headers["Location"] and "read_metaobjects" in c.headers["Location"])
+bad = client.get("/shopify/twc/callback?state=nope&shop=twc-test.myshopify.com", follow_redirects=True)
+check("a callback that this app did not start saves nothing", "did not match" in bad.get_data(as_text=True)
+      and not es.read_env(es.TWC_ENV_PATH).get("SHOPIFY_ADMIN_TOKEN"))
+
+check("version is 3.81 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 81))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")

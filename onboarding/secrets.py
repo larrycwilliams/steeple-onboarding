@@ -43,11 +43,18 @@ HEADER = """# Shopify credentials. This file is in .gitignore and never leaves t
 """
 
 
-def read_env() -> dict:
+# The Williams Collective's own Shopify store (doc 73): the same keys in a
+# file of its own, so the S&S token and the TWC token can never be confused,
+# and so ssorder can point a second `stores[]` entry straight at it.
+TWC_ENV_PATH = ROOT / ".env.twc"
+
+
+def read_env(path: Path | None = None) -> dict:
+    path = path or ENV_PATH
     values: dict[str, str] = {}
-    if not ENV_PATH.exists():
+    if not path.exists():
         return values
-    for line in ENV_PATH.read_text().splitlines():
+    for line in path.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -56,40 +63,41 @@ def read_env() -> dict:
     return values
 
 
-def write_env(values: dict) -> None:
+def write_env(values: dict, path: Path | None = None) -> None:
     """Rewrite .env from scratch, keeping any keys already present.
 
     Deliberately not an in-place edit: a half-written .env is an app that will
     not start, and the file is four lines long.
     """
+    path = path or ENV_PATH
     lines = [HEADER]
     for key in sorted(values):
         lines.append(f"{key}={values[key]}")
-    ENV_PATH.write_text("\n".join(lines) + "\n")
+    path.write_text("\n".join(lines) + "\n")
     try:
-        ENV_PATH.chmod(0o600)
+        path.chmod(0o600)
     except OSError:
         pass
 
 
-def masked() -> str:
+def masked(path: Path | None = None) -> str:
     """'shpat_…a1b2', or '' when unset. Never the whole token."""
-    token = read_env().get("SHOPIFY_ADMIN_TOKEN", "")
+    token = read_env(path).get("SHOPIFY_ADMIN_TOKEN", "")
     if not token:
         return ""
     return f"shpat_…{token[-4:]}"
 
 
-def store_domain() -> str:
-    return read_env().get("SHOPIFY_STORE", "")
+def store_domain(path: Path | None = None) -> str:
+    return read_env(path).get("SHOPIFY_STORE", "")
 
 
-def save_token(token: str, store: str = "") -> tuple[bool, str]:
+def save_token(token: str, store: str = "", path: Path | None = None) -> tuple[bool, str]:
     """(ok, message). Validates before writing."""
     token = (token or "").strip().strip('"').strip("'")
     store = (store or "").strip().lower()
 
-    values = read_env()
+    values = read_env(path)
     if store:
         store = store.replace("https://", "").replace("http://", "").strip("/")
         if not store.endswith(".myshopify.com"):
@@ -110,7 +118,7 @@ def save_token(token: str, store: str = "") -> tuple[bool, str]:
 
     values.setdefault("SHOPIFY_API_VERSION", "2025-07")
     values.setdefault("SHOPIFY_STORE", "")
-    write_env(values)
+    write_env(values, path)
     return True, "Shopify credentials saved."
 
 
@@ -133,23 +141,34 @@ def clear_token() -> None:
 # The client ID and secret identify the app; the access token they buy is
 # written straight to .env and never displayed.
 
-def app_credentials() -> dict:
-    values = read_env()
+def app_credentials(path: Path | None = None) -> dict:
+    values = read_env(path)
     return {
         "client_id": values.get("SHOPIFY_CLIENT_ID", ""),
         "client_secret": values.get("SHOPIFY_CLIENT_SECRET", ""),
     }
 
 
-def masked_secret() -> str:
-    secret = read_env().get("SHOPIFY_CLIENT_SECRET", "")
+def masked_secret(path: Path | None = None) -> str:
+    secret = read_env(path).get("SHOPIFY_CLIENT_SECRET", "")
     return f"…{secret[-4:]}" if secret else ""
 
 
-def save_app_credentials(client_id: str, client_secret: str) -> tuple[bool, str]:
+def save_app_credentials(client_id: str, client_secret: str, path: Path | None = None,
+                         store: str = "", extra: dict | None = None) -> tuple[bool, str]:
     client_id = (client_id or "").strip()
     client_secret = (client_secret or "").strip()
-    values = read_env()
+    values = read_env(path)
+    store = (store or "").strip().lower().replace("https://", "").replace("http://", "").strip("/")
+    if store:
+        if not store.endswith(".myshopify.com"):
+            return False, (f"{store!r} is not a .myshopify.com domain. It is the generated handle "
+                           "(Settings › Domains in that store's admin), not its custom domain.")
+        if store != values.get("SHOPIFY_STORE") and values.get("SHOPIFY_ADMIN_TOKEN"):
+            values["SHOPIFY_ADMIN_TOKEN"] = ""          # a token belongs to one store
+        values["SHOPIFY_STORE"] = store
+    for key, value in (extra or {}).items():
+        values[key] = (value or "").strip()
     if client_id:
         if not re.fullmatch(r"[0-9a-f]{32}", client_id):
             return False, ("A Client ID is 32 hex characters. Copy it from "
@@ -163,5 +182,5 @@ def save_app_credentials(client_id: str, client_secret: str) -> tuple[bool, str]
     values.setdefault("SHOPIFY_ADMIN_TOKEN", "")
     values.setdefault("SHOPIFY_API_VERSION", "2025-07")
     values.setdefault("SHOPIFY_STORE", "")
-    write_env(values)
+    write_env(values, path)
     return True, "App credentials saved."

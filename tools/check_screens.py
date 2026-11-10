@@ -109,7 +109,7 @@ def seed(work: Path) -> list[str]:
     return [f"/partner/{store.partner_id(recs[2])}", f"/partner/{store.partner_id(recs[2])}/files",
             f"/partner/{store.partner_id(recs[2])}/products",
             f"/partner/{store.partner_id(recs[0])}/products?show=active",
-            "/studio-item/7/shopify", "/studio-item/8/shopify"]
+            "/studio-item/7/shopify", "/studio-item/8/shopify", "/studio-item/9/shopify"]
 
 
 def fake_studio_product(rec):
@@ -151,10 +151,20 @@ def fake_studio_product(rec):
               "price": "34.99", "cost": "19.50", "compare_at": "39.99",
               "colors": ["Heather Charcoal", "Blue Spruce"], "ministries": ["ministry:womens"]})
 
+    biz_export = json.loads(json.dumps(export))
+    biz_export["project"].update({"org_name": "NFG - National Fuel Gas Distribution Corporation", "brand": "twc"})
+    biz_ctx = dict(ctx, store="twc", vendor="NFG - National Fuel Gas Distribution Corporation",
+                   org_tag="nfg-national-fuel-gas-distribution-corporation", ministries=[], profile=None,
+                   collection=None, storefront="https://thewilliamscollective.com",
+                   new_collection={"title": "NFG", "handle": "nfg-national-fuel-gas-distribution-corporation-a1b2c3",
+                                   "url": "https://thewilliamscollective.com/collections/"
+                                          "nfg-national-fuel-gas-distribution-corporation-a1b2c3"})
+
     def preview(iid, form=None):
-        out = sp.build_plan(export, rec, ctx, f, {})
-        out.update({"ok": not out["blocking"], "export": export, "record": rec, "form": f,
-                    "ministries": ctx["ministries"], "fingerprint": "f", "run": {}})
+        e, c = (biz_export, biz_ctx) if iid == 9 else (export, ctx)
+        out = sp.build_plan(e, None if iid == 9 else rec, c, f, {})
+        out.update({"ok": not out["blocking"], "export": e, "record": rec, "form": f, "business": iid == 9,
+                    "ministries": c["ministries"], "fingerprint": "f", "run": {}})
         return out
 
     def load_run(iid):

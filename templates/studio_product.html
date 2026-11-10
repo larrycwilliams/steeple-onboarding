@@ -18,6 +18,7 @@
   .sp-ups input{width:100%;box-sizing:border-box}
   .sp-checks{display:flex;flex-wrap:wrap;gap:6px 14px}
   .sp-checks label{text-transform:none;letter-spacing:0;font-size:.95rem;color:inherit;margin:0;display:flex;gap:6px;align-items:center}
+  .sp-bad,.sp-warn,.sp-ok{overflow-wrap:anywhere}
   .sp-bad{background:#fbe9e7;border-left:4px solid var(--bad,#a33);padding:10px 12px;border-radius:6px;margin:0 0 8px}
   .sp-warn{background:#fdf4e3;border-left:4px solid #c69447;padding:10px 12px;border-radius:6px;margin:0 0 8px}
   .sp-ok{background:#e8f3ea;border-left:4px solid #2f7a45;padding:10px 12px;border-radius:6px;margin:0 0 8px}
@@ -35,15 +36,18 @@
 <div class="sp-head">
   <h2>Create Shopify product</h2>
   {% if e %}<span>{{ e.project.org_name }} · <b>{{ e.item.code }}</b> {{ e.item.name }}</span>
-  <a href="{{ STUDIO_URL }}/i/{{ iid }}" target="_blank" rel="noopener">Open in the Studio ↗</a>{% endif %}
+  <a href="{{ STUDIO_URL }}/i/{{ iid }}" target="_blank" rel="noopener">Open in the Studio ↗</a>
+  <span class="pill">{{ 'The Williams Collective store' if d.business else 'Steeple & Stitch store' }}</span>{% endif %}
 </div>
 
 {% set res = run.result if run else None %}
 {% if res and res.product %}
 <div class="sp-card">
   <h3>{% if res.partial %}Created — with steps to finish by hand{% else %}Created in Shopify{% endif %}</h3>
-  <p><a class="btn" href="{{ admin_url(res.product) }}" target="_blank" rel="noopener">Open in Shopify ↗</a>
+  <p><a class="btn" href="{{ admin_url(res.product, res.store or 'ss') }}" target="_blank" rel="noopener">Open in Shopify ↗</a>
      <span class="small">{{ res.finished or res.started }} · {{ res.by }}</span></p>
+  {% if res.collection %}<p>Share this link with the business — their collection, not in the menus or search:<br>
+    <a href="{{ res.collection.url }}" target="_blank" rel="noopener"><b>{{ res.collection.url }}</b></a></p>{% endif %}
   <ul class="sp-steps">{% for s in res.steps %}<li>{{ '✓' if s.ok else '✗' }} <b>{{ s.step }}</b> — {{ s.detail }}</li>{% endfor %}</ul>
   {% if run.plan and run.plan.status == 'DRAFT' %}<p class="small">It is a <b>draft</b>: check it on the product page, then set it Active in Shopify.</p>{% endif %}
   {% if run.plan and run.plan.ss_style %}<p class="small">For ssorder, map it to its blank on the hub:
@@ -74,11 +78,13 @@
   <div class="sp-card"><h3>Where it goes</h3>
     <dl class="sp-dl">
       <dt>Vendor</dt><dd>{{ p.vendor or '—' }}</dd>
-      <dt>Collection</dt><dd>{% if p.collection %}<a href="{{ p.collection.url }}" target="_blank" rel="noopener">{{ p.collection.title }}</a>{% else %}—{% endif %}</dd>
+      <dt>Store</dt><dd>{{ 'The Williams Collective' if p.store == 'twc' else 'Steeple & Stitch' }}</dd>
+      <dt>Collection</dt><dd>{% if p.collection %}<a href="{{ p.collection.url }}" target="_blank" rel="noopener">{{ p.collection.title }}</a>
+        {% elif p.new_collection %}new, link-only: <span class="small">{{ p.new_collection.url }}</span>{% else %}—{% endif %}</dd>
       <dt>Type</dt><dd>{{ p.type }}</dd>
       <dt>Tags</dt><dd>{{ p.tags|join(', ') or '—' }}</dd>
       <dt>Stocked at</dt><dd>{{ p.keep_names|join(' + ') or '—' }} <span class="small">(every other location detached)</span></dd>
-      <dt>Shipping</dt><dd>{{ p.profile.name if p.profile else 'General' }}</dd>
+      {% if p.store != 'twc' %}<dt>Shipping</dt><dd>{{ p.profile.name if p.profile else 'General' }}</dd>{% endif %}
       <dt>Channels</dt><dd>{{ p.publications|length }}</dd>
       <dt>Swatches</dt><dd>{{ 'linked' if p.swatch else 'not linked' }}</dd>
       <dt>Metafields</dt><dd>{{ p.metafields|map(attribute='key')|join(', ') or '—' }}</dd>

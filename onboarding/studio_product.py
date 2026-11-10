@@ -45,9 +45,18 @@ from pathlib import Path
 
 import requests
 
-from . import clone, dashboard, store
+from . import clone, dashboard, store, twc_shop
 from .shopify_pull import _load_env, configured
-from .storefront import _gql
+from .storefront import _gql as _ss_gql
+
+
+def _gql(query: str, variables: dict | None = None, store: str = "ss") -> dict:
+    """One GraphQL call against the store this product belongs to: Steeple &
+    Stitch for partner projects, The Williams Collective for business
+    projects (doc 73). Never raises."""
+    if store == "twc":
+        return twc_shop.gql(query, variables)
+    return _ss_gql(query, variables)
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "product_runs" / "studio"
@@ -154,8 +163,8 @@ def _save_run(iid: int, data: dict) -> None:
     os.replace(tmp, _run_path(iid))
 
 
-def admin_url(gid: str) -> str:
-    shop = os.environ.get("SHOPIFY_STORE", "")
+def admin_url(gid: str, store: str = "ss") -> str:
+    shop = twc_shop.domain() if store == "twc" else os.environ.get("SHOPIFY_STORE", "")
     num = str(gid or "").rsplit("/", 1)[-1]
     return f"https://{shop}/admin/products/{num}" if shop and num else ""
 
@@ -345,11 +354,109 @@ def context(record: dict, title: str) -> dict:
     return ctx
 
 
+# ------------------------------------------------- a business, in TWC's store
+
+TWC_CONTEXT_QUERY = """
+query T($q: String!, $dup: String!) {
+  currentAppInstallation { accessScopes { handle } }
+  shop { name primaryDomain { url } }
+  locations(first: 50) { nodes { id name isActive } }
+  publications(first: 20) { nodes { id name } }
+  collections(first: 10, query: $q) { nodes { id title handle
+      ruleSet { rules { column relation condition } } } }
+  dupes: products(first: 5, query: $dup) { nodes { id title status } }
+}"""
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+
+
+def private_handle(vendor: str, domain: str) -> str:
+    """The link-only collection's handle: name + 6 characters nobody would
+    guess (doc 54). Derived, not random, so the preview and the create agree
+    and a second preview names the same collection."""
+    tail = hashlib.sha256(f"{domain}|{vendor}|twc-business".encode()).hexdigest()[:6]
+    return f"{_slug(vendor)}-{tail}"
+
+
+def context_twc(export: dict, title: str) -> dict:
+    """A business customer sold from The Williams Collective's store (doc 73):
+    no partner record, no payout, no church fields. Reads only."""
+    proj = export["project"]
+    vendor = proj["org_name"].strip()
+    ctx: dict = {"store": "twc", "errors": [], "scopes": set(), "collection": None, "new_collection": None,
+                 "vendor": vendor, "store_name": vendor, "org": "", "org_tag": _slug(vendor), "profile": None,
+                 "publications": [], "house": None, "keep": [], "keep_names": [], "locations": [],
+                 "ministries": [], "swatches": None, "dupes": [], "has_inhouse_def": False,
+                 "siblings": 0, "sort": "", "storefront": ""}
+    if not twc_shop.configured():
+        ctx["errors"].append("The Williams Collective store is not connected yet. Settings › "
+                             "The Williams Collective store: save the app's details, then Connect.")
+        return ctx
+    v = vendor.replace('"', '\\"')
+    r = _gql(TWC_CONTEXT_QUERY, {"q": f'title:"{v}"', "dup": f'title:"{title.replace(chr(34), "")}"'}, store="twc")
+    if not r["ok"]:
+        ctx["errors"].append(f"Could not read the TWC store: {r['error']}")
+        return ctx
+    d = r["data"]
+    ctx["scopes"] = {s["handle"] for s in ((d.get("currentAppInstallation") or {}).get("accessScopes") or [])}
+    base = (((d.get("shop") or {}).get("primaryDomain") or {}).get("url") or "").rstrip("/")
+    ctx["storefront"] = base
+    locs = [l for l in ((d.get("locations") or {}).get("nodes") or []) if l.get("isActive", True)]
+    ctx["locations"] = locs
+    want = twc_shop.house_location_name().strip().casefold()
+    house = (next((l for l in locs if l["name"].strip().casefold() == want), None) if want
+             else (locs[0] if len(locs) == 1 else None))
+    if house:
+        ctx.update({"house": {"id": house["id"], "name": house["name"]}, "keep": [house["id"]],
+                    "keep_names": [house["name"]]})
+    elif want:
+        ctx["errors"].append(f"The TWC store has no location called “{twc_shop.house_location_name()}”. "
+                             "Fix Ships from in Settings › The Williams Collective store.")
+    else:
+        ctx["errors"].append(f"The TWC store has {len(locs)} locations. Name the one it ships from in "
+                             "Settings › The Williams Collective store › Ships from.")
+    ctx["publications"] = [p["id"] for p in ((d.get("publications") or {}).get("nodes") or [])
+                           if (p.get("name") or "").lower() == "online store"]
+    for c in ((d.get("collections") or {}).get("nodes") or []):
+        rules = ((c.get("ruleSet") or {}).get("rules") or [])
+        if any(x["column"] == "VENDOR" and x["relation"] == "EQUALS"
+               and dashboard.vendor_key(x["condition"]) == dashboard.vendor_key(vendor) for x in rules):
+            ctx["collection"] = {"id": c["id"], "title": c["title"], "handle": c["handle"],
+                                 "url": f"{base}/collections/{c['handle']}"}
+            break
+    if not ctx["collection"]:
+        handle = private_handle(vendor, twc_shop.domain())
+        ctx["new_collection"] = {"title": vendor, "handle": handle, "url": f"{base}/collections/{handle}"}
+    ctx["dupes"] = [p for p in ((d.get("dupes") or {}).get("nodes") or [])
+                    if p["title"].strip().casefold() == title.strip().casefold()]
+    if "read_metaobjects" in ctx["scopes"]:
+        sw, after = {}, None
+        for _ in range(8):
+            sr = _gql(SWATCH_QUERY, {"after": after}, store="twc")
+            if not sr["ok"]:
+                sw = None
+                break
+            block = sr["data"].get("metaobjects") or {}
+            for n in block.get("nodes") or []:
+                label = ((n.get("field") or {}).get("value") or "").strip().casefold()
+                if label:
+                    sw.setdefault(label, n["id"])
+            if not (block.get("pageInfo") or {}).get("hasNextPage"):
+                break
+            after = block["pageInfo"]["endCursor"]
+        ctx["swatches"] = sw
+    return ctx
+
+
 # ------------------------------------------------------------------- the plan
 
 def defaults(export: dict, record: dict | None) -> dict:
     item = export["item"]
-    short = ((record or {}).get("short_name") or "").strip() or (export["project"]["org_name"])
+    org = export["project"]["org_name"]
+    # "NFG - National Fuel" -> "NFG"; a partner's own short name wins.
+    short = ((record or {}).get("short_name") or "").strip() or org.split(" - ")[0].strip() or org
     color = item.get("color") or ""
     ss = export.get("ss") or {}
     sizes = []
@@ -401,6 +508,7 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
     blocking: list[str] = list(ctx.get("errors") or [])
     warnings: list[str] = []
     item, proj = export["item"], export["project"]
+    business = ctx.get("store") == "twc"
 
     # --- may this item become a product at all
     if not item.get("ready"):
@@ -410,21 +518,25 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
         gid = item.get("shopify_product") or run["result"]["product"]
         blocking.append(f"{item['code']} is already in Shopify ({gid.rsplit('/', 1)[-1]}). "
                         "Open it from the link above instead of creating a second one.")
-    if record is None:
+    if record is None and not business:
         blocking.append("This Studio project is not linked to a Portal partner. In the Studio: "
                         "Intake & uploads › Project details › Operations Portal partner.")
-    if proj.get("brand") == "twc":
-        warnings.append("This is a TWC (The Williams Collective) project. It will still be created in "
-                        "the Steeple & Stitch store under the church's vendor.")
 
     # --- church in Shopify
     missing = [s for s in NEEDED_SCOPES if s not in ctx.get("scopes", set())]
     if ctx.get("scopes") and missing:
         blocking.append(f"The Shopify token lacks {', '.join(missing)}. Reconnect from Settings.")
     for scope, what in SOFT_SCOPES.items():
+        if business and scope == "write_shipping":
+            continue                    # TWC sells on its store's own shipping rates
         if ctx.get("scopes") and scope not in ctx["scopes"]:
             warnings.append(f"The token lacks {scope}, so {what}.")
-    if ctx.get("collection") and not ctx.get("house"):
+    if business and ctx.get("new_collection"):
+        nc = ctx["new_collection"]
+        warnings.append(f"{ctx['vendor']} has no collection in the TWC store yet. Creating this product also "
+                        f"creates a link-only collection: {nc['url']} — not in the menus or search; anyone "
+                        "with the link can buy (doc 54).")
+    if ctx.get("collection") and not ctx.get("house") and not business:
         blocking.append("The house location in pod2twc's config.json is not a location in Shopify.")
     if ctx.get("collection") and not ctx.get("profile") and "write_shipping" in ctx.get("scopes", set()):
         first = " and this is its first product" if not ctx.get("siblings") else ""
@@ -433,7 +545,7 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
     if ctx.get("ministries") and not f["ministries"]:
         warnings.append("No ministry chosen, so it will show only in the church's Everything view.")
     if ctx.get("sort") == "MANUAL":
-        warnings.append("The church's collection is sorted by hand: the new product lands at the end. "
+        warnings.append("The collection is sorted by hand: the new product lands at the end. "
                         "Move it in the admin if it belongs elsewhere.")
 
     # --- what it is
@@ -534,7 +646,10 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
     if len(colors) > 1:
         warnings.append(f"The mockups show {item.get('color')} only; the other colours will use the same images.")
 
-    tags = ([ctx["org_tag"]] if ctx.get("org_tag") else []) + list(f["ministries"])
+    # Only ministries this church actually offers (published sub-collections);
+    # a business has none.
+    offered = {m["tag"] for m in ctx.get("ministries") or []}
+    tags = ([ctx["org_tag"]] if ctx.get("org_tag") else []) + [m for m in f["ministries"] if m in offered]
     if (item.get("method") or "dtf") not in PRINTED:
         # The theme's print-care block (doc 47) is for printed items. An
         # embroidered or patch piece says so in its tags, whatever its title.
@@ -551,7 +666,11 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
             {"namespace": "custom", "key": "church_store_name", "type": "single_line_text_field", "value": ctx["store_name"]},
             {"namespace": "custom", "key": "church_store_url", "type": "url", "value": coll["url"]},
         ]
-    if ctx.get("has_inhouse_def"):
+    if business:
+        # A business listing is link-only: out of storefront search and the
+        # sitemap (doc 54). No church fields -- there is no partner.
+        metafields = [{"namespace": "seo", "key": "hidden", "type": "number_integer", "value": "1"}]
+    elif ctx.get("has_inhouse_def"):
         metafields.append({"namespace": "custom", "key": "inhouse_only", "type": "boolean", "value": "true"})
     elif ctx.get("collection"):
         warnings.append("The custom.inhouse_only definition does not exist yet, so the product is not "
@@ -567,12 +686,15 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
         "profile": ctx.get("profile"), "publications": ctx.get("publications") or [],
         "images": [{"view": m["view"], "url": m["url"], "preview": m.get("preview", "")} for m in mockups],
         "ss_style": ss.get("style") or item.get("ss_style") or "",
+        "store": "twc" if business else "ss", "new_collection": ctx.get("new_collection"),
+        "storefront": ctx.get("storefront") or "",
     }
     return {"blocking": blocking, "warnings": warnings, "plan": plan}
 
 
 def fingerprint(plan: dict) -> str:
-    keep = {k: plan[k] for k in ("title", "vendor", "tags", "status", "variants", "images", "description")}
+    keep = {k: plan.get(k) for k in ("title", "vendor", "tags", "status", "variants", "images", "description",
+                                     "store", "new_collection")}
     return hashlib.sha256(json.dumps(keep, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
@@ -582,14 +704,19 @@ def preview(iid: int, form=None) -> dict:
     if export is None:
         return {"ok": False, "blocking": [err], "warnings": [], "plan": None, "export": None,
                 "form": None, "fingerprint": "", "run": load_run(iid)}
+    business = export["project"].get("brand") == "twc"
     pid = export["project"].get("portal_pid") or ""
-    record = store.load(pid) if pid else None
+    record = store.load(pid) if pid and not business else None
     f = read_form(form, defaults(export, record))
-    ctx = context(record, f["title"]) if record is not None else {
-        "errors": [], "scopes": set(), "locations": [], "ministries": []}
+    if business:
+        ctx = context_twc(export, f["title"])
+    elif record is not None:
+        ctx = context(record, f["title"])
+    else:
+        ctx = {"errors": [], "scopes": set(), "locations": [], "ministries": []}
     run = load_run(iid)
     out = build_plan(export, record, ctx, f, run)
-    out.update({"ok": not out["blocking"], "export": export, "record": record, "form": f,
+    out.update({"ok": not out["blocking"], "export": export, "record": record, "form": f, "business": business,
                 "ministries": ctx.get("ministries") or [], "fingerprint": fingerprint(out["plan"]),
                 "run": run})
     return out
@@ -597,12 +724,12 @@ def preview(iid: int, form=None) -> dict:
 
 # ------------------------------------------------------------------ commit
 
-def _upload(name: str, data: bytes) -> tuple[str, str]:
+def _upload(name: str, data: bytes, store: str = "ss") -> tuple[str, str]:
     """(resourceUrl, error) through a staged upload."""
     r = _gql("""mutation S($input: [StagedUploadInput!]!) { stagedUploadsCreate(input: $input) {
                   stagedTargets { url resourceUrl parameters { name value } } userErrors { message } } }""",
              {"input": [{"resource": "IMAGE", "filename": name, "mimeType": "image/jpeg",
-                         "httpMethod": "POST", "fileSize": str(len(data))}]})
+                         "httpMethod": "POST", "fileSize": str(len(data))}]}, store=store)
     if not r["ok"]:
         return "", r["error"]
     node = r["data"].get("stagedUploadsCreate") or {}
@@ -682,6 +809,37 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
         _save_run(iid, run)
         return ok
 
+    shop = plan.get("store") or "ss"
+    result["store"] = shop
+
+    # 0. a business's first product: its link-only collection (doc 54 pattern)
+    nc = plan.get("new_collection")
+    if nc:
+        cr = _gql("""mutation C($input: CollectionInput!) { collectionCreate(input: $input) {
+                      collection { id handle } userErrors { field message } } }""",
+                  {"input": {"title": nc["title"], "handle": nc["handle"],
+                             "ruleSet": {"appliedDisjunctively": False, "rules": [
+                                 {"column": "VENDOR", "relation": "EQUALS", "condition": plan["vendor"]}]},
+                             "metafields": [{"namespace": "seo", "key": "hidden", "type": "number_integer",
+                                             "value": "1"}]}}, store=shop)
+        node = ((cr.get("data") or {}).get("collectionCreate") or {}) if cr["ok"] else {}
+        col = node.get("collection")
+        e = node.get("userErrors") or []
+        if not col:
+            msg = cr.get("error") or "; ".join(x["message"] for x in e) or "no collection returned"
+            step("Link-only collection", False, msg)
+            result.update({"ok": False, "finished": _now(), "error": f"Could not create the collection: {msg}"})
+            _save_run(iid, run)
+            return {"ok": False, "error": result["error"], "run": run, "pre": pre}
+        result["collection"] = {"id": col["id"], "url": nc["url"].rsplit("/", 1)[0] + "/" + col["handle"]}
+        if plan.get("publications"):
+            _gql("""mutation P($id: ID!, $in: [PublicationInput!]!) { publishablePublish(id: $id, input: $in) {
+                     userErrors { message } } }""",
+                 {"id": col["id"], "in": [{"publicationId": p} for p in plan["publications"]]}, store=shop)
+        step("Link-only collection", True, result["collection"]["url"])
+    elif plan.get("store") == "twc" and plan.get("collection"):
+        result["collection"] = {"id": plan["collection"]["id"], "url": plan["collection"]["url"]}
+
     # 1. images
     files = []
     for m in plan["images"]:
@@ -690,13 +848,13 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
         except Exception as exc:                              # noqa: BLE001
             step(f"Image: {m['view']}", False, f"could not read it from the Studio ({exc})")
             continue
-        url, err = _upload(f"{re.sub(r'[^a-z0-9]+', '-', plan['title'].lower()).strip('-')}-{m['view']}.jpg", blob)
+        url, err = _upload(f"{re.sub(r'[^a-z0-9]+', '-', plan['title'].lower()).strip('-')}-{m['view']}.jpg", blob, store=shop)
         if step(f"Image: {m['view']}", not err, err or "uploaded"):
             files.append({"originalSource": url, "contentType": "IMAGE",
                           "alt": f"{plan['title'].removesuffix(' TWC')}, {m['view'].replace('_', ' ')}"})
 
     # 2. the product itself
-    r = _gql(PRODUCT_SET, {"input": product_input(plan, files)})
+    r = _gql(PRODUCT_SET, {"input": product_input(plan, files)}, store=shop)
     node = (r.get("data") or {}).get("productSet") if r["ok"] else None
     errs = (node or {}).get("userErrors") or []
     product = (node or {}).get("product")
@@ -727,7 +885,7 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
                 continue
             t = _gql("""mutation T($id: ID!, $u: [InventoryBulkToggleActivationInput!]!) {
                          inventoryBulkToggleActivation(inventoryItemId: $id, inventoryItemUpdates: $u) {
-                           userErrors { message } } }""", {"id": inv["id"], "u": updates})
+                           userErrors { message } } }""", {"id": inv["id"], "u": updates}, store=shop)
             e = (t.get("data") or {}).get("inventoryBulkToggleActivation", {}).get("userErrors") if t["ok"] else None
             if not t["ok"] or e:
                 bad += 1
@@ -740,7 +898,7 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
     if plan.get("profile"):
         dp = _gql("""mutation D($id: ID!, $p: DeliveryProfileInput!) { deliveryProfileUpdate(id: $id, profile: $p) {
                       userErrors { message } } }""",
-                  {"id": plan["profile"]["id"], "p": {"variantsToAssociate": variant_ids}})
+                  {"id": plan["profile"]["id"], "p": {"variantsToAssociate": variant_ids}}, store=shop)
         e = (dp.get("data") or {}).get("deliveryProfileUpdate", {}).get("userErrors") if dp["ok"] else None
         step(f"Delivery profile: {plan['profile']['name']}", dp["ok"] and not e,
              (dp.get("error") or (e[0]["message"] if e else "assigned")))
@@ -748,7 +906,7 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
     if plan.get("publications"):
         pb = _gql("""mutation P($id: ID!, $in: [PublicationInput!]!) { publishablePublish(id: $id, input: $in) {
                       userErrors { message } } }""",
-                  {"id": gid, "in": [{"publicationId": p} for p in plan["publications"]]})
+                  {"id": gid, "in": [{"publicationId": p} for p in plan["publications"]]}, store=shop)
         e = (pb.get("data") or {}).get("publishablePublish", {}).get("userErrors") if pb["ok"] else None
         step("Sales channels", pb["ok"] and not e,
              pb.get("error") or (e[0]["message"] if e else f"{len(plan['publications'])} channel(s)"))
