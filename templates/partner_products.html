@@ -31,7 +31,7 @@
 </style>
 
 <div class="pp-head">
-  <h2>{{ record.org_name }} — Shopify products</h2>
+  <h2>{{ record.org_name }} — TWC products</h2>
   <a href="{{ url_for('edit_partner', pid=pid) }}">Record</a>
   <a href="{{ url_for('partner_files', pid=pid) }}">Files</a>
   <a href="{{ url_for('orders_page') }}?p={{ pid }}">Orders</a>
@@ -63,7 +63,7 @@
 </div>
 
 {% if not products %}
-<div class="note">{% if total %}None in this view.{% else %}No products in Shopify under
+<div class="note">{% if total %}None in this view.{% else %}No in-house (TWC) products in Shopify under
   {% if vendors %}{{ vendors|join(', ') }}{% else %}this partner’s vendor name{% endif %} yet.
   If they exist under a different vendor, set <strong>Shopify vendor</strong> on the <a href="{{ url_for('edit_partner', pid=pid) }}">record</a>.{% endif %}</div>
 {% else %}
@@ -91,7 +91,9 @@
   {% endfor %}
 </div>
 {% endif %}
-<p class="pp-s" style="margin-top:14px">From Shopify as of {{ pulled_at }} · updates every 15 minutes, or press Refresh now on Home.
+<p class="pp-s" style="margin-top:14px">In-house products only: titles ending “TWC”.{% if pod_hidden %}
+  {{ pod_hidden }} POD product{{ 's' if pod_hidden != 1 }} under this partner {{ 'are' if pod_hidden != 1 else 'is' }} not shown.{% endif %}<br>
+  From Shopify as of {{ pulled_at }} · updates every 15 minutes, or press Refresh now on Home.
   Vendor{{ 's' if vendors|length != 1 }}: {{ vendors|join(', ') or '—' }}.</p>
 {% endif %}
 {% endblock %}

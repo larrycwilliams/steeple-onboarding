@@ -9,6 +9,10 @@ mapping as the Dashboard, Statements and Programs, so a product is never shown
 under two partners, and a vendor two records both guess at is reported rather
 than handed to either.
 
+Only in-house products are listed -- titles ending " TWC", the same rule the
+Orders board and ssorder use. POD products (Printify, Printful, Gelato, Ninja)
+are counted in a one-line note, not shown (Larry, 2026-11-10).
+
 Sales per product come from the same cache's orders: units are
 currentQuantity (refunds out), money is the after-all-discounts price -- the
 statement maths, excluding test and cancelled orders.
@@ -19,6 +23,7 @@ import os
 from datetime import datetime, timezone
 
 from . import dashboard, shopify_sales, store
+from .orders import INHOUSE_SUFFIX
 
 STOREFRONT = os.environ.get("STOREFRONT_URL", "https://www.steepleandstitch.com").rstrip("/")
 STATUS_ORDER = {"ACTIVE": 0, "DRAFT": 1, "ARCHIVED": 2}
@@ -81,7 +86,7 @@ def for_partner(pid: str, status: str = "all") -> dict | None:
             "pulled_at": _day(snap.get("pulled_at") or "") if snap else "—",
             "products": [], "counts": {"ACTIVE": 0, "DRAFT": 0, "ARCHIVED": 0},
             "units": 0, "revenue": "—", "no_cost": 0, "vendors": [], "collision": "",
-            "status": status, "shop": os.environ.get("SHOPIFY_STORE", "")}
+            "status": status, "shop": os.environ.get("SHOPIFY_STORE", ""), "pod_hidden": 0}
     if not snap:
         return base
 
@@ -103,6 +108,9 @@ def for_partner(pid: str, status: str = "all") -> dict | None:
     rows = []
     for p in snap.get("catalog") or []:
         if dashboard.vendor_key(p.get("vendor", "")) not in mine:
+            continue
+        if not (p.get("title") or "").rstrip().endswith(INHOUSE_SUFFIX):
+            base["pod_hidden"] += 1
             continue
         st = (p.get("status") or "").upper()
         base["counts"][st] = base["counts"].get(st, 0) + 1

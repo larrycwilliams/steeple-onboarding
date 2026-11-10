@@ -83,7 +83,7 @@ def seed(work: Path) -> list[str]:
         "pulled_at": ago(0.01), "orders": orders, "collections": [],
         # products with the longest titles and widest price ranges a card can carry (doc 71)
         "catalog": [{"id": f"gid://shopify/Product/{900 + i}", "vendor": names[i % 3],
-                     "title": f"{names[i % 3]} Logo Mascot Hoodie — Extended Title Garment-Dyed Heavyweight {i}",
+                     "title": f"{names[i % 3]} Logo Mascot Hoodie — Extended Title Garment-Dyed Heavyweight {i}" + (" TWC" if i < 10 else " Printify"),
                      "status": ("ACTIVE", "DRAFT", "ARCHIVED")[i % 3], "handle": f"item-{i}",
                      "type": "Hoodies & Sweatshirts", "variants": 48, "price_min": 24.0,
                      "price_max": 1249.0, "unit_cost": None if i % 4 == 0 else 19.5,

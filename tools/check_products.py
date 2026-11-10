@@ -49,20 +49,21 @@ pid = {n: store.partner_id(r) for n, r in ((GCS, gcs), (ATH, ath), (REV, rev))}
 
 
 def prod(n, vendor, status="ACTIVE", cost=9.0, lo=24.0, hi=None, **kw):
-    return {"id": f"gid://shopify/Product/{n}", "title": f"Item {n}", "vendor": vendor, "status": status,
+    return {"id": f"gid://shopify/Product/{n}", "title": kw.pop("title", f"Item {n} TWC"), "vendor": vendor, "status": status,
             "unit_cost": cost, "unit_costs": [cost] if cost is not None else [], "handle": f"item-{n}",
             "type": "T-Shirts", "variants": 6, "price_min": lo, "price_max": hi if hi is not None else lo,
             "image": f"https://cdn.example/{n}.jpg", "updated_at": "2026-11-01T12:00:00Z", **kw}
 
 
 catalog = [prod(1, GCS), prod(2, GCS, cost=None), prod(3, GCS, "DRAFT"), prod(4, GCS, "ARCHIVED"),
-           prod(5, GCS, cost=30.0, lo=28.0, hi=32.0), prod(6, REV), prod(7, "Somebody Else")]
+           prod(5, GCS, cost=30.0, lo=28.0, hi=32.0), prod(6, REV), prod(7, "Somebody Else"),
+           prod(9, GCS, title="Item 9 Printify Mug"), prod(10, GCS, title="TWC Logo Tee (POD)")]
 old = {k: v for k, v in prod(8, REV).items() if k in ("id", "title", "vendor", "status", "unit_cost", "unit_costs")}
 catalog.append(old)                                     # a product from a cache written before 3.76
 
 
 def line(n, qty, price, vendor=GCS):
-    return {"title": f"Item {n}", "qty": qty, "qty_ordered": qty, "vendor": vendor,
+    return {"title": f"Item {n} TWC", "qty": qty, "qty_ordered": qty, "vendor": vendor,
             "product_id": f"gid://shopify/Product/{n}", "unit_price": price, "unit_cost": 9.0}
 
 
@@ -85,21 +86,21 @@ cache.mkdir(exist_ok=True)
 g = products.for_partner(pid[GCS])
 titles = [p["title"] for p in g["products"]]
 check("products are matched by vendor: GCS gets its five, nobody else's", sorted(titles) ==
-      ["Item 1", "Item 2", "Item 3", "Item 4", "Item 5"])
+      ["Item 1 TWC", "Item 2 TWC", "Item 3 TWC", "Item 4 TWC", "Item 5 TWC"])
 check("the explicit shopify_vendor beats GCS Athletics' inherited name", products.for_partner(pid[ATH])["total"] == 0)
 check("a vendor guessed from the org name still matches", [p["title"] for p in products.for_partner(pid[REV])["products"]]
-      == ["Item 6", "Item 8"])
-check("live first, best sellers first", titles[0] == "Item 1" and titles[-1] == "Item 4")
+      == ["Item 6 TWC", "Item 8 TWC"])
+check("live first, best sellers first", titles[0] == "Item 1 TWC" and titles[-1] == "Item 4 TWC")
 check("counts by status", g["counts"] == {"ACTIVE": 3, "DRAFT": 1, "ARCHIVED": 1})
-i1 = next(p for p in g["products"] if p["title"] == "Item 1")
+i1 = next(p for p in g["products"] if p["title"] == "Item 1 TWC")
 check("units sold leave out test, cancelled and refunded lines", i1["units"] == 5)
 check("sales use the after-discount price", i1["revenue"] == "$108.00")
 check("last sold date comes from the latest real order", i1["last_sold"] == "Nov 5, 2026")
 check("margin is lowest price minus cost", i1["margin"] == "$15.00" and not i1["margin_bad"])
-i5 = next(p for p in g["products"] if p["title"] == "Item 5")
+i5 = next(p for p in g["products"] if p["title"] == "Item 5 TWC")
 check("a price range shows low–high, and cost above price is flagged", i5["price"] == "$28.00–$32.00"
       and i5["margin"] == "-$2.00" and i5["margin_bad"])
-i2 = next(p for p in g["products"] if p["title"] == "Item 2")
+i2 = next(p for p in g["products"] if p["title"] == "Item 2 TWC")
 check("live with no cost: cost and margin are dashes, never $0", i2["cost"] == "—" and i2["margin"] == "—"
       and g["no_cost"] == 1)
 check("summary units and sales across the partner", g["units"] == 6 and g["revenue"] == "$132.00")
@@ -108,8 +109,10 @@ check("links: Shopify admin by number, storefront only when live",
 check("drafts have no storefront link", all(not p["store_url"] for p in g["products"] if p["status"] != "ACTIVE")
       and i1["store_url"].endswith("/products/item-1"))
 check("filter: live only", [p["status"] for p in products.for_partner(pid[GCS], "active")["products"]] == ["ACTIVE"] * 3)
-r8 = next(p for p in products.for_partner(pid[REV])["products"] if p["title"] == "Item 8")
+r8 = next(p for p in products.for_partner(pid[REV])["products"] if p["title"] == "Item 8 TWC")
 check("a product from an older cache shows dashes, not errors", r8["price"] == "—" and r8["image"] == "")
+check("only titles ending TWC are listed; POD products are counted, not shown",
+      g["pod_hidden"] == 2 and all(t.endswith(" TWC") for t in titles))
 check("the seed check record is not a partner here", products.for_partner("seed") is None
       or products.for_partner("seed")["total"] == 0)
 
@@ -118,7 +121,7 @@ snap = {p.name: p.read_text() for p in store.PARTNERS.glob("*.json")}
 client = portal.app.test_client()
 page = client.get(f"/partner/{pid[GCS]}/products")
 html = page.get_data(as_text=True)
-check("/partner/<pid>/products renders", page.status_code == 200 and "Item 1" in html and "Item 7" not in html)
+check("/partner/<pid>/products renders", page.status_code == 200 and "Item 1 TWC" in html and "Item 7" not in html and "Printify Mug" not in html and "2 POD products" in html)
 check("page shows images, filters and Shopify links", "cdn.example/1.jpg" in html and "?show=draft" in html
       and "Edit in Shopify" in html or "View in store" in html)
 check("unknown partner is a 404", client.get("/partner/nope/products").status_code == 404)
@@ -147,7 +150,7 @@ check("a pulled product keeps the new fields", clean["price_min"] == 22.0 and cl
       and clean["image"] == "https://cdn/x.jpg" and clean["variants"] == 4 and clean["unit_cost"] == 8.5)
 check("a product with no image or price still cleans", shopify_sales._clean_product(
       {"id": "x", "title": "T", "featuredMedia": None, "priceRangeV2": None})["image"] == "")
-check("version is 3.76 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 76))
+check("version is 3.77 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 77))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")
