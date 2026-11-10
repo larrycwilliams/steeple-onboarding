@@ -128,6 +128,8 @@ def fake_gql(query, variables=None, store="ss"):
             "publications": {"nodes": [{"id": "gid://shopify/Publication/T9", "name": "Online Store"},
                                        {"id": "gid://shopify/Publication/T8", "name": "Shop"}]},
             "collections": {"nodes": TWC["collections"]}, "dupes": {"nodes": TWC["dupes"]}}}
+    if "collectionUpdate" in q:
+        return {"ok": True, "data": {"collectionUpdate": {"userErrors": [], "collection": {"id": variables["input"]["id"]}}}}
     if "collectionCreate" in q:
         return {"ok": True, "data": {"collectionCreate": {"userErrors": [], "collection": {
             "id": "gid://shopify/Collection/T77", "handle": variables["input"]["handle"]}}}}
@@ -412,7 +414,7 @@ check("a business needs no Portal partner link", r["ok"] and not any("Portal par
 check("defaults: the short name is the part before ' - '", sp.preview(7, None)["form"]["title"].startswith("NFG - Logo Crewneck"))
 check("every read goes to the TWC store, none to Steeple & Stitch", STORES_HIT and set(STORES_HIT) == {"twc"})
 check("vendor is the business; tag is its slug; no ministry, no church fields",
-      p["vendor"] == "NFG - National Fuel" and p["tags"] == ["nfg-national-fuel"] and p["store"] == "twc"
+      p["vendor"] == "NFG - National Fuel" and p["tags"] == ["nfg-national-fuel", "private-store"] and p["store"] == "twc"
       and [m["key"] for m in p["metafields"]] == ["hidden"])
 check("the single TWC location is where it is stocked", p["keep"] == ["gid://shopify/Location/T1"])
 check("published to the Online Store only (not Shop)", p["publications"] == ["gid://shopify/Publication/T9"])
@@ -675,7 +677,36 @@ EXPORT["data"] = export()
 page = portal.app.test_client().get("/studio-item/7/shopify").get_data(as_text=True)
 check("Open in Shopify is a real button; the ssorder line is runnable",
       'class="btn btn-gold"' in page and "python3 ssorder.py map set" in page)
-check("version is 3.85 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 85))
+
+# ------------------------------------------- 3.86: a business's private corner
+EXPORT["data"] = nfg_export()
+sp._run_path(7).unlink(missing_ok=True)
+TWC["collections"] = []
+pre = sp.preview(7, form(title="NFG - Staff tee TWC"))
+CALLS.clear()
+res = sp.commit(7, form(title="NFG - Staff tee TWC"), pre["fingerprint"], "Larry")
+ps = next(v for n, v in CALLS if n == "mutation Create")["input"]
+cc = next(v for n, v in CALLS if n == "mutation C")["input"]
+check("a business product uses product.private and is tagged private-store",
+      ps.get("templateSuffix") == "private" and "private-store" in ps["tags"])
+check("its new collection uses collection.private", cc.get("templateSuffix") == "private")
+sp._run_path(7).unlink(missing_ok=True)
+TWC["collections"] = [{"id": "gid://shopify/Collection/T77", "title": "NFG - National Fuel", "handle": "nfg-national-fuel-cedf24",
+                       "ruleSet": {"rules": [{"column": "VENDOR", "relation": "EQUALS", "condition": "NFG - National Fuel"}]}}]
+pre = sp.preview(7, form(title="NFG - Polo TWC"))
+CALLS.clear()
+res = sp.commit(7, form(title="NFG - Polo TWC"), pre["fingerprint"], "Larry")
+cu = [v for n, v in CALLS if n == "mutation U"]
+check("an existing business collection is switched to collection.private too",
+      res["ok"] and cu and cu[0]["input"] == {"id": "gid://shopify/Collection/T77", "templateSuffix": "private"}
+      and not res["run"]["result"]["partial"])
+EXPORT["data"] = export()
+sp._run_path(7).unlink(missing_ok=True)
+pre = sp.preview(7, form())
+check("a church product is untouched: no private tag or template",
+      "private-store" not in pre["plan"]["tags"] and not pre["plan"]["template_suffix"]
+      and "templateSuffix" not in sp.product_input(pre["plan"], []))
+check("version is 3.86 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 86))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")

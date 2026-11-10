@@ -487,6 +487,8 @@ CATEGORY = {
     "beanie": "gid://shopify/TaxonomyCategory/aa-2-17-2",       # Hats > Beanies
 }
 CATEGORY_DEFAULT = "gid://shopify/TaxonomyCategory/aa-1-13"     # Clothing Tops
+PRIVATE_TAG = "private-store"        # TWC theme hides these everywhere but their own collection
+PRIVATE_TEMPLATE = "private"         # product.private / collection.private in the TWC theme
 
 
 def norm_hex(value) -> str:
@@ -806,6 +808,12 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
             {"namespace": "custom", "key": "church_store_url", "type": "url", "value": coll["url"]},
         ]
     if business:
+        # A business's own corner of the TWC store (3.86): the theme's
+        # *.private templates drop the menu, search, breadcrumbs and
+        # suggestions, and the rest of the store leaves out anything tagged
+        # private-store -- so its employees see only their own items.
+        tags.append(PRIVATE_TAG)
+    if business:
         # A business listing is link-only: out of storefront search and the
         # sitemap (doc 54). No church fields -- there is no partner.
         metafields = [{"namespace": "seo", "key": "hidden", "type": "number_integer", "value": "1"}]
@@ -819,6 +827,7 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
         "title": title, "vendor": ctx.get("vendor") or "",
         "collection": coll, "type": "Accessories" if item["category"] in ACCESSORY else "Apparel",
         "category": CATEGORY.get(item["category"], CATEGORY_DEFAULT),
+        "template_suffix": PRIVATE_TEMPLATE if business else "",
         "tags": tags, "status": f["status"], "description": description,
         "colors": colors, "sizes": sizes_sold,
         "variants": variants, "swatch": swatch, "swatch_new": swatch_new, "metafields": metafields,
@@ -834,6 +843,7 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
 
 def fingerprint(plan: dict) -> str:
     keep = {k: plan.get(k) for k in ("title", "vendor", "tags", "status", "variants", "images", "description",
+                                     "template_suffix",
                                      "store", "new_collection", "swatch_new")}
     return hashlib.sha256(json.dumps(keep, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
@@ -941,6 +951,7 @@ def product_input(plan: dict, files: list[dict], front: dict | None = None, plai
                                        "values": [{"name": s} for s in plan["sizes"]]}],
         "variants": variants, "metafields": plan["metafields"], "files": files,
         **({"category": plan["category"]} if plan.get("category") and not plain else {}),
+        **({"templateSuffix": plan["template_suffix"]} if plan.get("template_suffix") else {}),
     }
 
 
@@ -1024,6 +1035,7 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
                   {"input": {"title": nc["title"], "handle": nc["handle"],
                              "ruleSet": {"appliedDisjunctively": False, "rules": [
                                  {"column": "VENDOR", "relation": "EQUALS", "condition": plan["vendor"]}]},
+                             "templateSuffix": PRIVATE_TEMPLATE,
                              "metafields": [{"namespace": "seo", "key": "hidden", "type": "number_integer",
                                              "value": "1"}]}}, store=shop)
         node = ((cr.get("data") or {}).get("collectionCreate") or {}) if cr["ok"] else {}
@@ -1043,6 +1055,13 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
         step("Link-only collection", True, result["collection"]["url"])
     elif plan.get("store") == "twc" and plan.get("collection"):
         result["collection"] = {"id": plan["collection"]["id"], "url": plan["collection"]["url"]}
+        # collections made before 3.86 get the private template too (idempotent)
+        cu = _gql("""mutation U($input: CollectionInput!) { collectionUpdate(input: $input) {
+                      collection { id } userErrors { message } } }""",
+                  {"input": {"id": plan["collection"]["id"], "templateSuffix": PRIVATE_TEMPLATE}}, store=shop)
+        e = ((cu.get("data") or {}).get("collectionUpdate") or {}).get("userErrors") if cu["ok"] else None
+        step("Collection uses the private template", cu["ok"] and not e,
+             cu.get("error") or (e[0]["message"] if e else "collection.private"))
 
     # 1. images, colour by colour
     files, front = [], {}
