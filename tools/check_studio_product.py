@@ -481,7 +481,42 @@ bad = client.get("/shopify/twc/callback?state=nope&shop=twc-test.myshopify.com",
 check("a callback that this app did not start saves nothing", "did not match" in bad.get_data(as_text=True)
       and not es.read_env(es.TWC_ENV_PATH).get("SHOPIFY_ADMIN_TOKEN"))
 
-check("version is 3.82 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 82))
+# 3.83: TWC store without swatches -> plain Color, warning with the S&S hexes
+EXPORT["data"] = nfg_export()
+sp._run_path(7).unlink(missing_ok=True)
+TWC["collections"] = []
+_orig = fake_gql
+
+
+def fake_gql_sw(query, variables=None, store="ss"):
+    r = _orig(query, variables, store)
+    if "query T(" in query:
+        r["data"]["currentAppInstallation"]["accessScopes"].append({"handle": "read_metaobjects"})
+    if "query Swatches" in query and store == "twc":
+        return {"ok": True, "data": {"metaobjects": {"nodes": [{"id": "gid://shopify/Metaobject/W", "field": {"value": "White"}}],
+                                                     "pageInfo": {"hasNextPage": False}}}}
+    return r
+
+
+sp._gql = fake_gql_sw
+r = sp.preview(7, form(title="NFG - Staff tee TWC", colors=["White", "Pepper"]))
+check("TWC: a colour with no swatch warns (with the S&S hex), never blocks", r["ok"]
+      and any("no colour swatch for Pepper" in w and "#555" in w for w in r["warnings"]))
+check("TWC: with a swatch missing, Color is created plain (not half-linked)", r["plan"]["swatch"] == {}
+      and "linkedMetafield" not in sp.product_input(r["plan"], [])["productOptions"][0])
+EXPORT["data"] = export()
+SHOP["swatches"] = {"White": "gid://shopify/Metaobject/1"}
+check("S&S store: a missing swatch still blocks (doc 50 C2)", blocks("No Shopify colour swatch is called “Pepper”",
+                                                                     colors=["White", "Pepper"]))
+SHOP["swatches"] = {"White": "gid://shopify/Metaobject/1", "Pepper": "gid://shopify/Metaobject/2"}
+sp._gql = fake_gql
+client = portal.app.test_client()
+with client.session_transaction() as sess:
+    sess["_flashes"] = [("error", "Shopify's signature on that response did not verify. Nothing was saved.")]
+html = client.get("/settings?twc=1").get_data(as_text=True)
+check("TWC connect messages show on the TWC card, not at the top of the page",
+      html.count("did not verify") == 1 and html.index("did not verify") > html.index('id="twc-store"'))
+check("version is 3.83 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 83))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")

@@ -234,6 +234,9 @@
   <p style="margin-top:0">Businesses — NFG - National Fuel and the like — are TWC customers, not Steeple &amp; Stitch
     partners: no payout, made in-house, sold from TWC's own store. A TWC project's
     <strong>Create Shopify product</strong> writes here (doc 73).</p>
+  {% if request.args.get('twc') %}{% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}<div class="flash {{ category }}" style="margin-bottom:14px">{{ message }}</div>{% endfor %}
+  {% endwith %}{% endif %}
   {% if twc_token %}
     <div class="flash ok" style="margin-bottom:14px">Connected as <code>{{ twc_token }}</code> to
       <code>{{ twc.SHOPIFY_STORE }}</code>{% if twc.TWC_HOUSE_LOCATION %} · ships from <strong>{{ twc.TWC_HOUSE_LOCATION }}</strong>{% endif %}.</div>

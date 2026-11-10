@@ -630,11 +630,25 @@ def build_plan(export: dict, record: dict | None, ctx: dict, f: dict, run: dict)
     sw = ctx.get("swatches")
     swatch = {}
     if sw is not None:
+        missing = []
         for cname in colors:
             gid = sw.get(cname.strip().casefold())
             if gid:
                 swatch[cname] = gid
             else:
+                missing.append(cname)
+        if missing and business:
+            # The TWC store has no swatch set to speak of; refusing every
+            # product until one exists would stop the business side cold. The
+            # Color option is created plain (unlinked) and the S&S hexes are
+            # given so swatches can be added later (doc 73).
+            hexes = ", ".join(f"{c} {(by_color.get(c) or {}).get('hex') or '(no hex from S&S)'}" for c in missing)
+            warnings.append(f"The TWC store has no colour swatch for {', '.join(missing)}, so Color will be a "
+                            f"plain dropdown with no swatches. To add them later: Content › Metaobjects › "
+                            f"Color, using the S&S colours — {hexes}.")
+            swatch = {}
+        else:
+            for cname in missing:
                 blocking.append(f"No Shopify colour swatch is called “{cname}”. Create it in "
                                 "Content › Metaobjects › Color with the hex from S&S — a guessed hex "
                                 "renders confidently and wrong (doc 50 C2).")

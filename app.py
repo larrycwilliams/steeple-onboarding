@@ -57,7 +57,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.82"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.83"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -1967,7 +1967,7 @@ def save_twc_shopify():
         f.get("client_id", ""), f.get("client_secret", ""), path=twc_shop.PATH,
         store=f.get("store", ""), extra={"TWC_HOUSE_LOCATION": f.get("house_location", "")})
     flash(message.replace("App credentials", "TWC store settings"), "ok" if ok else "error")
-    return redirect(url_for("settings_page") + "#twc-store")
+    return redirect(url_for("settings_page", twc=1) + "#twc-store")
 
 
 @app.route("/shopify/twc/connect")
@@ -1977,7 +1977,7 @@ def twc_shopify_connect():
     store = twc_shop.domain()
     if not creds["client_id"] or not creds["client_secret"] or not store:
         flash("Save the TWC store domain, Client ID and Client secret first.", "error")
-        return redirect(url_for("settings_page") + "#twc-store")
+        return redirect(url_for("settings_page", twc=1) + "#twc-store")
     state = secrets_module.token_urlsafe(24)
     session["twc_shopify_state"] = state
     query = urlencode({"client_id": creds["client_id"], "scope": twc_shop.SCOPES,
@@ -1990,7 +1990,7 @@ def twc_shopify_connect():
 def twc_shopify_callback():
     creds = env_secrets.app_credentials(twc_shop.PATH)
     params = request.args.to_dict()
-    back = url_for("settings_page") + "#twc-store"
+    back = url_for("settings_page", twc=1) + "#twc-store"
     expected = session.pop("twc_shopify_state", None)
     if not expected or params.get("state") != expected:
         flash("That response did not match the request this app started. Nothing was saved.", "error")
