@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Create Shopify product{% endblock %}
+{% block content %}
+{# doc 72: an approved Studio item becomes an in-house (TWC) Shopify product. #}
+<style>
+  .sp-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin:8px 0 12px}
+  .sp-head h2{margin:0;border:0;padding:0}
+  .sp-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:16px;align-items:start}
+  .sp-card{background:var(--card,#fff);border:1px solid var(--line,#e5ded3);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+  .sp-card h3{margin:0 0 10px;font-size:1rem}
+  .sp-imgs{display:flex;flex-wrap:wrap;gap:8px}
+  .sp-imgs figure{margin:0;text-align:center;font-size:.78rem;color:var(--muted)}
+  .sp-imgs img{width:110px;height:110px;object-fit:contain;background:#f6f2ea;border-radius:8px;display:block}
+  .sp-f label{display:block;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:10px 0 4px}
+  .sp-f input[type=text],.sp-f textarea{width:100%;box-sizing:border-box}
+  .sp-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .sp-ups{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px}
+  .sp-ups input{width:100%;box-sizing:border-box}
+  .sp-checks{display:flex;flex-wrap:wrap;gap:6px 14px}
+  .sp-checks label{text-transform:none;letter-spacing:0;font-size:.95rem;color:inherit;margin:0;display:flex;gap:6px;align-items:center}
+  .sp-bad{background:#fbe9e7;border-left:4px solid var(--bad,#a33);padding:10px 12px;border-radius:6px;margin:0 0 8px}
+  .sp-warn{background:#fdf4e3;border-left:4px solid #c69447;padding:10px 12px;border-radius:6px;margin:0 0 8px}
+  .sp-ok{background:#e8f3ea;border-left:4px solid #2f7a45;padding:10px 12px;border-radius:6px;margin:0 0 8px}
+  .sp-dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0}
+  .sp-dl dt{color:var(--muted)} .sp-dl dd{margin:0;overflow-wrap:anywhere}
+  .sp-steps li{margin:4px 0}
+  .sp-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+  @media (max-width:899px){.sp-grid{grid-template-columns:minmax(0,1fr)}}
+  @media (max-width:599px){.sp-row{grid-template-columns:minmax(0,1fr)}}
+</style>
+
+{% set e = d.export %}
+<div class="sp-head">
+  <h2>Create Shopify product</h2>
+  {% if e %}<span>{{ e.project.org_name }} · <b>{{ e.item.code }}</b> {{ e.item.name }}</span>
+  <a href="{{ STUDIO_URL }}/i/{{ iid }}" target="_blank" rel="noopener">Open in the Studio ↗</a>{% endif %}
+</div>
+
+{% set res = run.result if run else None %}
+{% if res and res.product %}
+<div class="sp-card">
+  <h3>{% if res.partial %}Created — with steps to finish by hand{% else %}Created in Shopify{% endif %}</h3>
+  <p><a class="btn" href="{{ admin_url(res.product) }}" target="_blank" rel="noopener">Open in Shopify ↗</a>
+     <span class="small">{{ res.finished or res.started }} · {{ res.by }}</span></p>
+  <ul class="sp-steps">{% for s in res.steps %}<li>{{ '✓' if s.ok else '✗' }} <b>{{ s.step }}</b> — {{ s.detail }}</li>{% endfor %}</ul>
+  {% if run.plan and run.plan.status == 'DRAFT' %}<p class="small">It is a <b>draft</b>: check it on the product page, then set it Active in Shopify.</p>{% endif %}
+  {% if run.plan and run.plan.ss_style %}<p class="small">For ssorder, map it to its blank on the hub:
+    <code>ssorder map set {{ res.product.rsplit('/',1)[-1] }} "{{ run.plan.ss_style }}"</code></p>{% endif %}
+</div>
+{% elif res and not res.ok %}
+<div class="sp-bad"><b>The last attempt failed:</b> {{ res.error }}. Nothing was created.</div>
+{% endif %}
+
+{% if not (res and res.product) %}
+{% for b in d.blocking %}<div class="sp-bad">{{ b }}</div>{% endfor %}
+{% if d.plan %}{% for w in d.warnings %}<div class="sp-warn">{{ w }}</div>{% endfor %}{% endif %}
+{% endif %}
+
+{% if d.plan and not (res and res.product) %}
+{% set p = d.plan %}{% set f = d.form %}
+<form method="post" class="sp-f">
+<input type="hidden" name="fingerprint" value="{{ d.fingerprint }}">
+<input type="hidden" name="colors_sent" value="1"><input type="hidden" name="sizes_sent" value="1">
+<input type="hidden" name="ministries_sent" value="1">
+<div class="sp-grid">
+<div>
+  <div class="sp-card"><h3>Mockups → product images</h3>
+    {% if p.images %}<div class="sp-imgs">{% for m in p.images %}<figure>{% if m.preview %}<img src="{{ STUDIO_URL }}{{ m.preview }}" alt="" loading="lazy">{% endif %}{{ m.view|replace('_',' ') }}</figure>{% endfor %}</div>
+    {% else %}<p class="small">No saved mockups.</p>{% endif %}
+  </div>
+  <div class="sp-card"><h3>Where it goes</h3>
+    <dl class="sp-dl">
+      <dt>Vendor</dt><dd>{{ p.vendor or '—' }}</dd>
+      <dt>Collection</dt><dd>{% if p.collection %}<a href="{{ p.collection.url }}" target="_blank" rel="noopener">{{ p.collection.title }}</a>{% else %}—{% endif %}</dd>
+      <dt>Type</dt><dd>{{ p.type }}</dd>
+      <dt>Tags</dt><dd>{{ p.tags|join(', ') or '—' }}</dd>
+      <dt>Stocked at</dt><dd>{{ p.keep_names|join(' + ') or '—' }} <span class="small">(every other location detached)</span></dd>
+      <dt>Shipping</dt><dd>{{ p.profile.name if p.profile else 'General' }}</dd>
+      <dt>Channels</dt><dd>{{ p.publications|length }}</dd>
+      <dt>Swatches</dt><dd>{{ 'linked' if p.swatch else 'not linked' }}</dd>
+      <dt>Metafields</dt><dd>{{ p.metafields|map(attribute='key')|join(', ') or '—' }}</dd>
+    </dl>
+  </div>
+</div>
+<div>
+  <div class="sp-card"><h3>Listing</h3>
+    <label for="t">Title</label><input type="text" id="t" name="title" value="{{ f.title }}">
+    <div class="sp-row">
+      <div><label>Price S–XL</label><input type="text" name="price" value="{{ f.price }}" inputmode="decimal" placeholder="22.00"></div>
+      <div><label>Compare-at (optional)</label><input type="text" name="compare_at" value="{{ f.compare_at }}" inputmode="decimal"></div>
+      <div><label>Loaded cost S–XL</label><input type="text" name="cost" value="{{ f.cost }}" inputmode="decimal" placeholder="blank + print + labour"></div>
+    </div>
+    <label>Upcharge by size (the house ladder)</label>
+    <div class="sp-ups">{% for s in ladder %}<div><span class="small">{{ s }}</span><input type="text" name="up_{{ s }}" value="{{ f.up[s] }}" inputmode="decimal"></div>{% endfor %}</div>
+    {% if e.ss %}
+    <label>Colours (S&amp;S {{ e.ss.style }})</label>
+    <div class="sp-checks">{% for c in e.ss.colors %}<label><input type="checkbox" name="colors" value="{{ c.name }}" {{ 'checked' if c.name in f.colors }}>{{ c.name }}</label>{% endfor %}</div>
+    <label>Sizes</label>
+    {% set all_sizes = [] %}{% for c in e.ss.colors %}{% for s in c.sizes %}{% if s.size not in all_sizes %}{% set _ = all_sizes.append(s.size) %}{% endif %}{% endfor %}{% endfor %}
+    <div class="sp-checks">{% for s in all_sizes %}<label><input type="checkbox" name="sizes" value="{{ s }}" {{ 'checked' if s in f.sizes }}>{{ s }}</label>{% endfor %}</div>
+    {% endif %}
+    {% if d.ministries %}<label>Ministry (sub-collections)</label>
+    <div class="sp-checks">{% for m in d.ministries %}<label><input type="checkbox" name="ministries" value="{{ m.tag }}" {{ 'checked' if m.tag in f.ministries }}>{{ m.label }}</label>{% endfor %}</div>{% endif %}
+    <label>Fallback weight, lb (only where S&amp;S has none)</label><input type="text" name="fallback_weight" value="{{ f.fallback_weight }}" inputmode="decimal" style="max-width:140px">
+    <label>Description</label><textarea name="description" rows="3">{{ f.description }}</textarea>
+    <label>Status after create</label>
+    <div class="sp-checks"><label><input type="radio" name="status" value="DRAFT" {{ 'checked' if f.status != 'ACTIVE' }}>Draft — check it first (recommended)</label>
+      <label><input type="radio" name="status" value="ACTIVE" {{ 'checked' if f.status == 'ACTIVE' }}>Active — live straight away</label></div>
+    <div class="sp-actions">
+      <button class="btn btn-quiet" name="action" value="preview">Update preview</button>
+      <button class="btn" name="action" value="create" {{ 'disabled' if not d.ok }}
+        onclick="return confirm('Create “{{ p.title|e }}” in Shopify as {{ p.status|lower }}?')">Create in Shopify</button>
+    </div>
+    <p class="small">Change anything, then <b>Update preview</b> — Create stays off until the preview is clean, and refuses if the form changed since.</p>
+  </div>
+  <div class="sp-card"><h3>Variants · {{ p.variants|length }}</h3>
+    <div class="tscroll"><table>
+      <tr><th>Colour</th><th>Size</th><th>Price</th><th>Cost</th><th>Margin</th><th>Weight</th><th>S&amp;S blank</th></tr>
+      {% for v in p.variants %}<tr><td>{{ v.color }}</td><td>{{ v.size }}</td>
+        <td>{{ '$%.2f'|format(v.price) if v.price is not none else '—' }}</td>
+        <td>{{ '$%.2f'|format(v.cost) if v.cost is not none else '—' }}</td>
+        <td>{% if v.price is not none and v.cost is not none %}{{ '$%.2f'|format(v.price - v.cost) }}{% else %}—{% endif %}</td>
+        <td>{{ '%.2f lb'|format(v.weight) if v.weight else '—' }}</td>
+        <td>{{ '$%.2f'|format(v.blank_piece) if v.blank_piece else '—' }}</td></tr>{% endfor %}
+    </table></div>
+    <p class="small">Cost follows the blank: bigger sizes add S&amp;S's difference in blank price to the loaded cost.</p>
+  </div>
+</div>
+</div>
+</form>
+{% endif %}
+{% endblock %}

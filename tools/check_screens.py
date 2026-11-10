@@ -105,9 +105,65 @@ def seed(work: Path) -> list[str]:
         # the longest Studio line a Programs card can carry (doc 69 phase 4)
         "partners": {store.partner_id(recs[0]): {"projects": 12, "sent": 14, "changes": 3, "approved": 27,
                                                  "production": 9, "oldest_sent_days": 8}}}))
+    fake_studio_product(recs[2])
     return [f"/partner/{store.partner_id(recs[2])}", f"/partner/{store.partner_id(recs[2])}/files",
             f"/partner/{store.partner_id(recs[2])}/products",
-            f"/partner/{store.partner_id(recs[0])}/products?show=active"]
+            f"/partner/{store.partner_id(recs[0])}/products?show=active",
+            "/studio-item/7/shopify", "/studio-item/8/shopify"]
+
+
+def fake_studio_product(rec):
+    """Create Shopify product (doc 72) with the widest page it can draw: two
+    colours, every size, long names. Item 8 shows a finished, partial run."""
+    from onboarding import studio_product as sp
+    sizes = [{"size": z, "piece": 4.1 + i * 0.6, "price": 5, "weight": 0.4 + i * 0.05}
+             for i, z in enumerate(["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"])]
+    export = {"ok": True, "item": {"id": 7, "code": "HD-01", "name": "Logo Mascot Hoodie — Extended Garment-Dyed",
+                                   "category": "hoodie", "method": "dtf", "status": "approved", "ready": True,
+                                   "blank": "Comfort Colors 1567", "color": "Heather Charcoal",
+                                   "ss_style": "Comfort Colors 1567", "shopify_product": ""},
+              "project": {"id": 1, "org_name": rec["org_name"], "project_name": "Fall", "brand": "ss",
+                          "portal_pid": "x"},
+              "mockups": [{"view": v, "url": "", "preview": ""} for v in ("front", "back", "left_sleeve")],
+              "ss": {"style": "Comfort Colors 1567", "title": "Garment-Dyed Hooded Sweatshirt",
+                     "colors": [{"name": n, "hex": "#555", "sizes": sizes}
+                                for n in ("Heather Charcoal", "Blue Spruce", "Crimson", "Ivory", "Black")]}}
+    ctx = {"errors": [], "scopes": {"write_products", "write_inventory"}, "vendor": rec["org_name"],
+           "store_name": rec["org_name"], "org_tag": "hohaf", "profile": {"id": "p", "name": "Highway – Freight"},
+           "publications": ["a", "b", "c"], "house": {"id": "h", "name": "Shop - Dayton"}, "keep": ["h", "g"],
+           "keep_names": ["Shop - Dayton", "Germantown Christian School"],
+           "collection": {"id": "c", "title": rec["org_name"], "handle": "hohaf",
+                          "url": "https://www.steepleandstitch.com/collections/hohaf"},
+           "ministries": [{"tag": "ministry:womens", "label": "Women's Ministry"},
+                          {"tag": "ministry:youth", "label": "NexGen Youth Ministry"}],
+           "swatches": None, "dupes": [], "has_inhouse_def": True, "siblings": 3, "sort": "MANUAL"}
+    f = sp.defaults(export, rec)
+    f.update({"price": "34.99", "cost": "19.50", "compare_at": "39.99",
+              "colors": ["Heather Charcoal", "Blue Spruce"], "ministries": ["ministry:womens"]})
+
+    def preview(iid, form=None):
+        out = sp.build_plan(export, rec, ctx, f, {})
+        out.update({"ok": not out["blocking"], "export": export, "record": rec, "form": f,
+                    "ministries": ctx["ministries"], "fingerprint": "f", "run": {}})
+        return out
+
+    def load_run(iid):
+        if iid != 8:
+            return {}
+        return {"plan": {"status": "DRAFT", "ss_style": "Comfort Colors 1567"},
+                "result": {"product": "gid://shopify/Product/15404446843248", "ok": True, "partial": True,
+                           "by": "Larry Williams (MacBook Air)", "started": "2026-11-10T10:40:00",
+                           "finished": "2026-11-10T10:40:31", "steps": [
+                               {"step": "Image: front", "ok": True, "detail": "uploaded"},
+                               {"step": "Create product", "ok": True,
+                                "detail": "HOH - Logo Mascot Hoodie — Extended Garment-Dyed TWC · 18 variants"},
+                               {"step": "Stocked at Shop - Dayton + Germantown Christian School only", "ok": True,
+                                "detail": "every other location detached"},
+                               {"step": "Delivery profile: Highway – Freight", "ok": False,
+                                "detail": "Access denied for deliveryProfileUpdate field. Required access: write_shipping"}]}}
+
+    sp.preview = preview
+    sp.load_run = load_run
 
 
 def serve(work: Path):
