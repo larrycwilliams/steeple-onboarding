@@ -31,7 +31,7 @@ from devices import DEVICES  # noqa: E402
 SKIP = {".env", "partners", "cache", "output", "assets", "leads", "product_runs", ".git",
         "__pycache__", "Claude outputs", "cost_changes"}
 
-PAGES = ["/", "/orders", "/partners", "/dashboard", "/pipeline", "/purchasing", "/statements",
+PAGES = ["/", "/orders", "/programs", "/programs?show=attention", "/partners", "/dashboard", "/pipeline", "/purchasing", "/statements",
          "/readiness", "/tools", "/settings", "/discovery", "/traveler", "/slips"]
 
 

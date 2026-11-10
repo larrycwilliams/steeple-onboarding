@@ -4,14 +4,15 @@ Sizes are CSS pixels, the numbers a browser lays out against. A page passes
 when nothing is wider than the screen at every one of these and it can be
 read and tapped at each.
 
-The iPhone Duo open was measured on Larry's phone on 2026-11-09 (Portal ->
-Settings -> This screen): 669 x 869 at 3x. Folded is still an ESTIMATE until
-he reads it the same way; then replace it here and in steeple-studio/tests/devices.py.
+All three iPhone Duo sizes were measured on Larry's phone on 2026-11-09
+(Portal -> Settings -> This screen), at 3x: folded 382 x 678, open 669 x 869,
+open sideways 867 x 587. Any change here goes in steeple-studio/tests/devices.py.
 """
 
 DEVICES = [
     # Phones
-    {"name": "duo-folded", "w": 360, "h": 780, "dpr": 3, "mobile": True},   # estimate
+    {"name": "phone-narrow", "w": 360, "h": 780, "dpr": 3, "mobile": True},  # the narrowest we allow for
+    {"name": "duo-folded", "w": 382, "h": 678, "dpr": 3, "mobile": True},   # measured 2026-11-09
     {"name": "iphone", "w": 390, "h": 844, "dpr": 3, "mobile": True},
     {"name": "iphone-max", "w": 440, "h": 956, "dpr": 3, "mobile": True},
     {"name": "iphone-land", "w": 844, "h": 390, "dpr": 3, "mobile": True},

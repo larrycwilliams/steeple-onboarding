@@ -45,6 +45,7 @@ from onboarding import slips
 from onboarding import today as today_panel
 from onboarding import refresh as refresh_job
 from onboarding import orders as orders_board
+from onboarding import scorecard
 from onboarding.palette import extract_palette
 from onboarding.schema import (DEFAULT_PALETTE, FIELDS, GROUPS, ORG_TYPES,
                                PALETTE_ROLES, derive, normalize, validate)
@@ -53,7 +54,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.73"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.74"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -2218,6 +2219,16 @@ def today_refresh():
     flash("Refreshing Shopify, leads, S&S status and the Studio. "
           "Reload Home in a minute.", "ok")
     return redirect(url_for("home"))
+
+
+@app.route("/programs")
+def programs_page():
+    """The program scorecard (doc 69 phase 3). Reads saved files only."""
+    data = scorecard.build()
+    show = request.args.get("show", "")
+    if show == "attention":
+        data["cards"] = [c for c in data["cards"] if c["state"] != "ok"]
+    return render_template("programs.html", show=show, **data)
 
 
 @app.route("/orders")

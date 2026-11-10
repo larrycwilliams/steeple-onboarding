@@ -374,7 +374,7 @@ def sales_tile(snap: dict | None, now: datetime) -> dict:
 
 
 def fees_tile(records: list[dict]) -> dict:
-    tile = _tile("fees", "Platform fees", link="dashboard_page", link_label="Billing")
+    tile = _tile("fees", "Platform fees", link="programs_page", link_label="Programs")
     data = dashboard.fees(records)
     tile["value"] = _money(data["mrr_billed"]) + "/mo"
     behind = data["behind"]

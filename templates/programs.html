@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Programs — STEEPLE &amp; STITCH{% endblock %}
+{% block content %}
+
+{# Doc 69 phase 3. One card per church or school: the deal, the money, the
+   paperwork and the store, with what needs attention said in words, red
+   first. Every fact comes from the module that owns it (onboarding/scorecard.py). #}
+
+<div class="pg-head">
+  <h2 style="margin:8px 0 0;border:0;padding:0">Programs</h2>
+  <span class="pg-chips">
+    {% if red %}<span class="td-chip td-red">{{ red }} need{{ 's' if red == 1 }} you</span>{% endif %}
+    {% if amber %}<span class="td-chip td-amber">{{ amber }} to watch</span>{% endif %}
+    {% if not red and not amber %}<span class="td-chip td-ok">All on track</span>{% endif %}
+  </span>
+  <form method="get" class="pg-filter">
+    <select name="show" aria-label="Show" onchange="this.form.submit()">
+      <option value="" {{ 'selected' if not show }}>All programs</option>
+      <option value="attention" {{ 'selected' if show == 'attention' }}>Needs attention</option>
+    </select>
+  </form>
+</div>
+
+<div class="pg-sum">
+  <div class="pg-stat"><span class="pg-k">Programs</span><span class="pg-v">{{ total }}</span><span class="pg-s">{{ live }} live</span></div>
+  <div class="pg-stat"><span class="pg-k">Monthly fees billed</span><span class="pg-v">{{ mrr_billed }}</span><span class="pg-s">{{ mrr_current }} paid up to date</span></div>
+  <div class="pg-stat"><span class="pg-k">Giveback {{ this_q }}</span><span class="pg-v">{{ giveback_now }}</span><span class="pg-s">so far, on costed sales</span></div>
+  <div class="pg-stat"><span class="pg-k">{{ last_q }} statements</span><span class="pg-v">{{ statements_open }}</span><span class="pg-s">still to send</span></div>
+</div>
+
+{% if not have_shopify %}
+<div class="note">No Shopify data on file, so store, sales and giveback show a dash. Press <strong>Refresh now</strong> on Home.</div>
+{% endif %}
+
+<div class="pg-grid">
+{% for c in cards %}
+<article class="pg-card pg-{{ c.state }}" id="p-{{ c.pid }}">
+  <div class="pg-top">
+    <div style="min-width:0">
+      <a class="pg-name" href="{{ url_for('partner_files', pid=c.pid) }}">{{ c.name }}</a>
+      <div class="pg-meta">{{ c.org_type or 'Partner' }} · {{ c.plan }} · {{ c.monthly }} · {{ c.margin }} giveback</div>
+    </div>
+    <span class="pg-badge">
+      {% if c.launch_state == 'live' %}Live since {{ c.launch }}
+      {% elif c.launch_state == 'upcoming' %}Launches {{ c.launch }}{% if c.days_to_launch is not none %} · {{ c.days_to_launch }}d{% endif %}
+      {% else %}No launch date{% endif %}
+    </span>
+  </div>
+
+  {% set warn = c.flags | rejectattr('level', 'equalto', 'ok') | list %}
+  {% if warn %}
+  <ul class="pg-flags">
+    {% for f in warn %}<li class="pg-f-{{ f.level }}">{{ f.text }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <dl class="pg-facts">
+    <dt>Agreement</dt><dd class="{{ 'pg-bad' if c.agreement.overdue }}">{{ c.agreement.label }}</dd>
+    <dt>Setup fee</dt><dd>{{ c.setup }} · {{ c.billing.setup }}</dd>
+    <dt>Monthly fee</dt><dd class="{{ 'pg-bad' if c.billing.behind }}">{{ c.billing.monthly }}</dd>
+    <dt>Store</dt><dd>{% if c.store %}{{ c.store.live }} live{% if c.store.draft %} · {{ c.store.draft }} draft{% endif %}{% else %}—{% endif %}</dd>
+    <dt>Open orders</dt><dd>{% if c.open_orders is not none %}{{ c.open_orders }}{% else %}—{% endif %}</dd>
+    <dt>{{ c.this_q.label }}</dt><dd>{{ c.this_q.revenue }} sales · {{ c.this_q.giveback }} giveback</dd>
+    <dt>{{ c.last_q.label }}</dt><dd>{{ c.last_q.revenue }} sales · {{ c.last_q.giveback }} giveback</dd>
+    <dt>Statement</dt>
+    <dd class="{{ 'pg-bad' if c.last_q.statement == 'not sent' }}">
+      {% if c.last_q.statement_needed %}<a href="{{ c.last_q.statement_url }}">{{ c.last_q.statement }}</a>{% else %}{{ c.last_q.statement }}{% endif %}</dd>
+  </dl>
+  <div class="pg-links">
+    <a href="{{ url_for('edit_partner', pid=c.pid) }}">Record</a>
+    <a href="{{ url_for('partner_files', pid=c.pid) }}">Files</a>
+    <a href="{{ url_for('orders_page', p=c.name) }}">Orders</a>
+    <a href="{{ url_for('dashboard_page') }}#fees">Billing</a>
+  </div>
+</article>
+{% else %}
+<div class="card empty">No partners yet.</div>
+{% endfor %}
+</div>
+
+<p class="help" style="margin-top:12px">
+  Store, sales and giveback from Shopify{% if orders_at %} as of {{ orders_at }} UTC{% endif %};
+  fees from the Dashboard's billing panel; agreements and statements from their own ticks.
+  Giveback counts costed sales only — the same rule as the statements.
+</p>
+
+<style>
+  .pg-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .pg-chips{display:flex;gap:8px;flex-wrap:wrap}
+  .td-chip{font-size:12px;font-weight:700;letter-spacing:.04em;padding:3px 10px;border-radius:99px}
+  .td-chip.td-red{background:#F8E3E1;color:#8C332C}
+  .td-chip.td-amber{background:#FBF0D6;color:#7A5C1C}
+  .td-chip.td-ok{background:#E4F0E8;color:#265B41}
+  .pg-filter{margin-left:auto}
+  .pg-filter select{width:auto;max-width:100%;padding:7px 10px;font-size:13px}
+  .pg-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+  .pg-stat{background:#fff;border:1px solid #E2DDD2;border-radius:var(--radius);padding:12px 14px;display:flex;flex-direction:column;min-width:0}
+  .pg-k{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .pg-v{font:400 26px/1.2 Georgia,"Times New Roman",serif;margin:3px 0 1px;font-variant-numeric:tabular-nums}
+  .pg-s{font-size:12px;color:var(--muted)}
+  .pg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(360px,100%),1fr));gap:14px;align-items:start}
+  .pg-card{background:#fff;border:1px solid #E2DDD2;border-top:4px solid var(--ok);border-radius:var(--radius);padding:14px 16px;min-width:0}
+  .pg-card.pg-amber{border-top-color:var(--gold)}
+  .pg-card.pg-red{border-top-color:var(--bad)}
+  .pg-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .pg-name{font-weight:700;font-size:16px;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+  .pg-name:hover{text-decoration:underline}
+  .pg-meta{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .pg-badge{font-size:11px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:99px;
+    background:#EAE5D9;color:#5C5340;white-space:nowrap}
+  .pg-flags{list-style:none;margin:10px 0 0;padding:0;font-size:13px}
+  .pg-flags li{padding:5px 8px;border-radius:6px;margin-bottom:4px}
+  .pg-f-red{background:#F8E3E1;color:#8C332C}
+  .pg-f-amber{background:#FBF3DF;color:#6A5B33}
+  .pg-facts{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:12px 0 0;font-size:13.5px}
+  .pg-facts dt{color:var(--muted);font-weight:600;white-space:nowrap}
+  .pg-facts dd{margin:0;font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere}
+  .pg-bad{color:var(--bad);font-weight:600}
+  .pg-links{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid #EFEBE2;font-size:13px;font-weight:600}
+  @media (max-width:899px){ .pg-sum{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  @media (max-width:599px){
+    .pg-filter{margin-left:0;width:100%}
+    .pg-filter select{width:100%}
+    .pg-top{flex-direction:column}
+    .pg-v{font-size:22px}
+    .pg-links a{padding:6px 0}
+  }
+</style>
+{% endblock %}
