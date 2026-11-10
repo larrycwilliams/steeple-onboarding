@@ -31,7 +31,12 @@ TIMEOUT = 20
 # What the TWC app asks for. Products, collections and inventory to create
 # listings; locations and publications to stock and publish them; orders for
 # ssorder and the Orders board; metaobjects for colour swatches.
-SCOPES = ("read_all_orders,read_orders,read_products,write_products,read_inventory,write_inventory,"
+# read_all_orders is NOT asked for: Dev Dashboard refuses it on a new app
+# (2026-11-10, "Contains invalid scopes"), and asking for a scope the app does
+# not declare can make the install fail. Without it Shopify returns the last
+# 60 days of orders -- enough for open orders and the Orders board. Add it
+# here AND in a new app version if TWC revenue history is ever pulled (doc 73).
+SCOPES = ("read_orders,read_products,write_products,read_inventory,write_inventory,"
           "read_locations,read_publications,write_publications,read_metaobjects,read_files")
 
 

@@ -464,7 +464,7 @@ check("second product: the existing collection is reused, none created", p2["new
 client = portal.app.test_client()
 html = client.get("/settings").get_data(as_text=True)
 check("Settings has The Williams Collective store card with its scopes and callback URLs",
-      'id="twc-store"' in html and "/shopify/twc/callback" in html and "read_all_orders,read_orders" in html)
+      'id="twc-store"' in html and "/shopify/twc/callback" in html and "read_orders,read_products" in html and "read_all_orders" not in html)
 resp = client.post("/settings/twc-shopify", data={"store": "https://twc-test.myshopify.com/", "client_id": "a" * 32,
                                                   "client_secret": "shpss_" + "b" * 32, "house_location": "TWC Shop"})
 from onboarding import secrets as es  # noqa: E402
@@ -481,7 +481,7 @@ bad = client.get("/shopify/twc/callback?state=nope&shop=twc-test.myshopify.com",
 check("a callback that this app did not start saves nothing", "did not match" in bad.get_data(as_text=True)
       and not es.read_env(es.TWC_ENV_PATH).get("SHOPIFY_ADMIN_TOKEN"))
 
-check("version is 3.81 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 81))
+check("version is 3.82 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 82))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")
