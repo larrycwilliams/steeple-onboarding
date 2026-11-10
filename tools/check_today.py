@@ -163,7 +163,7 @@ html = page.get_data(as_text=True)
 check("Home renders with the Today panel", page.status_code == 200 and "td-grid" in html and "Orders to ship" in html)
 check("Home still shows the partner path below it", "The path" in html)
 check("the menu links to the Studio in a new tab", "Studio&nbsp;" in html and portal.STUDIO_URL in html)
-check("version is 3.69", portal.APP_VERSION == "3.69")
+check("version is 3.69 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 69))
 
 # Refresh now: runs in the background and never blocks the request.
 with mock.patch.object(portal.refresh_job, "run_all") as fake:

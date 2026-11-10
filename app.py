@@ -44,6 +44,7 @@ from onboarding import welcome_email
 from onboarding import slips
 from onboarding import today as today_panel
 from onboarding import refresh as refresh_job
+from onboarding import orders as orders_board
 from onboarding.palette import extract_palette
 from onboarding.schema import (DEFAULT_PALETTE, FIELDS, GROUPS, ORG_TYPES,
                                PALETTE_ROLES, derive, normalize, validate)
@@ -52,7 +53,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.69"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.70"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -2217,6 +2218,31 @@ def today_refresh():
     flash("Refreshing Shopify, leads, S&S status and the Studio. "
           "Reload Home in a minute.", "ok")
     return redirect(url_for("home"))
+
+
+@app.route("/orders")
+def orders_page():
+    """The orders board (doc 69 phase 2). Reads saved files only."""
+    business = request.args.get("b", "")
+    if business not in ("", "ss", "twc"):
+        business = ""
+    partner = (request.args.get("p") or "").strip()
+    return render_template("orders.html", **orders_board.board(business=business, partner=partner))
+
+
+@app.route("/orders/tick", methods=["POST"])
+@from_this_app
+def orders_tick():
+    """Pressed / Packed, ticked or cleared. The only thing the board writes."""
+    me = getattr(g, "me", None) or {}
+    ok, message = orders_board.tick(request.form.get("key", ""),
+                                    request.form.get("step", ""),
+                                    by=me.get("stamp_name") or "",
+                                    undo=request.form.get("undo") == "1")
+    flash(message, "ok" if ok else "error")
+    back = {k: v for k, v in (("b", request.form.get("b", "")),
+                              ("p", request.form.get("p", ""))) if v}
+    return redirect(url_for("orders_page", **back) + "#" + request.form.get("anchor", ""), code=303)
 
 
 @app.route("/purchasing")

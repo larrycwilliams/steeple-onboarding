@@ -51,12 +51,14 @@ query Orders($first: Int!, $after: String, $q: String) {
   orders(first: $first, after: $after, query: $q, sortKey: CREATED_AT) {
     edges {
       node {
+        id
         name
         createdAt
         test
         cancelledAt
         displayFinancialStatus
         displayFulfillmentStatus
+        shippingLine { title }
         lineItems(first: 100) {
           edges {
             node {
@@ -94,6 +96,13 @@ query Catalog($first: Int!, $after: String) {
     pageInfo { hasNextPage endCursor }
   }
 }
+"""
+
+# Location names, so the orders board can tell a local pickup from a shipment:
+# Shopify titles a pickup's shipping line with the pickup location's name.
+# read_locations is already granted (doc 07).
+LOCATIONS_QUERY = """
+query Locations { locations(first: 50) { nodes { name } } }
 """
 
 COLLECTIONS_QUERY = """
@@ -190,6 +199,10 @@ def fetch(since: str = "2020-01-01") -> dict:
     catalog = _paginate(CATALOG_QUERY, "products", {})
     collections = _call(COLLECTIONS_QUERY, {"first": 50})["collections"]
     collections = [edge["node"] for edge in collections["edges"]]
+    try:
+        locations = [n["name"] for n in _call(LOCATIONS_QUERY, {})["locations"]["nodes"]]
+    except Exception:
+        locations = []          # a nicety for the orders board; never fails the pull
 
     return {
         "pulled_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -197,6 +210,7 @@ def fetch(since: str = "2020-01-01") -> dict:
         "orders": [_clean_order(o) for o in orders],
         "catalog": [_clean_product(p) for p in catalog],
         "collections": collections,
+        "locations": locations,
     }
 
 
@@ -230,12 +244,17 @@ def _clean_order(node: dict) -> dict:
         })
     return {
         "name": node["name"],
+        # Numeric id, for a link straight to the order in the Shopify admin.
+        "id": str(node.get("id") or "").rsplit("/", 1)[-1],
         "created_at": node["createdAt"],
         "test": bool(node.get("test")),
         "cancelled": bool(node.get("cancelledAt")),
         "status": node.get("displayFinancialStatus") or "",
         # Home's "Orders to ship" tile (doc 69). Read-only; still read_orders.
         "fulfillment": node.get("displayFulfillmentStatus") or "",
+        # The delivery method's title: a rate name ("Standard") or, for a
+        # local pickup, the pickup location's name. See orders.delivery().
+        "delivery": ((node.get("shippingLine") or {}).get("title") or ""),
         "lines": lines,
     }
 

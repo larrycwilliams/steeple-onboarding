@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Orders — STEEPLE &amp; STITCH{% endblock %}
+{% block content %}
+
+{# Doc 69 phase 2. A lane is never chosen: it is the furthest point the
+   evidence reaches -- Shopify for shipped, Purchasing for blanks, a tick for
+   pressed and packed. Reads saved files; the ticks are the only write. #}
+
+<div class="ob-head">
+  <h2 style="margin:8px 0 0;border:0;padding:0">Orders</h2>
+  <span class="ob-count">{{ open_count }} open{% if late %} · <strong class="ob-late">{{ late }} at 7+ business days</strong>{% endif %}</span>
+  <form method="get" class="ob-filters">
+    <select name="b" aria-label="Business" onchange="this.form.submit()">
+      <option value="" {{ 'selected' if not business }}>All businesses</option>
+      <option value="ss" {{ 'selected' if business == 'ss' }}>Steeple &amp; Stitch</option>
+      <option value="twc" {{ 'selected' if business == 'twc' }}>The Williams Collective shop</option>
+    </select>
+    <select name="p" aria-label="Store" onchange="this.form.submit()">
+      <option value="">All stores</option>
+      {% for name in partners %}<option {{ 'selected' if partner == name }}>{{ name }}</option>{% endfor %}
+    </select>
+    <noscript><button class="btn btn-quiet" type="submit">Filter</button></noscript>
+  </form>
+</div>
+
+{% if not has_fulfilment %}
+<div class="note">The order copy on file predates fulfilment tracking, so the board cannot tell
+  what is still open. Go to <a href="{{ url_for('home') }}">Home</a> and press <strong>Refresh now</strong> once.</div>
+{% endif %}
+{% if not purchasing_ok %}
+<div class="note">Purchasing has not been refreshed yet, so every in-house order sits in
+  <strong>New</strong>. Open <a href="{{ url_for('purchasing_page') }}">Purchasing</a> and press Refresh.</div>
+{% endif %}
+
+<p class="help" style="margin:0 0 12px">
+  Shopify orders {{ orders_at or 'never' }} · Purchasing {{ purchasing_at or 'never' }}.
+  Blanks lanes follow Purchasing, so refresh it there after placing or receiving an order.
+  {% if not has_delivery %}Pickup vs ship appears after the next refresh.{% endif %}
+</p>
+
+<div class="ob-board">
+  {% for lane in lanes %}
+  <section class="ob-lane" id="lane-{{ lane.key }}">
+    <div class="ob-lanehead">
+      <span class="ob-lanename">{{ lane.label }}</span>
+      <span class="ob-n">{{ lane.cards|length }}</span>
+    </div>
+    <div class="ob-blurb">{{ lane.blurb }}</div>
+    {% for c in lane.cards %}
+    {% set anchor = 'o-' ~ c.business ~ '-' ~ c.name|replace('#','') %}
+    <article class="ob-card {{ 'ob-red' if (c.age or 0) >= 7 else ('ob-amber' if (c.age or 0) >= 5) }}" id="{{ anchor }}">
+      <div class="ob-top">
+        {% if c.admin_url %}<a class="ob-name" href="{{ c.admin_url }}" target="_blank" rel="noopener">{{ c.name }}</a>
+        {% else %}<span class="ob-name">{{ c.name }}</span>{% endif %}
+        {% if c.age is not none %}<span class="ob-age">{{ c.age }} bd</span>{% endif %}
+      </div>
+      <div class="ob-who">{{ c.who }}</div>
+      <div class="ob-meta">
+        {% if c.business == 'twc' %}<span class="ob-tag ob-twc">TWC shop</span>{% endif %}
+        {% if c.delivery == 'pickup' %}<span class="ob-tag ob-pickup" title="{{ c.delivery_title }}">Pickup</span>
+        {% elif c.delivery == 'ship' %}<span class="ob-tag" title="{{ c.delivery_title }}">Ship</span>{% endif %}
+        {% if c.inhouse_items is not none %}<span>{{ c.inhouse_items }} in-house{% if c.item_count != c.inhouse_items %} of {{ c.item_count }}{% endif %}</span>{% endif %}
+      </div>
+      {% if c.why and lane.key in ('new', 'ordered', 'in') %}<div class="ob-why">{{ c.why }}</div>{% endif %}
+      {% if c.boxes %}<div class="ob-why">{{ c.boxes|join(', ') }}</div>{% endif %}
+      {% for step in ('pressed', 'packed') %}{% if c.ticks.get(step) %}
+      <div class="ob-ticked">✓ {{ step|capitalize }}{% if c.ticks[step].by %} · {{ c.ticks[step].by }}{% endif %}
+        <form method="post" action="{{ url_for('orders_tick') }}" class="ob-inline">
+          <input type="hidden" name="key" value="{{ c.key }}"><input type="hidden" name="step" value="{{ step }}">
+          <input type="hidden" name="undo" value="1"><input type="hidden" name="b" value="{{ business }}">
+          <input type="hidden" name="p" value="{{ partner }}"><input type="hidden" name="anchor" value="{{ anchor }}">
+          <button class="ob-undo" type="submit" title="Undo">undo</button>
+        </form></div>
+      {% endif %}{% endfor %}
+      {% set next_step = 'packed' if c.ticks.get('pressed') else 'pressed' %}
+      {% if not c.ticks.get('packed') %}
+      <form method="post" action="{{ url_for('orders_tick') }}" class="ob-act">
+        <input type="hidden" name="key" value="{{ c.key }}"><input type="hidden" name="step" value="{{ next_step }}">
+        <input type="hidden" name="b" value="{{ business }}"><input type="hidden" name="p" value="{{ partner }}">
+        <input type="hidden" name="anchor" value="{{ anchor }}">
+        <button class="btn {{ 'btn-gold' if lane.key in ('in', 'pressed') else 'btn-quiet' }}" type="submit">Mark {{ next_step }}</button>
+      </form>
+      {% endif %}
+    </article>
+    {% else %}
+    <div class="ob-empty">—</div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+</div>
+
+{% if pod %}
+<h2>With a POD partner <span class="ob-n">{{ pod|length }}</span></h2>
+<div class="card ob-list">
+  {% for c in pod %}
+  <div class="ob-row">
+    {% if c.admin_url %}<a href="{{ c.admin_url }}" target="_blank" rel="noopener">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}
+    <span>{{ c.who }}</span>
+    <span class="help">{{ c.age }} bd · {{ c.fulfillment or 'unfulfilled' }}</span>
+  </div>
+  {% endfor %}
+  <p class="help" style="margin:8px 0 0">No in-house lines, so nothing to buy, press or pack here. They leave when Shopify marks them fulfilled.</p>
+</div>
+{% endif %}
+
+{% if done %}
+<details class="card ob-done">
+  <summary>Shipped or picked up — last 14 days ({{ done|length }})</summary>
+  {% for c in done %}
+  <div class="ob-row">
+    {% if c.admin_url %}<a href="{{ c.admin_url }}" target="_blank" rel="noopener">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}
+    <span>{{ c.who }}</span>
+    <span class="help">{{ 'picked up' if c.delivery == 'pickup' else 'shipped' }} · placed {{ c.placed }}</span>
+  </div>
+  {% endfor %}
+</details>
+{% endif %}
+
+<style>
+  .ob-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .ob-count{font-size:13px;color:var(--muted)}
+  .ob-late{color:var(--bad)}
+  .ob-filters{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .ob-filters select{width:auto;padding:7px 10px;font-size:13px}
+  main{max-width:1320px}
+  .ob-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:start}
+  .ob-lane{background:#EDE9E0;border-radius:var(--radius);padding:10px;min-height:120px}
+  .ob-lanehead{display:flex;justify-content:space-between;align-items:center}
+  .ob-lanename{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+  .ob-n{font-size:12px;font-weight:700;background:#fff;border-radius:99px;padding:1px 8px;color:#5C6470}
+  .ob-blurb{font-size:11.5px;color:var(--muted);margin:2px 0 10px}
+  .ob-card{background:#fff;border:1px solid #E2DDD2;border-left:4px solid var(--ok);border-radius:8px;
+    padding:10px 11px;margin-bottom:8px;font-size:13px}
+  .ob-card.ob-amber{border-left-color:var(--gold)}
+  .ob-card.ob-red{border-left-color:var(--bad)}
+  .ob-top{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+  .ob-name{font-weight:700;font-size:14.5px;color:var(--ink);text-decoration:none}
+  a.ob-name:hover{text-decoration:underline}
+  .ob-age{font-size:11.5px;font-weight:700;color:#5C6470;white-space:nowrap}
+  .ob-red .ob-age{color:var(--bad)}
+  .ob-who{color:#3B4049;margin:2px 0 4px;overflow-wrap:anywhere}
+  .ob-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted)}
+  .ob-tag{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    padding:1px 7px;border-radius:99px;background:#EAE5D9;color:#5C5340}
+  .ob-tag.ob-pickup{background:#E4F0E8;color:#265B41}
+  .ob-tag.ob-twc{background:#E8E6F2;color:#3E3A6B}
+  .ob-why{font-size:12px;color:#6A5B33;margin-top:5px}
+  .ob-ticked{font-size:12px;color:var(--ok);margin-top:5px}
+  .ob-inline{display:inline}
+  .ob-undo{background:none;border:0;padding:0 0 0 4px;color:var(--muted);font:12px inherit;
+    text-decoration:underline;cursor:pointer}
+  .ob-act{margin-top:8px}
+  .ob-act .btn{width:100%;padding:8px 10px;font-size:13px}
+  .ob-empty{text-align:center;color:var(--muted);padding:12px 0}
+  .ob-list .ob-row,.ob-done .ob-row{display:grid;grid-template-columns:90px 1fr auto;gap:10px;
+    padding:6px 0;border-bottom:1px solid #EFEBE2;font-size:14px}
+  .ob-done summary{cursor:pointer;font-weight:600}
+  @media (max-width:1050px){ .ob-board{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  @media (max-width:699px){
+    .ob-board{grid-template-columns:1fr}
+    .ob-filters{margin-left:0;width:100%}
+    .ob-filters select{flex:1}
+    .ob-lane:has(.ob-empty){min-height:0}
+    .ob-list .ob-row,.ob-done .ob-row{grid-template-columns:70px 1fr;}
+    .ob-list .ob-row .help,.ob-done .ob-row .help{grid-column:2}
+  }
+</style>
+{% endblock %}

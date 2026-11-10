@@ -129,7 +129,7 @@ def _open_orders(snap: dict | None) -> tuple[list[dict], bool]:
 
 
 def orders_tile(snap: dict | None, today: date) -> dict:
-    tile = _tile("orders", "Orders to ship", link_label="Purchasing", link="purchasing_page")
+    tile = _tile("orders", "Orders to ship", link_label="Orders board", link="orders_page")
     if not snap:
         tile["sub"] = "No Shopify data yet. Press Refresh now."
         return tile
