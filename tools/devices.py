@@ -4,9 +4,9 @@ Sizes are CSS pixels, the numbers a browser lays out against. A page passes
 when nothing is wider than the screen at every one of these and it can be
 read and tapped at each.
 
-The iPhone Duo's two sizes are ESTIMATES until Larry reads them off the
-Portal's Settings page ("This screen") folded and unfolded; then replace
-them here and in steeple-studio/tests/devices.py.
+The iPhone Duo open was measured on Larry's phone on 2026-11-09 (Portal ->
+Settings -> This screen): 669 x 869 at 3x. Folded is still an ESTIMATE until
+he reads it the same way; then replace it here and in steeple-studio/tests/devices.py.
 """
 
 DEVICES = [
@@ -16,7 +16,8 @@ DEVICES = [
     {"name": "iphone-max", "w": 440, "h": 956, "dpr": 3, "mobile": True},
     {"name": "iphone-land", "w": 844, "h": 390, "dpr": 3, "mobile": True},
     # Fold open and tablets
-    {"name": "duo-open", "w": 700, "h": 800, "dpr": 3, "mobile": True},     # estimate
+    {"name": "duo-open", "w": 669, "h": 869, "dpr": 3, "mobile": True},     # measured 2026-11-09
+    {"name": "duo-open-land", "w": 867, "h": 587, "dpr": 3, "mobile": True},  # measured 2026-11-09
     {"name": "ipad-mini", "w": 744, "h": 1133, "dpr": 2, "mobile": True},
     {"name": "ipad-air", "w": 820, "h": 1180, "dpr": 2, "mobile": True},
     {"name": "ipad-land", "w": 1180, "h": 820, "dpr": 2, "mobile": True},

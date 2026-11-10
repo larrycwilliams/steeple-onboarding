@@ -35,7 +35,7 @@
   .nav-me{color:#7B8494;white-space:nowrap}
 
   /* ------------------------------------------------- the menu, by width --
-     Doc 70. Below 700px: Home, Orders, Pipeline + More. 700-1279px: the six
+     Doc 70. Below 600px: Home, Orders, Pipeline + More. 600-1279px: the six
      most-used pages + Studio + More. From 1280px: everything inline. */
   .nav-more{position:relative}
   .nav-more summary{list-style:none;cursor:pointer;color:var(--gold-soft);padding:2px 10px;
@@ -50,7 +50,7 @@
   .nav-menu a:hover{background:#2A3240}
   header nav > a.n2, header nav > a.n3{display:none}
   .nav-menu a.m-n2{display:block}
-  @media (min-width:700px){
+  @media (min-width:600px){
     header nav > a.n2{display:inline}
     .nav-menu a.m-n2{display:none}
   }
@@ -136,11 +136,11 @@
      hidden values are all one tap away on the partner's own screen. */
   .phone-hide{display:none}
   .phone-hide-inline{display:none}
-  @media (min-width:700px){
+  @media (min-width:600px){
     .phone-hide{display:table-cell}
     .phone-hide-inline{display:inline}
   }
-  @media (max-width:699px){
+  @media (max-width:599px){
     main{padding:18px 14px}
     header{padding:14px 16px;gap:10px}
     header nav{margin-left:0;width:100%;gap:8px 16px}
@@ -182,7 +182,7 @@
                  text-transform:none">v{{ APP_VERSION }}</span></h1>
   {# Doc 70. One menu for every screen: the pages used most stay in view; the
      rest are under More until the screen is wide enough for all of them.
-       n1  always shown                 n2  shown from 700px, else under More
+       n1  always shown                 n2  shown from 600px, else under More
        n3  shown from 1280px, else under More #}
   {% set links = [
       ('home', 'Home', 'n1'), ('orders_page', 'Orders', 'n1'), ('pipeline_page', 'Pipeline', 'n1'),
