@@ -18,7 +18,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parents[1]
-SKIP = {"partners", "cache", "output", "assets", "leads", "product_runs", ".git",
+# .env holds the Shopify credentials: never copied, even into a temp folder.
+SKIP = {".env", "partners", "cache", "output", "assets", "leads", "product_runs", ".git",
         "__pycache__", "Claude outputs", "cost_changes"}
 
 tmp = Path(tempfile.mkdtemp(prefix="orders-check-"))
@@ -27,6 +28,8 @@ shutil.copytree(APP_ROOT, work, ignore=lambda d, names: [n for n in names if n i
                                                         or n.endswith(".app")])
 sys.path.insert(0, str(work))
 
+import os  # noqa: E402
+os.environ["SHOPIFY_STORE"] = "check-store.myshopify.com"   # a made-up domain, never called
 import app as portal  # noqa: E402
 from onboarding import orders, store  # noqa: E402
 
@@ -158,7 +161,8 @@ page = client.get("/orders")
 html = page.get_data(as_text=True)
 check("/orders renders", page.status_code == 200 and "Blanks ordered" in html and "#3002" in html)
 check("Orders is in the menu", 'href="/orders"' in client.get("/").get_data(as_text=True))
-check("a card links to the order in Shopify", "/admin/orders/3002" in html or "SHOPIFY_STORE" not in __import__("os").environ)
+check("a card links to the order in Shopify",
+      "https://check-store.myshopify.com/admin/orders/3002" in html)
 r = client.post("/orders/tick", data={"key": "ss|#3002", "step": "pressed", "anchor": "o-ss-3002"},
                 headers={"Host": "localhost"})
 check("the tick button saves and returns to the card", r.status_code == 303

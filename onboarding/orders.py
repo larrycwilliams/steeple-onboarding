@@ -229,6 +229,9 @@ def board(business: str = "", partner: str = "", now: datetime | None = None) ->
     by_order = _purchasing_by_order(prop)
     ticks = load_ticks()
     locations = snap.get("locations") or []
+    # .env is read lazily; without this the first page after a restart has no
+    # store domain and no order links (found by check_orders on the hub).
+    shopify_sales._load_env()
     shop = os.environ.get("SHOPIFY_STORE", "")
     has_fulfilment = any("fulfillment" in o for o in snap.get("orders") or [])
 

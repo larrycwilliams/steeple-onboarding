@@ -20,7 +20,8 @@ from pathlib import Path
 from unittest import mock
 
 APP_ROOT = Path(__file__).resolve().parents[1]
-SKIP = {"partners", "cache", "output", "assets", "leads", "product_runs", ".git",
+# .env holds the Shopify credentials: never copied, even into a temp folder.
+SKIP = {".env", "partners", "cache", "output", "assets", "leads", "product_runs", ".git",
         "__pycache__", "Claude outputs", "cost_changes"}
 
 tmp = Path(tempfile.mkdtemp(prefix="today-check-"))
