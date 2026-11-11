@@ -706,7 +706,149 @@ pre = sp.preview(7, form())
 check("a church product is untouched: no private tag or template",
       "private-store" not in pre["plan"]["tags"] and not pre["plan"]["template_suffix"]
       and "templateSuffix" not in sp.product_input(pre["plan"], []))
-check("version is 3.86 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 86))
+
+# ------------------------------------------- 3.87: add colours to a live product
+HN = sizes(("S", 5.20, 0.40), ("M", 5.20, 0.44), ("L", 5.20, 0.48), ("XL", 5.20, 0.52), ("2XL", 7.20, 0.58))
+LIVE = {"linked": True, "deleted": False}
+ADDS, OPTS = [], []
+
+
+def live_gql(query, variables=None, store="ss"):
+    if query.lstrip().startswith("query P("):
+        CALLS.append(("query P", variables))
+        if LIVE["deleted"]:
+            return {"ok": True, "data": {"product": None}}
+        price = {"S": "22.00", "M": "22.00", "L": "22.00", "XL": "22.00", "2XL": "24.00", "3XL": "26.00"}
+        return {"ok": True, "data": {"product": {
+            "id": "gid://shopify/Product/555", "title": "HOH - Logo Crewneck TWC", "handle": "h", "status": "ACTIVE",
+            "options": [{"id": "gid://shopify/ProductOption/1", "name": "Color",
+                         "linkedMetafield": {"namespace": "shopify", "key": "color-pattern"} if LIVE["linked"] else None,
+                         "optionValues": [{"id": "v1", "name": "White"}]},
+                        {"id": "gid://shopify/ProductOption/2", "name": "Size", "linkedMetafield": None,
+                         "optionValues": [{"id": f"s{i}", "name": z} for i, z in enumerate(price)]}],
+            "variants": {"nodes": [{"id": f"gid://shopify/ProductVariant/{i}", "price": p, "compareAtPrice": None,
+                                    "selectedOptions": [{"name": "Color", "value": "White"}, {"name": "Size", "value": z}],
+                                    "inventoryItem": {"unitCost": {"amount": "11.00" if z in ("S", "M", "L", "XL") else "13.00"}}}
+                                   for i, (z, p) in enumerate(price.items())]}}}}
+    if query.lstrip().startswith("query G("):
+        return {"ok": True, "data": {"product": None if LIVE["deleted"] else {"id": variables["id"]}}}
+    if "productVariantsBulkCreate" in query:
+        CALLS.append(("mutation A", variables))
+        ADDS.append(variables)
+        return {"ok": True, "data": {"productVariantsBulkCreate": {"userErrors": [], "productVariants": [
+            {"id": f"gid://shopify/ProductVariant/9{i}", "title": "",
+             "inventoryItem": {"id": f"gid://shopify/InventoryItem/9{i}", "inventoryLevels": {
+                 "nodes": [{"location": {"id": HOUSE}}, {"location": {"id": REVIVE}}]}}}
+            for i, _ in enumerate(variables["v"])]}}}
+    if "productOptionUpdate" in query:
+        OPTS.append(variables)
+        return {"ok": True, "data": {"productOptionUpdate": {"userErrors": []}}}
+    return fake_gql(query, variables, store)
+
+
+sp._gql = live_gql
+SHOP["swatches"] = {"White": "gid://shopify/Metaobject/1", "Pepper": "gid://shopify/Metaobject/2",
+                    "Heather Navy": "gid://shopify/Metaobject/3"}
+EXPORT["data"] = export(shopify="gid://shopify/Product/555",
+                        colors=[{"name": "White", "hex": "#fff", "sizes": TEE},
+                                {"name": "Pepper", "hex": "#555", "sizes": TEE},
+                                {"name": "Heather Navy", "hex": "#223", "sizes": HN}])
+EXPORT["data"]["colourways"] = {"Heather Navy": [
+    {"view": "front", "url": "/api/items/7/cw/21.jpg", "preview": "/i/7/cw/21.jpg"},
+    {"view": "back", "url": "/api/items/7/cw/22.jpg", "preview": "/i/7/cw/22.jpg"}]}
+sp._save_run(7, {"result": {"product": "gid://shopify/Product/555", "store": "ss", "ok": True, "steps": []}})
+a0 = sp.add_preview(7, None)
+check("add colours: lists only the S&S colours the product lacks", a0["choices"] == ["Pepper", "Heather Navy"]
+      and a0["existing"] == ["White"] and not a0["ok"])
+a1 = sp.add_preview(7, Form(add_colors=["Heather Navy"]))
+hv = {v["size"]: v for v in a1["add"]["variants"]}
+check("new colour copies the live price ladder, hand-edited sizes included",
+      hv["S"]["price"] == 22 and hv["2XL"]["price"] == 24 and "3XL" not in hv)
+check("cost follows the blank from the ORIGINAL base (heather costs more)",
+      hv["S"]["cost"] == round(11 + (5.20 - 4.10), 2) and hv["2XL"]["cost"] == round(11 + (7.20 - 4.10), 2))
+check("a size S&S lacks in the new colour is named, not invented",
+      any("no 3XL in Heather Navy" in w for w in a1["warnings"]))
+check("only the new colour's images go up", [m["color"] for m in a1["add"]["images"]] == ["Heather Navy"] * 2
+      and a1["ok"])
+ADDS.clear(); UPLOADS.clear(); CALLS.clear()
+r = sp.add_commit(7, Form(add_colors=["Heather Navy"]), a1["fingerprint"], "Larry")
+v = ADDS[0]
+row = v["v"][0]
+check("adds variants in place on the same product (no productSet, no delete)",
+      r["ok"] and v["id"] == "gid://shopify/Product/555" and not any("productSet" in n for n, _ in CALLS)
+      and len(v["v"]) == 5 and len(UPLOADS) == 2)
+check("new variants link the swatch and carry their colour's photo",
+      row["optionValues"][0] == {"optionName": "Color", "linkedMetafieldValue": "gid://shopify/Metaobject/3"}
+      and row["mediaSrc"][0].endswith("-heather-navy-front.jpg")
+      and {m["originalSource"] for m in v["m"]} >= set(row["mediaSrc"]))
+check("new variants: untracked, DENY, cost and weight set",
+      row["inventoryItem"]["tracked"] is False and row["inventoryPolicy"] == "DENY"
+      and row["inventoryItem"]["cost"] == "12.10" and row["inventoryItem"]["measurement"]["weight"]["value"] == 0.4)
+upd = sp.load_run(7)["updates"][-1]
+check("new variants stocked at house + pickup only, and on the church's profile",
+      any(s["step"].startswith("Stocked at") and s["ok"] for s in upd["steps"])
+      and any(n == "mutation D" and len(x["p"]["variantsToAssociate"]) == 5 for n, x in CALLS))
+check("the update is recorded on the run; the original result is untouched",
+      upd["ok"] and upd["colors"] == ["Heather Navy"] and sp.load_run(7)["result"]["product"] == "gid://shopify/Product/555")
+check("a changed tick after preview refuses (fingerprint)",
+      not sp.add_commit(7, Form(add_colors=["Pepper"]), a1["fingerprint"], "Larry")["ok"])
+LIVE["linked"] = False
+a2 = sp.add_preview(7, Form(add_colors=["Pepper"]))
+ADDS.clear()
+sp.add_commit(7, Form(add_colors=["Pepper"]), a2["fingerprint"], "Larry")
+check("a plain (unlinked) Color gets plain names", ADDS[0]["v"][0]["optionValues"][0] == {"optionName": "Color", "name": "Pepper"})
+LIVE["linked"] = True
+SHOP["swatches"] = {"White": "gid://shopify/Metaobject/1"}
+a3 = sp.add_preview(7, Form(add_colors=["Pepper"]))
+check("S&S store, linked Color, no swatch for the new colour: blocked, nothing sent",
+      not a3["ok"] and any("No Shopify colour swatch" in b or "none for Pepper" in b for b in a3["blocking"]))
+SHOP["swatches"] = {"White": "gid://shopify/Metaobject/1", "Pepper": "gid://shopify/Metaobject/2",
+                    "Heather Navy": "gid://shopify/Metaobject/3"}
+LIVE["deleted"] = True
+check("deleted in Shopify: no Add, says to create it again",
+      any("deleted in Shopify" in b for b in sp.add_preview(7, None)["blocking"]))
+html = portal.app.test_client().get("/studio-item/7/shopify").get_data(as_text=True)
+check("…and the Create form comes back by itself (no moving run files by hand)",
+      'value="create"' in html or 'name="action" value="create"' in html)
+LIVE["deleted"] = False
+html = portal.app.test_client().get("/studio-item/7/shopify").get_data(as_text=True)
+check("the page shows Add colours for a live product, with its history",
+      "Add colours" in html and "Heather Navy" in html and "Changes since" in html)
+html = portal.app.test_client().post("/studio-item/7/shopify", data={"action": "add_preview", "add_colors": "Pepper"}
+                                     ).get_data(as_text=True)
+check("Preview shows the new variants and an Add button", "Pepper / S" in html and 'value="add"' in html)
+# TWC: a new colour with no swatch gets one made, then is linked
+TWC_SCOPES[:] = ["read_metaobjects", "write_metaobjects"]
+FAIL_FIRST["on"] = False
+MADE.clear()
+
+
+def twc_live(query, variables=None, store="ss"):
+    if query.lstrip().startswith(("query P(", "query G(")) or "productVariantsBulkCreate" in query \
+            or "productOptionUpdate" in query:
+        return live_gql(query, variables, store)
+    return twc_sw(query, variables, store)
+
+
+sp._gql = twc_live
+EXPORT["data"] = nfg_export(colors=[{"name": "White", "hex": "#fff", "family": "White", "sizes": TEE},
+                                    {"name": "Heather Royal", "hex": "#3B5BA9", "family": "Blue", "sizes": TEE}])
+EXPORT["data"]["item"]["shopify_product"] = "gid://shopify/Product/555"
+EXPORT["data"]["colourways"] = {"Heather Royal": CW["Pepper"]}
+sp._save_run(7, {"result": {"product": "gid://shopify/Product/555", "store": "twc", "ok": True, "steps": []}})
+a4 = sp.add_preview(7, Form(add_colors=["Heather Royal"]))
+check("TWC: the new colour's swatch is planned from the S&S hex (Blue)",
+      a4["ok"] and a4["add"]["swatch_new"] == {"Heather Royal": {"hex": "#3B5BA9", "taxonomy": "gid://shopify/TaxonomyValue/2"}}
+      and a4["add"]["store"] == "twc")
+ADDS.clear()
+r = sp.add_commit(7, Form(add_colors=["Heather Royal"]), a4["fingerprint"], "Larry")
+check("TWC: swatch created, then the new variants link to it",
+      r["ok"] and MADE and ADDS[0]["v"][0]["optionValues"][0]["linkedMetafieldValue"].startswith("gid://shopify/Metaobject/N")
+      and STORES_HIT[-1] == "twc")
+sp._gql = fake_gql
+sp._run_path(7).unlink(missing_ok=True)
+EXPORT["data"] = export()
+check("version is 3.87 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 87))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")

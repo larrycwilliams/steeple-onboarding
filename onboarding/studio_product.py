@@ -848,12 +848,13 @@ def fingerprint(plan: dict) -> str:
     return hashlib.sha256(json.dumps(keep, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
-def preview(iid: int, form=None) -> dict:
+def _setup(iid: int, form=None):
+    """Everything both Create and Add colours start from. (None, error) when
+    the Studio item cannot be read."""
     _load_env()
     export, err = fetch_item(iid)
     if export is None:
-        return {"ok": False, "blocking": [err], "warnings": [], "plan": None, "export": None,
-                "form": None, "fingerprint": "", "run": load_run(iid)}
+        return None, err
     business = export["project"].get("brand") == "twc"
     pid = export["project"].get("portal_pid") or ""
     record = store.load(pid) if pid and not business else None
@@ -864,7 +865,16 @@ def preview(iid: int, form=None) -> dict:
         ctx = context(record, f["title"])
     else:
         ctx = {"errors": [], "scopes": set(), "locations": [], "ministries": []}
-    run = load_run(iid)
+    return {"export": export, "business": business, "record": record, "f": f, "ctx": ctx,
+            "run": load_run(iid)}, ""
+
+
+def preview(iid: int, form=None) -> dict:
+    su, err = _setup(iid, form)
+    if su is None:
+        return {"ok": False, "blocking": [err], "warnings": [], "plan": None, "export": None,
+                "form": None, "fingerprint": "", "run": load_run(iid)}
+    export, business, record, f, ctx, run = (su[k] for k in ("export", "business", "record", "f", "ctx", "run"))
     old = export["item"].get("shopify_product") or (run.get("result") or {}).get("product") or ""
     if old and not ctx.get("errors"):
         # deleted in the admin since? then it may be made again (3.85)
@@ -1003,6 +1013,50 @@ def make_swatches(new: dict, shop: str) -> tuple[dict, list[str]]:
     return made, failed
 
 
+def _upload_images(plan: dict, step, shop: str) -> tuple[list[dict], dict]:
+    """Upload plan["images"]; (files for productSet, colour -> first URL)."""
+    files, front = [], {}
+    stem = re.sub(r'[^a-z0-9]+', '-', plan['title'].lower()).strip('-')
+    for m in plan["images"]:
+        color = m.get("color") or ""
+        label = f"{color} {m['view']}".strip() if color else m["view"]
+        try:
+            blob = fetch_mockup(m["url"])
+        except Exception as exc:                              # noqa: BLE001
+            step(f"Image: {label}", False, f"could not read it from the Studio ({exc})")
+            continue
+        cslug = re.sub(r'[^a-z0-9]+', '-', color.lower()).strip('-')
+        url, err = _upload(f"{stem}{'-' + cslug if cslug else ''}-{m['view']}.jpg", blob, store=shop)
+        if step(f"Image: {label}", not err, err or "uploaded"):
+            alt = ", ".join(x for x in (plan['title'].removesuffix(' TWC'), color, m['view'].replace('_', ' ')) if x)
+            files.append({"originalSource": url, "contentType": "IMAGE", "alt": alt})
+            if color and color not in front:
+                front[color] = url
+    return files, front
+
+
+def _keep_only(variants: list[dict], keep: list[str], shop: str) -> int:
+    """Stock each variant at the keep locations and nowhere else; returns how
+    many could not be moved. Attach before detach: an item must stay stocked
+    somewhere (pod2twc 6)."""
+    bad = 0
+    for v in variants:
+        inv = v["inventoryItem"]
+        at = {n["location"]["id"] for n in ((inv.get("inventoryLevels") or {}).get("nodes") or [])}
+        for updates in ([{"locationId": l, "activate": True} for l in keep if l not in at],
+                        [{"locationId": l, "activate": False} for l in sorted(at) if l not in keep]):
+            if not updates:
+                continue
+            t = _gql("""mutation T($id: ID!, $u: [InventoryBulkToggleActivationInput!]!) {
+                         inventoryBulkToggleActivation(inventoryItemId: $id, inventoryItemUpdates: $u) {
+                           userErrors { message } } }""", {"id": inv["id"], "u": updates}, store=shop)
+            e = (t.get("data") or {}).get("inventoryBulkToggleActivation", {}).get("userErrors") if t["ok"] else None
+            if not t["ok"] or e:
+                bad += 1
+                break
+    return bad
+
+
 def commit(iid: int, form, expected: str, by: str) -> dict:
     """Create the product. Returns the run record (also saved to disk)."""
     pre = preview(iid, form)
@@ -1064,23 +1118,7 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
              cu.get("error") or (e[0]["message"] if e else "collection.private"))
 
     # 1. images, colour by colour
-    files, front = [], {}
-    stem = re.sub(r'[^a-z0-9]+', '-', plan['title'].lower()).strip('-')
-    for m in plan["images"]:
-        color = m.get("color") or ""
-        label = f"{color} {m['view']}".strip() if color else m["view"]
-        try:
-            blob = fetch_mockup(m["url"])
-        except Exception as exc:                              # noqa: BLE001
-            step(f"Image: {label}", False, f"could not read it from the Studio ({exc})")
-            continue
-        cslug = re.sub(r'[^a-z0-9]+', '-', color.lower()).strip('-')
-        url, err = _upload(f"{stem}{'-' + cslug if cslug else ''}-{m['view']}.jpg", blob, store=shop)
-        if step(f"Image: {label}", not err, err or "uploaded"):
-            alt = ", ".join(x for x in (plan['title'].removesuffix(' TWC'), color, m['view'].replace('_', ' ')) if x)
-            files.append({"originalSource": url, "contentType": "IMAGE", "alt": alt})
-            if color and color not in front:
-                front[color] = url
+    files, front = _upload_images(plan, step, shop)
 
     # 1b. colour swatches the TWC store lacks, from the S&S hex
     if plan.get("swatch_new"):
@@ -1122,22 +1160,7 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
     #    every location; an HOH hat left stocked at Germantown and Revive is how
     #    that looks when nobody detaches them. Attach before detach: an item
     #    must stay stocked somewhere (pod2twc 6).
-    keep = plan["keep"]
-    bad = 0
-    for v in (product.get("variants") or {}).get("nodes") or []:
-        inv = v["inventoryItem"]
-        at = {n["location"]["id"] for n in ((inv.get("inventoryLevels") or {}).get("nodes") or [])}
-        for updates in ([{"locationId": l, "activate": True} for l in keep if l not in at],
-                        [{"locationId": l, "activate": False} for l in sorted(at) if l not in keep]):
-            if not updates:
-                continue
-            t = _gql("""mutation T($id: ID!, $u: [InventoryBulkToggleActivationInput!]!) {
-                         inventoryBulkToggleActivation(inventoryItemId: $id, inventoryItemUpdates: $u) {
-                           userErrors { message } } }""", {"id": inv["id"], "u": updates}, store=shop)
-            e = (t.get("data") or {}).get("inventoryBulkToggleActivation", {}).get("userErrors") if t["ok"] else None
-            if not t["ok"] or e:
-                bad += 1
-                break
+    bad = _keep_only((product.get("variants") or {}).get("nodes") or [], plan["keep"], shop)
     step(f"Stocked at {' + '.join(plan['keep_names'])} only", bad == 0,
          "every other location detached" if not bad else f"{bad} variant(s) could not be moved — fix in the admin")
 
@@ -1167,3 +1190,258 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
     result["finished"] = _now()
     _save_run(iid, run)
     return {"ok": True, "run": run, "pre": pre}
+
+
+# ------------------------------------------------------------ add colours
+# 3.87: add colours to a product the Portal already made, in place. Only new
+# variants are created (productVariantsBulkCreate); existing variants, their
+# prices, orders, the product number, ssorder's mapping and the share link
+# are left exactly as they are. New sizes follow the product's own price
+# ladder (read back from Shopify, so hand edits there win) and the cost
+# follows the blank, measured from the same base as the original colours.
+
+PRODUCT_NOW = """
+query P($id: ID!) { product(id: $id) { id title handle status
+  options { id name linkedMetafield { namespace key } optionValues { id name } }
+  variants(first: 250) { nodes { id price compareAtPrice selectedOptions { name value }
+    inventoryItem { unitCost { amount } } } } } }"""
+
+ADD_VARIANTS = """
+mutation A($id: ID!, $v: [ProductVariantsBulkInput!]!, $m: [CreateMediaInput!]) {
+  productVariantsBulkCreate(productId: $id, variants: $v, media: $m) {
+    productVariants { id title
+      inventoryItem { id inventoryLevels(first: 30) { nodes { location { id } } } } }
+    userErrors { field message code } } }"""
+
+ADD_VALUES = """
+mutation O($id: ID!, $o: OptionUpdateInput!, $add: [OptionValueCreateInput!]) {
+  productOptionUpdate(productId: $id, option: $o, optionValuesToAdd: $add, variantStrategy: LEAVE_AS_IS) {
+    userErrors { field message code } } }"""
+
+
+def _opt(product: dict, word: str) -> dict | None:
+    for o in product.get("options") or []:
+        if word in o["name"].casefold():
+            return o
+    return None
+
+
+def ladder_from(product: dict) -> dict:
+    """Read the live product's price ladder: {size: (price, compare, cost)}
+    from its first colour (every colour is priced alike), plus the base."""
+    copt, sopt = _opt(product, "colo"), _opt(product, "size")
+    first = copt["optionValues"][0]["name"] if copt and copt["optionValues"] else None
+    by_size = {}
+    for v in (product.get("variants") or {}).get("nodes") or []:
+        sel = {o["name"]: o["value"] for o in v["selectedOptions"]}
+        if copt and first and sel.get(copt["name"]) != first:
+            continue
+        size = sel.get(sopt["name"]) if sopt else ""
+        cost = ((v.get("inventoryItem") or {}).get("unitCost") or {}).get("amount")
+        by_size[size] = (_money(v.get("price")), _money(v.get("compareAtPrice")), _money(cost))
+    return by_size
+
+
+def add_preview(iid: int, form=None) -> dict:
+    """What adding the ticked colours would do. Pure apart from reads."""
+    out = {"ok": False, "blocking": [], "warnings": [], "add": None, "choices": [], "existing": [],
+           "fingerprint": "", "product": None}
+    su, err = _setup(iid, None)
+    if su is None:
+        out["blocking"].append(err)
+        return out
+    export, business, record, f, ctx, run = (su[k] for k in ("export", "business", "record", "f", "ctx", "run"))
+    gid = export["item"].get("shopify_product") or (run.get("result") or {}).get("product") or ""
+    shop = (run.get("result") or {}).get("store") or ("twc" if business else "ss")
+    if not gid:
+        out["blocking"].append("Not in Shopify yet — use Create above.")
+        return out
+    if ctx.get("errors"):
+        out["blocking"] += ctx["errors"]
+        return out
+    r = _gql(PRODUCT_NOW, {"id": gid}, store=shop)
+    product = (r.get("data") or {}).get("product") if r["ok"] else None
+    if not r["ok"]:
+        out["blocking"].append(f"Could not read the product from Shopify: {r.get('error')}")
+        return out
+    if product is None:
+        out["blocking"].append("That product has been deleted in Shopify — create it again above.")
+        return out
+    out["product"] = {"id": gid, "title": product["title"], "status": product["status"], "store": shop}
+    copt, sopt = _opt(product, "colo"), _opt(product, "size")
+    if not copt or not sopt:
+        out["blocking"].append("This product has no Color and Size options, so colours cannot be added here.")
+        return out
+    existing = [v["name"] for v in copt["optionValues"]]
+    sizes = [v["name"] for v in sopt["optionValues"]]
+    have = {c.casefold() for c in existing}
+    ss = export.get("ss") or {}
+    out["existing"] = existing
+    out["choices"] = [c["name"] for c in ss.get("colors") or [] if c["name"].casefold() not in have]
+    chosen = [c for c in (form.getlist("add_colors") if form is not None else []) if c in out["choices"]]
+    out["chosen"] = chosen
+    if not chosen:
+        return out
+
+    ladder = ladder_from(product)
+    base = [p for p in (ladder.get(s) for s in ("S", "M", "L", "XL")) if p and p[0]] or \
+           [p for p in ladder.values() if p and p[0]]
+    if not base:
+        out["blocking"].append("Could not read the product's prices from Shopify.")
+        return out
+    price0 = min(p[0] for p in base)
+    compare0 = min((p[1] for p in base if p[1]), default=None)
+    cost0 = min((p[2] for p in base if p[2]), default=None)
+    if not cost0:
+        out["blocking"].append("The product's variants have no cost in Shopify, so the new colours' cost "
+                               "cannot follow it. Enter the cost on the existing variants first.")
+        return out
+    ups = {s: round((ladder[s][0] or price0) - price0, 2) for s in sizes if s in ladder}
+    # Re-plan with every colour so the blank-price base matches the original,
+    # then keep only the new colours' part of it.
+    f2 = dict(f, colors=existing + chosen, sizes=sizes, price=f"{price0:.2f}",
+              compare_at=f"{compare0:.2f}" if compare0 else "", cost=f"{cost0:.2f}",
+              up={s: f"{v:.2f}" for s, v in ups.items()}, title=product["title"])
+    item2 = {k: v for k, v in export["item"].items() if k != "shopify_product"}
+    ctx2 = dict(ctx, dupes=[], gone="", new_collection=None)
+    pl = build_plan(dict(export, item=item2), record, ctx2, f2, {})
+    new = set(chosen)
+    plan = pl["plan"]
+    variants = [v for v in plan["variants"] if v["color"] in new]
+    for v in variants:              # a size priced by hand in Shopify keeps that price
+        lp = ladder.get(v["size"])
+        if lp and lp[0]:
+            v["price"] = lp[0]
+            v["compare_at"] = lp[1]
+    out["blocking"] += [b for b in pl["blocking"] if any(c in b for c in chosen) or "token" in b
+                        or "S&S style" in b or "weight" in b]
+    out["warnings"] += [w for w in pl["warnings"] if any(c in w for c in chosen)]
+    missing_sizes = {c: [s for s in sizes if not any(v["color"] == c and v["size"] == s for v in variants)]
+                     for c in chosen}
+    for c, ms in missing_sizes.items():
+        if ms:
+            out["warnings"].append(f"S&S has no {', '.join(ms)} in {c}, so {c} comes without "
+                                   f"{'it' if len(ms) == 1 else 'them'}.")
+    linked = bool(copt.get("linkedMetafield"))
+    swatch = {c: g for c, g in (plan["swatch"] or {}).items() if c in new}
+    swatch_new = {c: v for c, v in (plan["swatch_new"] or {}).items() if c in new}
+    if linked:
+        lacking = [c for c in chosen if c not in swatch and c not in swatch_new]
+        if lacking:
+            out["blocking"].append(f"The Color option uses swatches and there is none for {', '.join(lacking)} "
+                                   "(see the note above), so it cannot be added to the swatch list.")
+    total = len((product.get("variants") or {}).get("nodes") or []) + len(variants)
+    if total > MAX_VARIANTS:
+        out["blocking"].append(f"{total} variants — Shopify Basic allows {MAX_VARIANTS}.")
+    add = {"product": gid, "store": shop, "title": product["title"], "linked": linked,
+           "color_option": {"id": copt["id"], "name": copt["name"]}, "size_option": sopt["name"],
+           "colors": chosen, "existing": existing, "variants": variants,
+           "images": [m for m in plan["images"] if m.get("color") in new],
+           "swatch": swatch, "swatch_new": swatch_new if linked else {},
+           "keep": plan["keep"], "keep_names": plan["keep_names"], "profile": plan["profile"]}
+    fp = {k: add[k] for k in ("product", "colors", "variants", "images", "swatch_new")}
+    out.update({"add": add, "ok": not out["blocking"] and bool(variants),
+                "fingerprint": hashlib.sha256(json.dumps(fp, sort_keys=True, default=str).encode()).hexdigest()[:16]})
+    if not variants and not out["blocking"]:
+        out["blocking"].append("No sizes to add for those colours.")
+    return out
+
+
+def add_input(add: dict, front: dict, linked: bool) -> list[dict]:
+    rows = []
+    for v in add["variants"]:
+        cv = ({"optionName": add["color_option"]["name"], "linkedMetafieldValue": add["swatch"][v["color"]]}
+              if linked else {"optionName": add["color_option"]["name"], "name": v["color"]})
+        row = {"optionValues": [cv, {"optionName": add["size_option"], "name": v["size"]}],
+               "price": f"{v['price']:.2f}", "taxable": True, "inventoryPolicy": "DENY",
+               "inventoryItem": {"tracked": False, "requiresShipping": True, "cost": f"{v['cost']:.2f}",
+                                 "measurement": {"weight": {"value": v["weight"], "unit": "POUNDS"}}}}
+        if v.get("compare_at"):
+            row["compareAtPrice"] = f"{v['compare_at']:.2f}"
+        if front.get(v["color"]):
+            row["mediaSrc"] = [front[v["color"]]]
+        rows.append(row)
+    return rows
+
+
+def add_commit(iid: int, form, expected: str, by: str) -> dict:
+    """Add the ticked colours to the existing product."""
+    pre = add_preview(iid, form)
+    if not pre["ok"]:
+        return {"ok": False, "error": "The preview has problems — fix them first.", "pre": pre}
+    if expected != pre["fingerprint"]:
+        return {"ok": False, "error": "Something changed since the preview. Look at the new preview, then add.",
+                "pre": pre}
+    add = pre["add"]
+    shop = add["store"]
+    run = load_run(iid)
+    steps: list[dict] = []
+    upd = {"started": _now(), "by": by, "colors": add["colors"], "steps": steps, "ok": False}
+    run.setdefault("updates", []).append(upd)
+    _save_run(iid, run)
+
+    def step(name, ok, detail=""):
+        steps.append({"step": name, "ok": ok, "detail": detail})
+        _save_run(iid, run)
+        return ok
+
+    files, front = _upload_images(add, step, shop)
+    if add.get("swatch_new"):
+        made, failed = make_swatches(add["swatch_new"], shop)
+        add["swatch"] = {**add["swatch"], **made}
+        step(f"Colour swatches: {', '.join(add['swatch_new'])}", not failed,
+             "created" if not failed else "; ".join(failed))
+    linked = add["linked"] and all(c in add["swatch"] for c in add["colors"])
+    if add["linked"] and not linked:
+        msg = "No swatch for every new colour, and this product's Color uses swatches. Nothing was added."
+        step("Add colours", False, msg)
+        upd.update({"finished": _now(), "error": msg})
+        _save_run(iid, run)
+        return {"ok": False, "error": msg, "pre": pre}
+    media = [{"originalSource": x["originalSource"], "alt": x["alt"], "mediaContentType": "IMAGE"} for x in files]
+
+    def attempt(with_photos: bool):
+        r = _gql(ADD_VARIANTS, {"id": add["product"], "v": add_input(add, front if with_photos else {}, linked),
+                                "m": media or None}, store=shop)
+        node = ((r.get("data") or {}).get("productVariantsBulkCreate") or {}) if r["ok"] else {}
+        e = node.get("userErrors") or []
+        msg = r.get("error") or "; ".join(x["message"] for x in e)
+        return node.get("productVariants") or [], msg
+
+    created, msg = attempt(True)
+    if not created:
+        # some API versions want new option values on the option first
+        _gql(ADD_VALUES, {"id": add["product"], "o": {"id": add["color_option"]["id"]},
+                          "add": [({"linkedMetafieldValue": add["swatch"][c]} if linked else {"name": c})
+                                  for c in add["colors"]]}, store=shop)
+        created, msg2 = attempt(True)
+        if not created and front:
+            created, msg3 = attempt(False)
+            if created:
+                step("Variant photos skipped", False,
+                     f"Shopify refused them ({msg2 or msg}); the photos are on the product — assign them in the admin.")
+            msg = msg3 or msg2 or msg
+        else:
+            msg = msg2 or msg
+    if not created:
+        step("Add colours", False, msg or "Shopify created no variants.")
+        upd.update({"finished": _now(), "error": msg or "Shopify created no variants."})
+        _save_run(iid, run)
+        return {"ok": False, "error": upd["error"], "pre": pre}
+    step("Add colours", True, f"{', '.join(add['colors'])} · {len(created)} variants")
+
+    bad = _keep_only(created, add["keep"], shop)
+    step(f"Stocked at {' + '.join(add['keep_names'])} only", bad == 0,
+         "every other location detached" if not bad else f"{bad} variant(s) could not be moved — fix in the admin")
+    if add.get("profile"):
+        dp = _gql("""mutation D($id: ID!, $p: DeliveryProfileInput!) { deliveryProfileUpdate(id: $id, profile: $p) {
+                      userErrors { message } } }""",
+                  {"id": add["profile"]["id"], "p": {"variantsToAssociate": [v["id"] for v in created]}}, store=shop)
+        e = (dp.get("data") or {}).get("deliveryProfileUpdate", {}).get("userErrors") if dp["ok"] else None
+        step(f"Delivery profile: {add['profile']['name']}", dp["ok"] and not e,
+             dp.get("error") or (e[0]["message"] if e else "assigned"))
+    upd["ok"] = True
+    upd["partial"] = not all(s["ok"] for s in steps)
+    upd["finished"] = _now()
+    _save_run(iid, run)
+    return {"ok": True, "update": upd, "pre": pre}

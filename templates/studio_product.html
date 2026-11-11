@@ -53,6 +53,40 @@
   {% if run.plan and run.plan.ss_style %}<p class="small">For ssorder, map it to its blank on the hub:
     <code>cd ~/Dev/ssorder &amp;&amp; python3 ssorder.py map set {{ res.product.rsplit('/',1)[-1] }} "{{ run.plan.ss_style }}"</code></p>{% endif %}
 </div>
+{% if run.updates %}<div class="sp-card"><h3>Changes since</h3>
+  {% for u in run.updates|reverse %}<p class="small"><b>{{ u.finished or u.started }}</b> · {{ u.by }} — added {{ u.colors|join(', ') }}{% if not u.ok %} <b>(failed: {{ u.error }})</b>{% endif %}</p>
+  <ul class="sp-steps small">{% for s in u.steps %}<li>{{ '✓' if s.ok else '✗' }} <b>{{ s.step }}</b> — {{ s.detail }}</li>{% endfor %}</ul>{% endfor %}
+</div>{% endif %}
+{% if adding %}{% set a = adding %}
+<div class="sp-card sp-f" id="add-colours">
+  <h3>Add colours</h3>
+  <p class="small">Adds new colours to this product in place: the existing colours, their prices, any orders, the product
+    number, ssorder's mapping and the share link stay as they are. New sizes are priced like the existing ones
+    {% if a.existing %}({{ a.existing|join(', ') }}){% endif %}; cost follows the blank.
+    Render each new colour first: Studio editor › 🎨 Colours.</p>
+  {% for b in a.blocking %}<div class="sp-bad">{{ b }}</div>{% endfor %}
+  {% if a.choices %}
+  <form method="post" action="#add-colours">
+    <input type="hidden" name="add_fingerprint" value="{{ a.fingerprint }}">
+    <label>Colours from S&amp;S not on the product yet</label>
+    <div class="sp-checks">{% for c in a.choices %}<label><input type="checkbox" name="add_colors" value="{{ c }}" {{ 'checked' if a.chosen and c in a.chosen }}>{{ c }}</label>{% endfor %}</div>
+    {% if a.add %}
+      {% for w in a.warnings %}<div class="sp-warn" style="margin-top:10px">{{ w }}</div>{% endfor %}
+      {% if a.add.images %}<div class="sp-imgs" style="margin-top:10px">{% for m in a.add.images %}<figure>{% if m.preview %}<img src="{{ STUDIO_URL }}{{ m.preview }}" alt="" loading="lazy">{% endif %}{{ m.color }} · {{ m.view|replace('_',' ') }}</figure>{% endfor %}</div>{% endif %}
+      <div style="overflow-x:auto;margin-top:10px"><table class="small">
+        <tr><th>Variant</th><th>Price</th><th>Cost</th><th>Weight</th></tr>
+        {% for v in a.add.variants %}<tr><td>{{ v.color }} / {{ v.size }}</td><td>{{ '$%.2f'|format(v.price) }}</td>
+          <td>{{ '$%.2f'|format(v.cost) if v.cost else '—' }}</td><td>{{ '%.2f lb'|format(v.weight) if v.weight else '—' }}</td></tr>{% endfor %}
+      </table></div>
+    {% endif %}
+    <div class="sp-actions">
+      <button class="btn btn-quiet" type="submit" name="action" value="add_preview">Preview</button>
+      {% if a.ok %}<button class="btn btn-gold" type="submit" name="action" value="add">Add {{ a.add.colors|join(', ') }} to Shopify</button>{% endif %}
+    </div>
+  </form>
+  {% else %}<p class="small">Every S&amp;S colour of this style is already on the product.</p>{% endif %}
+</div>
+{% endif %}
 {% elif res and not res.ok %}
 <div class="sp-bad"><b>The last attempt failed:</b> {{ res.error }}. Nothing was created.</div>
 {% endif %}

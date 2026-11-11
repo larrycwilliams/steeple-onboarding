@@ -164,7 +164,7 @@ def fake_studio_product(rec):
         e, c = (biz_export, biz_ctx) if iid == 9 else (export, ctx)
         out = sp.build_plan(e, None if iid == 9 else rec, c, f, {})
         out.update({"ok": not out["blocking"], "export": e, "record": rec, "form": f, "business": iid == 9,
-                    "ministries": c["ministries"], "fingerprint": "f", "run": {}})
+                    "ministries": c["ministries"], "fingerprint": "f", "run": load_run(iid)})
         return out
 
     def load_run(iid):
@@ -182,8 +182,34 @@ def fake_studio_product(rec):
                                {"step": "Delivery profile: Highway – Freight", "ok": False,
                                 "detail": "Access denied for deliveryProfileUpdate field. Required access: write_shipping"}]}}
 
+    def add_preview(iid, form=None):
+        """Item 8 is in Shopify: the widest Add colours card -- every S&S
+        colour still to add, one previewed with all its sizes and a warning."""
+        names = ["Heather Charcoal", "Blue Spruce", "Crimson", "Ivory", "Black", "Heather Royal Blue Mélange",
+                 "Washed Denim Garment-Dyed", "Moss", "Chalky Mint", "Light Green"]
+        vs = [{"color": "Washed Denim Garment-Dyed", "size": z["size"], "price": 34.99 + i, "cost": 19.5 + i,
+               "weight": 1.1} for i, z in enumerate(sizes)]
+        return {"ok": True, "blocking": [], "fingerprint": "a", "existing": ["Heather Charcoal", "Blue Spruce"],
+                "choices": names[2:], "chosen": ["Washed Denim Garment-Dyed"],
+                "warnings": ["New colour swatches will be made in the TWC store from the S&S hex codes: "
+                             "Washed Denim Garment-Dyed #6F8FAF."],
+                "add": {"colors": ["Washed Denim Garment-Dyed"], "variants": vs,
+                        "images": [{"view": v, "color": "Washed Denim Garment-Dyed", "preview": ""}
+                                   for v in ("front", "back")]},
+                "product": {"id": "gid://shopify/Product/15404446843248", "title": "x", "status": "ACTIVE", "store": "ss"}}
+
+    def load_run_wide(iid):
+        r = load_run(iid)
+        if r:
+            r["updates"] = [{"started": "2026-11-11T09:00:00", "finished": "2026-11-11T09:00:20",
+                             "by": "Larry Williams (MacBook Air)", "colors": ["Heather Royal Blue Mélange"], "ok": True,
+                             "steps": [{"step": "Add colours", "ok": True,
+                                        "detail": "Heather Royal Blue Mélange · 9 variants"}]}]
+        return r
+
     sp.preview = preview
-    sp.load_run = load_run
+    sp.load_run = load_run_wide
+    sp.add_preview = add_preview
 
 
 def serve(work: Path):

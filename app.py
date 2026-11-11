@@ -57,7 +57,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.86"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.87"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -530,17 +530,33 @@ def studio_item_shopify(iid):
     GET and Preview read only; Create is owner-only and needs a clean,
     unchanged preview."""
     form = request.form if request.method == "POST" else None
+    action = form.get("action") if form is not None else ""
     outcome = None
-    if form is not None and form.get("action") == "create":
+    if action in ("create", "add"):
         if not access.may(g.me, "owner"):
-            flash("Creating products in Shopify is owner-only.", "error")
-        else:
+            flash("Changing products in Shopify is owner-only.", "error")
+        elif action == "create":
             outcome = studio_product.commit(iid, form, form.get("fingerprint", ""), g.me.get("stamp") or "Portal")
             if not outcome["ok"]:
                 flash(outcome["error"], "error")
-    data = studio_product.preview(iid, form)
-    return render_template("studio_product.html", d=data, iid=iid, outcome=outcome,
-                           run=studio_product.load_run(iid), admin_url=studio_product.admin_url,
+        else:
+            outcome = studio_product.add_commit(iid, form, form.get("add_fingerprint", ""),
+                                                g.me.get("stamp") or "Portal")
+            if outcome["ok"]:
+                flash(f"Added {', '.join(outcome['update']['colors'])} to the product.", "success")
+            else:
+                flash(outcome["error"], "error")
+    is_add = action in ("add_preview", "add")
+    data = studio_product.preview(iid, None if is_add else form)
+    # Add colours (3.87): only for a product that is in Shopify
+    adding = None
+    res = (data.get("run") or {}).get("result") or {}
+    if res.get("product"):
+        adding = studio_product.add_preview(iid, form if action == "add_preview" else None)
+    # data["run"] drops a result whose product was deleted in Shopify, so the
+    # Create form comes back without moving files by hand (3.87 fix)
+    return render_template("studio_product.html", d=data, iid=iid, outcome=outcome, adding=adding,
+                           run=data.get("run") or {}, admin_url=studio_product.admin_url,
                            ladder=list(studio_product.LADDER), size_up_hint=studio_product.SIZE_UP_NOTE)
 
 
