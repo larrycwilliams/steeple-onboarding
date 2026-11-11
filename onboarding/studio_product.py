@@ -1202,7 +1202,7 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
 
 PRODUCT_NOW = """
 query P($id: ID!) { product(id: $id) { id title handle status
-  options { id name linkedMetafield { namespace key } optionValues { id name } }
+  options { id name linkedMetafield { namespace key } optionValues { id name linkedMetafieldValue hasVariants } }
   variants(first: 250) { nodes { id price compareAtPrice selectedOptions { name value }
     inventoryItem { unitCost { amount } } } } } }"""
 
@@ -1216,6 +1216,11 @@ mutation A($id: ID!, $v: [ProductVariantsBulkInput!]!, $m: [CreateMediaInput!]) 
 ADD_VALUES = """
 mutation O($id: ID!, $o: OptionUpdateInput!, $add: [OptionValueCreateInput!]) {
   productOptionUpdate(productId: $id, option: $o, optionValuesToAdd: $add, variantStrategy: LEAVE_AS_IS) {
+    userErrors { field message code } } }"""
+
+DROP_VALUES = """
+mutation X($id: ID!, $o: OptionUpdateInput!, $del: [ID!]) {
+  productOptionUpdate(productId: $id, option: $o, optionValuesToDelete: $del) {
     userErrors { field message code } } }"""
 
 
@@ -1272,7 +1277,8 @@ def add_preview(iid: int, form=None) -> dict:
     if not copt or not sopt:
         out["blocking"].append("This product has no Color and Size options, so colours cannot be added here.")
         return out
-    existing = [v["name"] for v in copt["optionValues"]]
+    # a value with no variants is a leftover from a failed add: not "on" the product
+    existing = [v["name"] for v in copt["optionValues"] if v.get("hasVariants", True)]
     sizes = [v["name"] for v in sopt["optionValues"]]
     have = {c.casefold() for c in existing}
     ss = export.get("ss") or {}
@@ -1347,11 +1353,19 @@ def add_preview(iid: int, form=None) -> dict:
     return out
 
 
-def add_input(add: dict, front: dict, linked: bool) -> list[dict]:
+def add_input(add: dict, front: dict, linked: bool, value_ids: dict | None = None) -> list[dict]:
+    """value_ids: colour -> its ProductOptionValue id. A linked (swatch)
+    value must be named by id: the 2025-07 API refuses linkedMetafieldValue
+    alone with "id or name must be specified" (NFG tee, 2026-11-11)."""
+    value_ids = value_ids or {}
     rows = []
     for v in add["variants"]:
-        cv = ({"optionName": add["color_option"]["name"], "linkedMetafieldValue": add["swatch"][v["color"]]}
-              if linked else {"optionName": add["color_option"]["name"], "name": v["color"]})
+        if value_ids.get(v["color"]):
+            cv = {"optionId": add["color_option"]["id"], "id": value_ids[v["color"]]}
+        elif linked:
+            cv = {"optionName": add["color_option"]["name"], "linkedMetafieldValue": add["swatch"][v["color"]]}
+        else:
+            cv = {"optionName": add["color_option"]["name"], "name": v["color"]}
         row = {"optionValues": [cv, {"optionName": add["size_option"], "name": v["size"]}],
                "price": f"{v['price']:.2f}", "taxable": True, "inventoryPolicy": "DENY",
                "inventoryItem": {"tracked": False, "requiresShipping": True, "cost": f"{v['cost']:.2f}",
@@ -1400,8 +1414,41 @@ def add_commit(iid: int, form, expected: str, by: str) -> dict:
         return {"ok": False, "error": msg, "pre": pre}
     media = [{"originalSource": x["originalSource"], "alt": x["alt"], "mediaContentType": "IMAGE"} for x in files]
 
+    copt_id = add["color_option"]["id"]
+
+    def values_now() -> dict:
+        """colour -> option value id, for the colours being added (matched by
+        swatch for a linked Color, by name otherwise)."""
+        r = _gql(PRODUCT_NOW, {"id": add["product"]}, store=shop)
+        prod = (r.get("data") or {}).get("product") if r["ok"] else None
+        opt = next((o for o in (prod or {}).get("options") or [] if o["id"] == copt_id), None) or {}
+        ids = {}
+        for c in add["colors"]:
+            for ov in opt.get("optionValues") or []:
+                if (linked and ov.get("linkedMetafieldValue") == add["swatch"].get(c)) or \
+                        (not linked and ov["name"].casefold() == c.casefold()):
+                    ids[c] = ov["id"]
+        return ids
+
+    # 1. the new colours on the option (an earlier failed try may have left them)
+    ids = values_now()
+    added_here = [c for c in add["colors"] if c not in ids]
+    if added_here:
+        o = _gql(ADD_VALUES, {"id": add["product"], "o": {"id": copt_id},
+                              "add": [({"linkedMetafieldValue": add["swatch"][c]} if linked else {"name": c})
+                                      for c in added_here]}, store=shop)
+        e = ((o.get("data") or {}).get("productOptionUpdate") or {}).get("userErrors") if o["ok"] else None
+        if not o["ok"] or e:
+            msg = o.get("error") or "; ".join(x["message"] for x in e)
+            step("Add colours", False, f"Shopify would not add {', '.join(added_here)} to Color: {msg}")
+            upd.update({"finished": _now(), "error": msg})
+            _save_run(iid, run)
+            return {"ok": False, "error": msg, "pre": pre}
+        ids = values_now()
+
     def attempt(with_photos: bool):
-        r = _gql(ADD_VARIANTS, {"id": add["product"], "v": add_input(add, front if with_photos else {}, linked),
+        r = _gql(ADD_VARIANTS, {"id": add["product"],
+                                "v": add_input(add, front if with_photos else {}, linked, ids),
                                 "m": media or None}, store=shop)
         node = ((r.get("data") or {}).get("productVariantsBulkCreate") or {}) if r["ok"] else {}
         e = node.get("userErrors") or []
@@ -1409,22 +1456,18 @@ def add_commit(iid: int, form, expected: str, by: str) -> dict:
         return node.get("productVariants") or [], msg
 
     created, msg = attempt(True)
+    if not created and front:
+        created, msg2 = attempt(False)
+        if created:
+            step("Variant photos skipped", False,
+                 f"Shopify refused them ({msg}); the photos are on the product — assign them in the admin.")
+        msg = msg2 or msg
     if not created:
-        # some API versions want new option values on the option first
-        _gql(ADD_VALUES, {"id": add["product"], "o": {"id": add["color_option"]["id"]},
-                          "add": [({"linkedMetafieldValue": add["swatch"][c]} if linked else {"name": c})
-                                  for c in add["colors"]]}, store=shop)
-        created, msg2 = attempt(True)
-        if not created and front:
-            created, msg3 = attempt(False)
-            if created:
-                step("Variant photos skipped", False,
-                     f"Shopify refused them ({msg2 or msg}); the photos are on the product — assign them in the admin.")
-            msg = msg3 or msg2 or msg
-        else:
-            msg = msg2 or msg
-    if not created:
-        step("Add colours", False, msg or "Shopify created no variants.")
+        # never leave a colour button with nothing behind it on the store
+        stray = [ids[c] for c in add["colors"] if c in ids]
+        if stray:
+            _gql(DROP_VALUES, {"id": add["product"], "o": {"id": copt_id}, "del": stray}, store=shop)
+        step("Add colours", False, (msg or "Shopify created no variants.") + " — the new colour was taken off again.")
         upd.update({"finished": _now(), "error": msg or "Shopify created no variants."})
         _save_run(iid, run)
         return {"ok": False, "error": upd["error"], "pre": pre}

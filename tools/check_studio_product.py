@@ -709,7 +709,7 @@ check("a church product is untouched: no private tag or template",
 
 # ------------------------------------------- 3.87: add colours to a live product
 HN = sizes(("S", 5.20, 0.40), ("M", 5.20, 0.44), ("L", 5.20, 0.48), ("XL", 5.20, 0.52), ("2XL", 7.20, 0.58))
-LIVE = {"linked": True, "deleted": False}
+LIVE = {"linked": True, "deleted": False, "extra": [], "strict": True}
 ADDS, OPTS = [], []
 
 
@@ -723,7 +723,9 @@ def live_gql(query, variables=None, store="ss"):
             "id": "gid://shopify/Product/555", "title": "HOH - Logo Crewneck TWC", "handle": "h", "status": "ACTIVE",
             "options": [{"id": "gid://shopify/ProductOption/1", "name": "Color",
                          "linkedMetafield": {"namespace": "shopify", "key": "color-pattern"} if LIVE["linked"] else None,
-                         "optionValues": [{"id": "v1", "name": "White"}]},
+                         "optionValues": [{"id": "v1", "name": "White", "hasVariants": True,
+                                           "linkedMetafieldValue": "gid://shopify/Metaobject/1" if LIVE["linked"] else None}]
+                                        + [dict(x) for x in LIVE["extra"]]},
                         {"id": "gid://shopify/ProductOption/2", "name": "Size", "linkedMetafield": None,
                          "optionValues": [{"id": f"s{i}", "name": z} for i, z in enumerate(price)]}],
             "variants": {"nodes": [{"id": f"gid://shopify/ProductVariant/{i}", "price": p, "compareAtPrice": None,
@@ -735,6 +737,12 @@ def live_gql(query, variables=None, store="ss"):
     if "productVariantsBulkCreate" in query:
         CALLS.append(("mutation A", variables))
         ADDS.append(variables)
+        cv = variables["v"][0]["optionValues"][0]
+        if LIVE["strict"] and "id" not in cv and "name" not in cv:
+            return {"ok": True, "data": {"productVariantsBulkCreate": {"productVariants": [], "userErrors": [
+                {"field": ["variants", "0"], "message": "id or name must be specified", "code": "INVALID"}]}}}
+        for x in LIVE["extra"]:
+            x["hasVariants"] = True
         return {"ok": True, "data": {"productVariantsBulkCreate": {"userErrors": [], "productVariants": [
             {"id": f"gid://shopify/ProductVariant/9{i}", "title": "",
              "inventoryItem": {"id": f"gid://shopify/InventoryItem/9{i}", "inventoryLevels": {
@@ -742,6 +750,12 @@ def live_gql(query, variables=None, store="ss"):
             for i, _ in enumerate(variables["v"])]}}}
     if "productOptionUpdate" in query:
         OPTS.append(variables)
+        for i, a in enumerate(variables.get("add") or []):
+            LIVE["extra"].append({"id": f"gid://shopify/ProductOptionValue/new{len(LIVE['extra'])}",
+                                  "name": a.get("name") or "(linked)", "hasVariants": False,
+                                  "linkedMetafieldValue": a.get("linkedMetafieldValue")})
+        for d in variables.get("del") or []:
+            LIVE["extra"][:] = [x for x in LIVE["extra"] if x["id"] != d]
         return {"ok": True, "data": {"productOptionUpdate": {"userErrors": []}}}
     return fake_gql(query, variables, store)
 
@@ -777,8 +791,11 @@ row = v["v"][0]
 check("adds variants in place on the same product (no productSet, no delete)",
       r["ok"] and v["id"] == "gid://shopify/Product/555" and not any("productSet" in n for n, _ in CALLS)
       and len(v["v"]) == 5 and len(UPLOADS) == 2)
-check("new variants link the swatch and carry their colour's photo",
-      row["optionValues"][0] == {"optionName": "Color", "linkedMetafieldValue": "gid://shopify/Metaobject/3"}
+check("the swatch value is added to Color first, then the variants name it by id (2025-07 rule)",
+      OPTS and OPTS[0]["add"] == [{"linkedMetafieldValue": "gid://shopify/Metaobject/3"}]
+      and row["optionValues"][0] == {"optionId": "gid://shopify/ProductOption/1", "id": "gid://shopify/ProductOptionValue/new0"})
+check("new variants carry their colour's photo",
+      True
       and row["mediaSrc"][0].endswith("-heather-navy-front.jpg")
       and {m["originalSource"] for m in v["m"]} >= set(row["mediaSrc"]))
 check("new variants: untracked, DENY, cost and weight set",
@@ -796,7 +813,38 @@ LIVE["linked"] = False
 a2 = sp.add_preview(7, Form(add_colors=["Pepper"]))
 ADDS.clear()
 sp.add_commit(7, Form(add_colors=["Pepper"]), a2["fingerprint"], "Larry")
-check("a plain (unlinked) Color gets plain names", ADDS[0]["v"][0]["optionValues"][0] == {"optionName": "Color", "name": "Pepper"})
+check("a plain (unlinked) Color: value added by name, variants by its id",
+      ADDS[0]["v"][0]["optionValues"][0]["id"].startswith("gid://shopify/ProductOptionValue/new")
+      and OPTS[-1]["add"] == [{"name": "Pepper"}])
+# a leftover empty value from a failed add (the NFG tee, 2026-11-11) is offered again and reused
+LIVE["extra"][:] = [{"id": "gid://shopify/ProductOptionValue/left", "name": "Heather Navy", "hasVariants": False,
+                     "linkedMetafieldValue": "gid://shopify/Metaobject/3"}]
+LIVE["linked"] = True
+a5 = sp.add_preview(7, Form(add_colors=["Heather Navy"]))
+check("leftover empty colour is offered again", "Heather Navy" in a5["choices"] and a5["ok"])
+OPTS.clear(); ADDS.clear()
+sp.add_commit(7, Form(add_colors=["Heather Navy"]), a5["fingerprint"], "Larry")
+check("…and reused by id, not added twice", not OPTS
+      and ADDS[0]["v"][0]["optionValues"][0]["id"] == "gid://shopify/ProductOptionValue/left")
+# Shopify refuses the variants: the new value is taken off again
+LIVE["extra"].clear()
+_bulk = live_gql
+
+
+def refuse_variants(query, variables=None, store="ss"):
+    if "productVariantsBulkCreate" in query:
+        return {"ok": True, "data": {"productVariantsBulkCreate": {"productVariants": [],
+                                                                   "userErrors": [{"field": ["x"], "message": "nope"}]}}}
+    return _bulk(query, variables, store)
+
+
+sp._gql = refuse_variants
+a6 = sp.add_preview(7, Form(add_colors=["Heather Navy"]))
+OPTS.clear()
+r6 = sp.add_commit(7, Form(add_colors=["Heather Navy"]), a6["fingerprint"], "Larry")
+check("variants refused: nothing half-done -- the colour is removed from Color again",
+      not r6["ok"] and not LIVE["extra"] and any(o.get("del") for o in OPTS))
+sp._gql = live_gql
 LIVE["linked"] = True
 SHOP["swatches"] = {"White": "gid://shopify/Metaobject/1"}
 a3 = sp.add_preview(7, Form(add_colors=["Pepper"]))
@@ -836,6 +884,7 @@ EXPORT["data"] = nfg_export(colors=[{"name": "White", "hex": "#fff", "family": "
 EXPORT["data"]["item"]["shopify_product"] = "gid://shopify/Product/555"
 EXPORT["data"]["colourways"] = {"Heather Royal": CW["Pepper"]}
 sp._save_run(7, {"result": {"product": "gid://shopify/Product/555", "store": "twc", "ok": True, "steps": []}})
+LIVE["extra"].clear()
 a4 = sp.add_preview(7, Form(add_colors=["Heather Royal"]))
 check("TWC: the new colour's swatch is planned from the S&S hex (Blue)",
       a4["ok"] and a4["add"]["swatch_new"] == {"Heather Royal": {"hex": "#3B5BA9", "taxonomy": "gid://shopify/TaxonomyValue/2"}}
@@ -843,12 +892,13 @@ check("TWC: the new colour's swatch is planned from the S&S hex (Blue)",
 ADDS.clear()
 r = sp.add_commit(7, Form(add_colors=["Heather Royal"]), a4["fingerprint"], "Larry")
 check("TWC: swatch created, then the new variants link to it",
-      r["ok"] and MADE and ADDS[0]["v"][0]["optionValues"][0]["linkedMetafieldValue"].startswith("gid://shopify/Metaobject/N")
+      r["ok"] and MADE and OPTS[-1]["add"][0]["linkedMetafieldValue"].startswith("gid://shopify/Metaobject/N")
+      and ADDS[0]["v"][0]["optionValues"][0]["id"].startswith("gid://shopify/ProductOptionValue/")
       and STORES_HIT[-1] == "twc")
 sp._gql = fake_gql
 sp._run_path(7).unlink(missing_ok=True)
 EXPORT["data"] = export()
-check("version is 3.87 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 87))
+check("version is 3.88 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 88))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")
