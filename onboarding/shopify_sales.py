@@ -68,7 +68,7 @@ query Orders($first: Int!, $after: String, $q: String) {
               vendor
               customAttributes { key value }
               discountedUnitPriceAfterAllDiscountsSet { shopMoney { amount } }
-              product { id title status vendor }
+              product { id title status vendor productType }
               variant { id inventoryItem { unitCost { amount } } }
             }
           }
@@ -242,6 +242,9 @@ def _clean_order(node: dict) -> dict:
             "vendor_at_sale": line.get("vendor") or "",
             "vendor": product.get("vendor") or line.get("vendor") or "",
             "product_status": product.get("status") or "",
+            # 3.91: "Engraved Gifts" and the like -- the orders board tells
+            # laser-engraved items (nothing to buy, nothing to press) apart.
+            "product_type": product.get("productType") or "",
             # A Portal manual-order line (3.90) says what it is in its
             # attributes; visible ones (Decoration, Placement) and hidden
             # ones (_ss_style, _supplier) alike.

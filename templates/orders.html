@@ -60,6 +60,7 @@
         {% if c.payment %}<span class="ob-tag ob-unpaid">{{ c.payment }}</span>{% endif %}
         {% if c.manual %}<span class="ob-tag" title="Manual order — from {{ c.manual }}">Manual · {{ c.manual }}</span>{% endif %}
         {% if c.business == 'twc' %}<span class="ob-tag ob-twc">TWC shop</span>{% endif %}
+        {% if c.make == 'engraved' %}<span class="ob-tag" title="Laser engraved — no blanks bought">Laser</span>{% elif c.make == 'made' %}<span class="ob-tag" title="Some lines are laser engraved">Laser + print</span>{% endif %}
         {% if c.delivery == 'pickup' %}<span class="ob-tag ob-pickup" title="{{ c.delivery_title }}">Pickup</span>
         {% elif c.delivery == 'ship' %}<span class="ob-tag" title="{{ c.delivery_title }}">Ship</span>{% endif %}
         {% if c.inhouse_items is not none %}<span>{{ c.inhouse_items }} in-house{% if c.item_count != c.inhouse_items %} of {{ c.item_count }}{% endif %}</span>{% endif %}
@@ -67,7 +68,7 @@
       {% if c.why and lane.key in ('new', 'ordered', 'in') %}<div class="ob-why">{{ c.why }}</div>{% endif %}
       {% if c.boxes %}<div class="ob-why">{{ c.boxes|join(', ') }}</div>{% endif %}
       {% for step in ('pressed', 'packed') %}{% if c.ticks.get(step) %}
-      <div class="ob-ticked">✓ {{ step|capitalize }}{% if c.ticks[step].by %} · {{ c.ticks[step].by }}{% endif %}
+      <div class="ob-ticked">✓ {{ (c.make if step == 'pressed' else step)|capitalize }}{% if c.ticks[step].by %} · {{ c.ticks[step].by }}{% endif %}
         <form method="post" action="{{ url_for('orders_tick') }}" class="ob-inline">
           <input type="hidden" name="key" value="{{ c.key }}"><input type="hidden" name="step" value="{{ step }}">
           <input type="hidden" name="undo" value="1"><input type="hidden" name="b" value="{{ business }}">
@@ -81,7 +82,7 @@
         <input type="hidden" name="key" value="{{ c.key }}"><input type="hidden" name="step" value="{{ next_step }}">
         <input type="hidden" name="b" value="{{ business }}"><input type="hidden" name="p" value="{{ partner }}">
         <input type="hidden" name="anchor" value="{{ anchor }}">
-        <button class="btn {{ 'btn-gold' if lane.key in ('in', 'pressed') else 'btn-quiet' }}" type="submit">Mark {{ next_step }}</button>
+        <button class="btn {{ 'btn-gold' if lane.key in ('in', 'pressed') else 'btn-quiet' }}" type="submit">Mark {{ c.make if next_step == 'pressed' else next_step }}</button>
       </form>
       {% endif %}
     </article>

@@ -155,6 +155,42 @@ check("an old cache shows no in-house lanes and flags it", not orders.board(now=
 (cache / "shopify_sales.json").write_text(json.dumps({**old, "orders": [
     {**o, "fulfillment": "UNFULFILLED"} for o in old["orders"]]}))
 
+# 3.91: laser-engraved TWC orders (e.g. #1033, two cutting boards) need
+# nothing bought, so they never wait on Purchasing and say "engraved".
+from onboarding import twc_orders  # noqa: E402
+twc_orders.CACHE.parent.mkdir(parents=True, exist_ok=True)
+def tl(title, ptype="", **attrs):
+    return {"title": title, "qty": 1, "vendor": "The Williams Collective",
+            "product_type": ptype, "attrs": attrs}
+def to(name, status, *lines):
+    return {"name": name, "id": name[1:], "created_at": ago(2), "status": status,
+            "fulfillment": "UNFULFILLED", "delivery": "Standard", "lines": list(lines)}
+twc_orders.CACHE.write_text(json.dumps({"pulled_at": ago(0), "domain": "twc.myshopify.com", "orders": [
+    to("#1033", "PAID", tl("Acacia Paddle Cutting Board", "Engraved Gifts"), tl("Acacia Paddle Cutting Board", "Engraved Gifts")),
+    to("#1034", "PENDING", tl("Tumbler", "", Decoration="Laser engraving")),
+    to("#1035", "PAID", tl("Crew Tee TWC", "T-Shirts"), tl("Slate Coaster", "Engraved Gifts")),
+    to("#1036", "PAID", tl("Crew Tee TWC", "T-Shirts")),
+]}))
+tb = orders.board(now=NOW)
+tc = {c["name"]: c for L in tb["lanes"] for c in L["cards"]}
+check("engraved-only paid order skips Purchasing -> ready",
+      tc["#1033"]["lane"] == "in" and tc["#1033"]["make"] == "engraved"
+      and "nothing to buy" in tc["#1033"]["why"])
+check("engraved by a manual line's Decoration, unpaid -> waits for payment",
+      tc["#1034"]["make"] == "engraved" and tc["#1034"]["lane"] == "new" and "payment" in tc["#1034"]["why"])
+check("print + engrave mix still waits on Purchasing, says 'made'",
+      tc["#1035"]["make"] == "made" and tc["#1035"]["lane"] == "new")
+check("a plain apparel order is unchanged", tc["#1036"]["make"] == "pressed"
+      and "refresh Purchasing" in tc["#1036"]["why"])
+eng_html = portal.app.test_client().get("/orders").get_data(as_text=True)
+check("the engraved card's button says Mark engraved, with a Laser tag",
+      "Mark engraved" in eng_html and ">Laser<" in eng_html and "Laser + print" in eng_html)
+orders.tick("twc|#1033", "pressed", by="Larry")
+check("ticking it moves it on and reads 'Engraved'",
+      {c["name"]: c["lane"] for L in orders.board(now=NOW)["lanes"] for c in L["cards"]}["#1033"] == "pressed"
+      and "✓ Engraved" in portal.app.test_client().get("/orders").get_data(as_text=True))
+twc_orders.CACHE.unlink()
+
 # The page
 client = portal.app.test_client()
 page = client.get("/orders")

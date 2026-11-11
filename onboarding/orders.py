@@ -63,11 +63,32 @@ def manual_source(order: dict) -> str:
             return src
     return ""
 
+# 3.91: lines that are laser engraved, not printed. Their blanks are not
+# bought through Purchasing (ssorder never lists them), so they must not wait
+# on it, and the button says "engraved", not "pressed". Matched against the
+# product type, the title and a manual line's Decoration.
+ENGRAVE_WORDS = ("engrav", "laser")
+
+
+def is_engraved(line: dict) -> bool:
+    text = " ".join([line.get("product_type") or "", line.get("title") or "",
+                     (line.get("attrs") or {}).get("Decoration") or ""]).casefold()
+    return any(w in text for w in ENGRAVE_WORDS)
+
+
+def make_word(lines: list) -> str:
+    """'engraved' when every line is engraved, 'made' for a mix, else 'pressed'."""
+    eng = [is_engraved(l) for l in lines]
+    if eng and all(eng):
+        return "engraved"
+    return "made" if any(eng) else "pressed"
+
+
 LANES = [
     ("new", "New", "Blanks still to buy, or nothing bought yet."),
     ("ordered", "Blanks ordered", "Every blank is bought; waiting for them to arrive."),
-    ("in", "Blanks in", "Every blank has arrived. Ready to press."),
-    ("pressed", "Pressed", "Printed. Ready to pack."),
+    ("in", "Blanks in", "Every blank has arrived (or nothing to buy). Ready to press or engrave."),
+    ("pressed", "Pressed", "Printed or engraved. Ready to pack."),
     ("packed", "Packed", "Packed, waiting for the carrier or the pickup."),
 ]
 LANE_KEYS = [key for key, _label, _blurb in LANES]
@@ -282,6 +303,7 @@ def board(business: str = "", partner: str = "", now: datetime | None = None) ->
             "ticks": ticks.get(key, {}),
             "boxes": [], "why": "",
             "payment": payment_due(order), "manual": manual_source(order),
+            "make": "pressed",
         }
         if not has_fulfilment:
             continue                    # an old cache cannot say what is open; the page says so
@@ -339,10 +361,19 @@ def board(business: str = "", partner: str = "", now: datetime | None = None) ->
                 card["lane"] = "done"
                 done.append(card)
             continue
+        card["make"] = make_word(lines)
         info = by_order.get(("twc", name)) or by_order.get(("twc", name.replace("TWC ", "")))
-        lane, why = _blank_lane(info)
-        if card["payment"] and not info:
-            why = "Waiting for payment — blanks are bought once it is paid."
+        if card["make"] == "engraved" and not info:
+            # Nothing for Purchasing to buy: straight to ready.
+            lane, why = "in", "Laser engraved — nothing to buy. Ready to engrave."
+            if card["payment"]:
+                lane, why = "new", "Waiting for payment — engrave once it is paid."
+        else:
+            lane, why = _blank_lane(info)
+            if card["payment"] and not info:
+                why = "Waiting for payment — blanks are bought once it is paid."
+            elif card["make"] == "made" and not info:
+                why = "Not in Purchasing yet — refresh Purchasing. (Engraved items need nothing bought.)"
         if info:
             card["boxes"] = sorted(info["boxes"])
         for step in TICKABLE:
@@ -373,7 +404,7 @@ def board(business: str = "", partner: str = "", now: datetime | None = None) ->
                       "vendors": [], "item_count": None, "inhouse_items": None,
                       "delivery": "", "delivery_title": "", "fulfillment": "",
                       "admin_url": "", "ticks": entry, "boxes": sorted(info["boxes"]),
-                      "why": why, "lane": lane, "payment": "", "manual": ""})
+                      "why": why, "lane": lane, "payment": "", "manual": "", "make": "pressed"})
 
     # Filters, applied after the cards are built so the counts can show what is hidden.
     def keep(card: dict) -> bool:
