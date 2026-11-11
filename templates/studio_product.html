@@ -50,7 +50,8 @@
     <a href="{{ res.collection.url }}" target="_blank" rel="noopener"><b>{{ res.collection.url }}</b></a></p>{% endif %}
   <ul class="sp-steps">{% for s in res.steps %}<li>{{ '✓' if s.ok else '✗' }} <b>{{ s.step }}</b> — {{ s.detail }}</li>{% endfor %}</ul>
   {% if run.plan and run.plan.status == 'DRAFT' %}<p class="small">It is a <b>draft</b>: check it on the product page, then set it Active in Shopify.</p>{% endif %}
-  {% if run.plan and run.plan.ss_style %}<p class="small">For ssorder, map it to its blank on the hub:
+  {% set ns = namespace(mapped=false) %}{% for s in res.steps %}{% if s.ok and s.step.startswith('ssorder:') %}{% set ns.mapped = true %}{% endif %}{% endfor %}
+  {% if run.plan and run.plan.ss_style and not ns.mapped %}<p class="small">For ssorder, map it to its blank on the hub:
     <code>cd ~/Dev/ssorder &amp;&amp; python3 ssorder.py map set {{ res.product.rsplit('/',1)[-1] }} "{{ run.plan.ss_style }}"</code></p>{% endif %}
 </div>
 {% if run.updates %}<div class="sp-card"><h3>Changes since</h3>

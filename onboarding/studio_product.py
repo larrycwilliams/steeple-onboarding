@@ -38,6 +38,8 @@ import html
 import json
 import os
 import re
+import subprocess
+import sys
 import time
 import urllib.request
 from datetime import datetime
@@ -1057,6 +1059,31 @@ def _keep_only(variants: list[dict], keep: list[str], shop: str) -> int:
     return bad
 
 
+def ssorder_dir() -> Path:
+    return Path(os.environ.get("SSORDER_DIR") or Path.home() / "Dev" / "ssorder").expanduser()
+
+
+def ssorder_line(gid: str, style: str) -> str:
+    return f'cd ~/Dev/ssorder && python3 ssorder.py map set {gid.rsplit("/", 1)[-1]} "{style}"'
+
+
+def ssorder_map(gid: str, style: str) -> tuple[bool, str]:
+    """Run ssorder's own `map set PRODUCT_ID "Brand Style"` (ssorder keeps
+    styles.json; the Portal never writes it directly). (ok, detail)."""
+    script = ssorder_dir() / "ssorder.py"
+    if not script.exists():
+        return False, f"ssorder not found at {script.parent} — run on the hub: {ssorder_line(gid, style)}"
+    try:
+        r = subprocess.run([sys.executable, str(script), "map", "set", gid.rsplit("/", 1)[-1], style],
+                           cwd=str(script.parent), capture_output=True, text=True, timeout=60)
+    except Exception as exc:                                  # noqa: BLE001
+        return False, f"could not run ssorder ({exc}) — run on the hub: {ssorder_line(gid, style)}"
+    if r.returncode == 0 and "updated" in (r.stdout or ""):
+        return True, "mapped in styles.json"
+    why = ((r.stderr or r.stdout or "").strip().splitlines() or ["no output"])[-1][:200]
+    return False, f"ssorder said: {why} — run on the hub: {ssorder_line(gid, style)}"
+
+
 def commit(iid: int, form, expected: str, by: str) -> dict:
     """Create the product. Returns the run record (also saved to disk)."""
     pre = preview(iid, form)
@@ -1181,6 +1208,10 @@ def commit(iid: int, form, expected: str, by: str) -> dict:
         e = (pb.get("data") or {}).get("publishablePublish", {}).get("userErrors") if pb["ok"] else None
         step("Sales channels", pb["ok"] and not e,
              pb.get("error") or (e[0]["message"] if e else f"{len(plan['publications'])} channel(s)"))
+    # 5b. ssorder knows which blank to buy (3.89) -- the line Larry used to paste
+    if plan.get("ss_style"):
+        ok, detail = ssorder_map(gid, plan["ss_style"])
+        step(f"ssorder: buys {plan['ss_style']}", ok, detail)
     # 6. the Studio item links to it
     err = tell_studio(iid, gid, plan["title"], by)
     step("Linked in the Studio", not err, err or "the item shows “In Shopify”")

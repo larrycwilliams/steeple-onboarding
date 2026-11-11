@@ -12,6 +12,7 @@ records it, so the test can assert exactly what would have been sent.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -187,6 +188,23 @@ def fake_gql(query, variables=None, store="ss"):
     if "publishablePublish" in q:
         return {"ok": True, "data": {"publishablePublish": {"userErrors": []}}}
     return {"ok": False, "error": f"unexpected call: {q[:60]}"}
+
+
+# a stand-in ssorder (3.89): records each `map set` and answers like the real one
+import tempfile as _tf
+SSO = Path(_tf.mkdtemp(prefix="ssorder-"))
+(SSO / "ssorder.py").write_text(
+    "import sys, json, pathlib\n"
+    "p = pathlib.Path(__file__).with_name('calls.jsonl')\n"
+    "p.open('a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+    "if len(sys.argv) > 4 and sys.argv[4] == 'BAD': print('S&S has no style BAD', file=sys.stderr); sys.exit(2)\n"
+    "print('styles.json updated.')\n")
+os.environ["SSORDER_DIR"] = str(SSO)
+
+
+def sso_calls():
+    f = SSO / "calls.jsonl"
+    return [json.loads(x) for x in f.read_text().splitlines()] if f.exists() else []
 
 
 sp._gql = fake_gql
@@ -386,7 +404,7 @@ page = client.post("/studio-item/7/shopify", data=dict(form(), action="create", 
 html = page.get_data(as_text=True)
 check("Create from the page makes the product and shows the result", "Created in Shopify" in html
       and "/admin/products/555" in html or "Open in Shopify" in html)
-check("the result says it is a draft and gives the ssorder mapping", "draft" in html and "python3 ssorder.py map set 555" in html)
+check("the result says it is a draft and maps it in ssorder", "draft" in html and "ssorder: buys" in html)
 # ------------------------------------------- a business, in the TWC store (doc 73)
 from onboarding import twc_shop  # noqa: E402
 sp._run_path(7).unlink(missing_ok=True)
@@ -676,7 +694,7 @@ sp._gql = fake_gql
 EXPORT["data"] = export()
 page = portal.app.test_client().get("/studio-item/7/shopify").get_data(as_text=True)
 check("Open in Shopify is a real button; the ssorder line is runnable",
-      'class="btn btn-gold"' in page and "python3 ssorder.py map set" in page)
+      'class="btn btn-gold"' in page and ("python3 ssorder.py map set" in page or "ssorder: buys" in page))
 
 # ------------------------------------------- 3.86: a business's private corner
 EXPORT["data"] = nfg_export()
@@ -898,7 +916,33 @@ check("TWC: swatch created, then the new variants link to it",
 sp._gql = fake_gql
 sp._run_path(7).unlink(missing_ok=True)
 EXPORT["data"] = export()
-check("version is 3.88 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 88))
+
+# ------------------------------------------- 3.89: ssorder mapped automatically
+sp._run_path(7).unlink(missing_ok=True)
+EXPORT["data"] = export()
+(SSO / "calls.jsonl").unlink(missing_ok=True)
+pre = sp.preview(7, form())
+res = sp.commit(7, form(), pre["fingerprint"], "Larry")
+st = [x for x in res["run"]["result"]["steps"] if x["step"].startswith("ssorder:")]
+check("Create maps the product in ssorder with ssorder's own command",
+      sso_calls() == [["map", "set", "555", "Comfort Colors 1717"]] and st and st[0]["ok"]
+      and st[0]["step"] == "ssorder: buys Comfort Colors 1717")
+html = portal.app.test_client().get("/studio-item/7/shopify").get_data(as_text=True)
+check("…so the card no longer asks for the manual line", "python3 ssorder.py map set" not in html
+      and "ssorder: buys Comfort Colors 1717" in html)
+sok, sdetail = sp.ssorder_map("gid://shopify/Product/9", "BAD")
+check("ssorder refusing: amber step with its message and the line to run",
+      not sok and "S&S has no style BAD" in sdetail and 'map set 9 "BAD"' in sdetail)
+os.environ["SSORDER_DIR"] = str(SSO / "nowhere")
+sp._run_path(7).unlink(missing_ok=True)
+pre = sp.preview(7, form())
+res = sp.commit(7, form(), pre["fingerprint"], "Larry")
+html = portal.app.test_client().get("/studio-item/7/shopify").get_data(as_text=True)
+check("no ssorder on this Mac: product still made, step amber, the manual line is shown",
+      res["ok"] and res["run"]["result"]["partial"] and "python3 ssorder.py map set 555" in html)
+os.environ["SSORDER_DIR"] = str(SSO)
+sp._run_path(7).unlink(missing_ok=True)
+check("version is 3.89 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 89))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")
