@@ -66,6 +66,7 @@ query Orders($first: Int!, $after: String, $q: String) {
               quantity
               currentQuantity
               vendor
+              customAttributes { key value }
               discountedUnitPriceAfterAllDiscountsSet { shopMoney { amount } }
               product { id title status vendor }
               variant { id inventoryItem { unitCost { amount } } }
@@ -241,6 +242,11 @@ def _clean_order(node: dict) -> dict:
             "vendor_at_sale": line.get("vendor") or "",
             "vendor": product.get("vendor") or line.get("vendor") or "",
             "product_status": product.get("status") or "",
+            # A Portal manual-order line (3.90) says what it is in its
+            # attributes; visible ones (Decoration, Placement) and hidden
+            # ones (_ss_style, _supplier) alike.
+            "attrs": {str(a.get("key") or ""): str(a.get("value") or "")
+                      for a in line.get("customAttributes") or [] if a},
             # ...AfterAllDiscounts, not discountedUnitPriceSet: the latter
             # excludes order-level and code-based discounts, so a store-wide
             # promo would be paid out to the partner as though it never

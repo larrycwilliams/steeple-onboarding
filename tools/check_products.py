@@ -23,7 +23,7 @@ SKIP = {".env", "partners", "cache", "output", "assets", "leads", "product_runs"
 
 tmp = Path(tempfile.mkdtemp(prefix="products-check-"))
 work = tmp / "app"
-shutil.copytree(APP_ROOT, work, ignore=lambda d, names: [n for n in names if n in SKIP
+shutil.copytree(APP_ROOT, work, ignore=lambda d, names: [n for n in names if n in SKIP or n.startswith(".env")
                                                         or n.endswith(".app")])
 sys.path.insert(0, str(work))
 

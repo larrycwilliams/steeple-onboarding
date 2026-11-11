@@ -40,6 +40,7 @@ from onboarding import statement, statement_email, statement_pdf
 from onboarding import sent as sent_log
 from onboarding import agreement
 from onboarding import access
+from onboarding import manual_order
 from onboarding import welcome_email
 from onboarding import products as partner_products
 from onboarding import studio_product
@@ -57,7 +58,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.89"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.90"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -1857,9 +1858,9 @@ URL = f"http://127.0.0.1:{PORT}"
 # the connect appears to do nothing at all. See claude/ops/18.
 SHOPIFY_SCOPES = ("read_all_orders,read_companies,read_customers,read_files,read_inventory,"
                   "read_locations,read_orders,read_products,read_publications,"
-                  "write_content,write_inventory,"
+                  "read_metaobjects,write_content,write_draft_orders,write_inventory,"
                   "write_online_store_navigation,write_products,"
-                  "write_publications")
+                  "write_publications,write_shipping")
 
 
 def _redirect_uri() -> str:
@@ -2638,6 +2639,60 @@ def purchasing_dtf_file():
 def purchasing_style():
     """Colours and sizes S&S has for one style -- the Add form's lists. Read-only."""
     return jsonify(purchasing.style_options(request.args.get("style", "")))
+
+
+# ------------------------------------------------------------ manual orders (3.90)
+
+@app.route("/manual-order", methods=["GET", "POST"])
+@from_this_app
+def manual_order_page():
+    """An order from email, text or phone -> a Shopify draft order (doc 75).
+    GET and Preview read only; Create is owner-only and needs an unchanged preview."""
+    form = request.form if request.method == "POST" else None
+    action = form.get("action", "preview") if form is not None else ""
+    created = None
+    if action == "create":
+        if not access.may(g.me, "owner"):
+            flash("Creating orders in Shopify is owner-only.", "error")
+        else:
+            res = manual_order.create(form, form.get("fingerprint", ""), g.me.get("stamp") or "Portal")
+            if res["ok"]:
+                created = res["record"]
+                flash(f"Draft order {created['name']} created in {manual_order._store_label(created['store'])}.",
+                      "success")
+            else:
+                flash(res["error"], "error")
+    if created:
+        data = manual_order.preview(None)
+    else:
+        data = manual_order.preview(form)
+    return render_template("manual_order.html", d=data, created=created,
+                           recent=list(reversed(manual_order.records()))[:15],
+                           kinds=manual_order.KINDS, sources=manual_order.SOURCES,
+                           decorations=manual_order.DECORATIONS,
+                           styles=(purchasing.load() or {}).get("proposal", {}).get("styles") or [])
+
+
+@app.route("/manual-order/invoice", methods=["POST"])
+@from_this_app
+def manual_order_invoice():
+    if not access.may(g.me, "owner"):
+        flash("Sending invoices is owner-only.", "error")
+        return redirect(url_for("manual_order_page"))
+    res = manual_order.send_invoice(request.form.get("id", ""), request.form.get("message", ""),
+                                    g.me.get("stamp") or "Portal")
+    if res["ok"]:
+        flash(f"Invoice for {res['record']['name']} emailed to {res['record']['email']}.", "success")
+    else:
+        flash(res["error"], "error")
+    return redirect(url_for("manual_order_page") + "#recent")
+
+
+@app.route("/manual-order/products")
+def manual_order_products():
+    """Variants matching a title, for the line picker. Read-only."""
+    store = "ss" if request.args.get("store") == "ss" else "twc"
+    return jsonify(manual_order.search_products(store, request.args.get("q", "")))
 
 
 @app.route("/purchasing/manual/preview", methods=["POST"])

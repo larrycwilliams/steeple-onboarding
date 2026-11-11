@@ -31,14 +31,14 @@ from devices import DEVICES  # noqa: E402
 SKIP = {".env", "partners", "cache", "output", "assets", "leads", "product_runs", ".git",
         "__pycache__", "Claude outputs", "cost_changes"}
 
-PAGES = ["/", "/orders", "/programs", "/programs?show=attention", "/partners", "/dashboard", "/pipeline", "/purchasing", "/statements",
+PAGES = ["/", "/orders", "/manual-order", "/programs", "/programs?show=attention", "/partners", "/dashboard", "/pipeline", "/purchasing", "/statements",
          "/readiness", "/tools", "/settings", "/discovery", "/traveler", "/slips"]
 
 
 def build_copy() -> Path:
     tmp = Path(tempfile.mkdtemp(prefix="screens-check-"))
     work = tmp / "app"
-    shutil.copytree(APP_ROOT, work, ignore=lambda d, names: [n for n in names if n in SKIP
+    shutil.copytree(APP_ROOT, work, ignore=lambda d, names: [n for n in names if n in SKIP or n.startswith(".env")
                                                             or n.endswith(".app")])
     return work
 
@@ -106,6 +106,23 @@ def seed(work: Path) -> list[str]:
         "partners": {store.partner_id(recs[0]): {"projects": 12, "sent": 14, "changes": 3, "approved": 27,
                                                  "production": 9, "oldest_sent_days": 8}}}))
     fake_studio_product(recs[2])
+    # Manual orders (3.90): the longest recent rows the page can draw, and a
+    # TWC order awaiting payment on the board.
+    (work / "cache").mkdir(exist_ok=True)
+    (work / "cache" / "manual_orders.json").write_text(json.dumps([
+        {"id": f"gid://shopify/DraftOrder/{i}", "name": f"#D{i}", "store": "twc" if i % 2 else "ss",
+         "invoice_url": "https://pay.example/inv", "total": 1234.56,
+         "customer": "Bartholomew Montgomery-Fitzgerald", "company": "Greater Miami Valley Mechanical Contractors",
+         "email": "bartholomew.montgomery-fitzgerald@greatermiamivalleymechanical.com", "source": "in person",
+         "due": "2026-12-01", "items": 148, "created": "2026-11-11T09:00:00-05:00", "by": "Larry",
+         "invoice_sent": "" if i % 2 else "2026-11-11T09:05:00-05:00",
+         "admin_url": "https://254cba-03.myshopify.com/admin/draft_orders/1"} for i in range(1, 4)]))
+    (work / "cache" / "twc_orders.json").write_text(json.dumps({
+        "pulled_at": now.isoformat(), "domain": "254cba-03.myshopify.com", "locations": ["5351 Logan Ave"],
+        "orders": [{"name": "#1201", "id": "11", "created_at": ago(2), "test": False, "cancelled": False,
+                    "status": "PARTIALLY_PAID", "fulfillment": "UNFULFILLED", "delivery": "5351 Logan Ave",
+                    "lines": [{"title": "Crew tee TWC", "qty": 48, "vendor": "Greater Miami Valley Mechanical",
+                               "attrs": {"_source": "in person"}}]}]}))
     return [f"/partner/{store.partner_id(recs[2])}", f"/partner/{store.partner_id(recs[2])}/files",
             f"/partner/{store.partner_id(recs[2])}/products",
             f"/partner/{store.partner_id(recs[0])}/products?show=active",

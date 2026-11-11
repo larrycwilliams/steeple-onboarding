@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Manual order{% endblock %}
+{% block content %}
+{# Portal 3.90 (doc 75): an order from email / text / phone becomes a Shopify
+   draft order, so the Orders board, Purchasing, tax and revenue all see it. #}
+<style>
+  .mo-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin:8px 0 12px}
+  .mo-head h2{margin:0;border:0;padding:0}
+  .mo-card{background:#fff;border:1px solid #E2DDD2;border-radius:10px;padding:14px 16px;margin-bottom:14px}
+  .mo-card h3{margin:0 0 10px;font-size:1rem}
+  .mo-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px}
+  .mo-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mo-f label{display:block;font-size:.76rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+  .mo-f input,.mo-f select,.mo-f textarea{width:100%;box-sizing:border-box}
+  .mo-line{border:1px solid #E2DDD2;border-left:4px solid var(--gold,#b8912f);border-radius:8px;padding:10px 12px;margin-bottom:10px;background:#FCFAF6}
+  .mo-line-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+  .mo-line-top b{font-size:.9rem}
+  .mo-kinds{display:flex;flex-wrap:wrap;gap:4px 14px}
+  .mo-kinds label{display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-size:.92rem;color:inherit;margin:0}
+  .mo-kinds input{width:auto}
+  .mo-x{background:none;border:0;color:var(--bad,#a33);text-decoration:underline;cursor:pointer;font-size:.85rem;padding:0}
+  .mo-bad{background:#fbe9e7;border-left:4px solid var(--bad,#a33);padding:10px 12px;border-radius:6px;margin:0 0 8px;overflow-wrap:anywhere}
+  .mo-warn{background:#fdf4e3;border-left:4px solid #c69447;padding:10px 12px;border-radius:6px;margin:0 0 8px;overflow-wrap:anywhere}
+  .mo-ok{background:#e8f3ea;border-left:4px solid #2f7a45;padding:10px 12px;border-radius:6px;margin:0 0 12px;overflow-wrap:anywhere}
+  .mo-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+  .mo-sum{width:100%;border-collapse:collapse;font-size:.92rem}
+  .mo-sum td,.mo-sum th{padding:6px 8px;border-bottom:1px solid #EFEBE2;text-align:left;vertical-align:top}
+  .mo-sum td.n{text-align:right;white-space:nowrap}
+  .mo-sum .muted{color:var(--muted);font-size:.82rem}
+  .mo-recent .row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 12px;padding:8px 0;border-bottom:1px solid #EFEBE2;align-items:center}
+  .mo-recent .row form{display:flex;gap:6px;flex-wrap:wrap}
+  .mo-recent .row input[type=text]{min-width:0;flex:1 1 160px}
+  .mo-pick{display:flex;gap:6px}
+  .mo-pick input{flex:1 1 auto}
+  [data-for]{display:none}
+  .k-product [data-for~=product],.k-ss [data-for~=ss],.k-supplier [data-for~=supplier]{display:block}
+  @media (max-width:899px){.mo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:599px){.mo-grid,.mo-grid.two{grid-template-columns:minmax(0,1fr)}
+    .mo-recent .row{grid-template-columns:minmax(0,1fr)}}
+</style>
+
+<div class="mo-head">
+  <h2>Manual order</h2>
+  <span class="small">An order that came in by email, text or phone → a Shopify draft order, tracked like any web order.</span>
+  <a href="{{ url_for('orders_page') }}">← Orders</a>
+</div>
+
+{% if created %}
+<div class="mo-ok"><b>Draft order {{ created.name }}</b> created in {{ 'The Williams Collective' if created.store == 'twc' else 'Steeple & Stitch' }}
+  for {{ created.customer }}{% if created.total %} — {{ '$%.2f'|format(created.total) }}{% endif %}.
+  Next: <b>Send invoice</b> below, or open it in Shopify and use <b>Mark as paid</b> / <b>Payment due later</b>.</div>
+{% endif %}
+
+{% set f = d.form %}
+<form method="post" class="mo-f" id="mo-form">
+  <input type="hidden" name="fingerprint" value="{{ d.fingerprint }}">
+  <div class="mo-card">
+    <h3>Customer</h3>
+    <div class="mo-grid">
+      <div><label for="store">Store</label>
+        <select name="store" id="store">
+          <option value="twc" {{ 'selected' if f.store == 'twc' }}>The Williams Collective</option>
+          <option value="ss" {{ 'selected' if f.store == 'ss' }}>Steeple &amp; Stitch</option>
+        </select></div>
+      <div><label for="source">Came in by</label>
+        <select name="source" id="source">{% for s in sources %}<option value="{{ s }}" {{ 'selected' if f.source == s }}>{{ s|capitalize }}</option>{% endfor %}</select></div>
+      <div><label for="due">Due</label><input type="date" name="due" id="due" value="{{ f.due }}"></div>
+      <div><label for="first">First name</label><input type="text" name="first" id="first" value="{{ f.first }}" autocomplete="off"></div>
+      <div><label for="last">Last name</label><input type="text" name="last" id="last" value="{{ f.last }}" autocomplete="off"></div>
+      <div><label for="company">Company</label><input type="text" name="company" id="company" value="{{ f.company }}" autocomplete="off"></div>
+      <div><label for="email">Email</label><input type="email" name="email" id="email" value="{{ f.email }}" autocomplete="off"></div>
+      <div><label for="phone">Phone</label><input type="text" inputmode="tel" name="phone" id="phone" value="{{ f.phone }}" autocomplete="off"></div>
+      <div><label for="po">Their PO # (optional)</label><input type="text" name="po" id="po" value="{{ f.po }}"></div>
+    </div>
+  </div>
+
+  <div class="mo-card">
+    <h3>Items</h3>
+    <datalist id="mo-styles">{% for s in styles %}<option value="{{ s }}">{% endfor %}</datalist>
+    <div id="mo-lines">
+      {% for l in f.lines %}
+      <div class="mo-line k-{{ l.kind }}">
+        <div class="mo-line-top"><b>Item {{ loop.index }}</b><button type="button" class="mo-x" data-remove>Remove</button></div>
+        <div class="mo-kinds">
+          {% set ix = loop.index0 %}
+          <label><input type="radio" name="kind_{{ ix }}" value="ss" {{ 'checked' if l.kind == 'ss' }} data-kind>Custom on an S&amp;S blank</label>
+          <label><input type="radio" name="kind_{{ ix }}" value="supplier" {{ 'checked' if l.kind == 'supplier' }} data-kind>Custom, other supplier</label>
+          <label><input type="radio" name="kind_{{ ix }}" value="product" {{ 'checked' if l.kind == 'product' }} data-kind>From the store</label>
+        </div>
+        <input type="hidden" name="l_kind" value="{{ l.kind }}" data-kindval>
+        <div class="mo-grid" style="margin-top:10px">
+          <div data-for="product" style="grid-column:1/-1"><label>Store product</label>
+            <div class="mo-pick"><input type="text" placeholder="Search by title…" data-psearch>
+              <select name="l_variant" data-pvariant><option value="{{ l.variant }}">{{ (d.lines|selectattr('n','equalto',loop.index)|map(attribute='title')|first) or ('— pick after searching —' if not l.variant else l.variant) }}</option></select></div></div>
+          <div data-for="ss supplier" style="grid-column:1/-1"><label>Item name (customer sees this)</label>
+            <input type="text" name="l_title" value="{{ l.title }}" placeholder="e.g. Staff tee — left chest logo"></div>
+          <div data-for="ss"><label>S&amp;S style</label><input type="text" name="l_style" value="{{ l.style }}" list="mo-styles" placeholder="Gildan 64000" data-style></div>
+          <div data-for="supplier"><label>Supplier</label><input type="text" name="l_supplier" value="{{ l.supplier }}" placeholder="Lunar Headwear"></div>
+          <div data-for="ss supplier"><label>Colour</label><input type="text" name="l_color" value="{{ l.color }}" data-colors></div>
+          <div data-for="ss supplier"><label>Size</label><input type="text" name="l_size" value="{{ l.size }}" data-sizes></div>
+          <div data-for="supplier"><label>Supplier link (optional)</label><input type="text" name="l_supplier_url" value="{{ l.supplier_url }}"></div>
+          <div data-for="ss supplier"><label>Decoration</label>
+            <select name="l_decoration">{% for dd in decorations %}<option {{ 'selected' if l.decoration == dd }}>{{ dd }}</option>{% endfor %}</select></div>
+          <div data-for="ss supplier"><label>Placement</label><input type="text" name="l_placement" value="{{ l.placement }}" placeholder="Left chest 3 in"></div>
+          <div data-for="ss supplier product"><label>Qty</label><input type="text" name="l_qty" value="{{ l.qty }}" inputmode="numeric"></div>
+          <div data-for="ss supplier"><label>Price each ($)</label><input type="text" name="l_price" value="{{ l.price }}" inputmode="decimal"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" class="btn btn-quiet" id="mo-add">+ Add item</button>
+    <p class="small" style="margin:8px 0 0">One size or colour per item: 6 Medium and 4 Large of the same shirt are two items. S&amp;S colours and sizes fill in once the style is typed.</p>
+  </div>
+
+  <div class="mo-card">
+    <h3>Delivery &amp; note</h3>
+    <div class="mo-grid two">
+      <div><label for="delivery">Delivery</label>
+        <select name="delivery" id="delivery">
+          <option value="checkout" {{ 'selected' if f.delivery == 'checkout' }}>Customer picks at checkout</option>
+          <option value="pickup" {{ 'selected' if f.delivery == 'pickup' }}>Pickup at the shop (free)</option>
+          <option value="flat" {{ 'selected' if f.delivery == 'flat' }}>Shipping — set amount</option>
+        </select></div>
+      <div><label for="ship_price">Shipping amount ($)</label><input type="text" name="ship_price" id="ship_price" value="{{ f.ship_price }}" inputmode="decimal"></div>
+      <div style="grid-column:1/-1"><label for="note">Note (on the order, not the invoice)</label>
+        <textarea name="note" id="note" rows="2">{{ f.note }}</textarea></div>
+    </div>
+  </div>
+
+  {% for b in d.blocking %}<div class="mo-bad">{{ b }}</div>{% endfor %}
+  {% for w in d.warnings %}<div class="mo-warn">{{ w }}</div>{% endfor %}
+  {% if d.lines %}
+  <div class="mo-card">
+    <h3>Preview — {{ d.store_label }}</h3>
+    <div style="overflow-x:auto"><table class="mo-sum">
+      <tr><th>Item</th><th>Qty</th><th class="n">Each</th><th class="n">Total</th></tr>
+      {% for r in d.lines %}<tr><td>{{ r.title }}<div class="muted">{{ r.detail }}</div></td><td>{{ r.qty }}</td>
+        <td class="n">{{ '$%.2f'|format(r.price) }}</td><td class="n">{{ '$%.2f'|format(r.total) }}</td></tr>{% endfor %}
+      <tr><td colspan="3"><b>Items</b></td><td class="n"><b>{{ '$%.2f'|format(d.subtotal) }}</b></td></tr>
+      <tr><td colspan="3">Shipping</td><td class="n">{% if d.shipping is none %}at checkout{% else %}{{ '$%.2f'|format(d.shipping) }}{% endif %}</td></tr>
+    </table></div>
+    <p class="small" style="margin:8px 0 0">Sales tax is added by Shopify. Nothing is in Shopify until you press Create.</p>
+  </div>
+  {% endif %}
+
+  <div class="mo-actions">
+    <button class="btn btn-quiet" type="submit" name="action" value="preview">Preview</button>
+    {% if d.ok %}<button class="btn btn-gold" type="submit" name="action" value="create">Create draft order in Shopify</button>{% endif %}
+  </div>
+</form>
+
+<div class="mo-card mo-recent" id="recent" style="margin-top:18px">
+  <h3>Recent manual orders</h3>
+  {% for r in recent %}
+  <div class="row">
+    <b>{{ r.name }}</b>
+    <span>{{ r.customer }}{% if r.company and r.company != r.customer %} · {{ r.company }}{% endif %} — {{ r.items }} item{{ 's' if r.items != 1 }}{% if r.total %} · {{ '$%.2f'|format(r.total) }}{% endif %}
+      <span class="small">· {{ 'TWC' if r.store == 'twc' else 'S&S' }} · {{ r.source }}{% if r.due %} · due {{ r.due }}{% endif %} ·
+      {% if r.invoice_sent %}invoice sent {{ r.invoice_sent[:16]|replace('T',' ') }}{% else %}invoice not sent{% endif %}</span></span>
+    <span>{% if r.admin_url %}<a href="{{ r.admin_url }}" target="_blank" rel="noopener">Open in Shopify ↗</a>{% endif %}
+      {% if r.invoice_url %} · <a href="{{ r.invoice_url }}" target="_blank" rel="noopener">Payment link ↗</a>{% endif %}</span>
+    {% if r.email and not r.invoice_sent %}
+    <form method="post" action="{{ url_for('manual_order_invoice') }}" style="grid-column:1/-1">
+      <input type="hidden" name="id" value="{{ r.id }}">
+      <input type="text" name="message" placeholder="Message on the invoice (optional)">
+      <button class="btn btn-gold" type="submit">Send invoice to {{ r.email }}</button>
+    </form>{% endif %}
+  </div>
+  {% else %}<p class="small">None yet.</p>{% endfor %}
+  <p class="small" style="margin:10px 0 0">Paid by cash, check, Venmo or Zelle? Open it in Shopify and use <b>Mark as paid</b>. Paying later by bank transfer: <b>Payment due later</b> — it shows <b>Awaiting payment</b> on the Orders board until you mark it paid, and blanks are bought once it is paid.</p>
+</div>
+
+<template id="mo-tpl">{{ '' }}</template>
+<script>
+(function () {
+  var box = document.getElementById('mo-lines');
+  function renumber() {
+    box.querySelectorAll('.mo-line').forEach(function (el, i) {
+      el.querySelector('.mo-line-top b').textContent = 'Item ' + (i + 1);
+      el.querySelectorAll('[data-kind]').forEach(function (r) { r.name = 'kind_' + i; });
+    });
+  }
+  function wire(el) {
+    el.querySelectorAll('[data-kind]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        el.className = 'mo-line k-' + r.value;
+        el.querySelector('[data-kindval]').value = r.value;
+      });
+    });
+    el.querySelector('[data-remove]').addEventListener('click', function () {
+      if (box.querySelectorAll('.mo-line').length > 1) { el.remove(); renumber(); }
+    });
+    var st = el.querySelector('[data-style]');
+    if (st) st.addEventListener('change', function () { styleLists(el, st.value); });
+    var ps = el.querySelector('[data-psearch]');
+    if (ps) {
+      var t;
+      ps.addEventListener('input', function () {
+        clearTimeout(t);
+        t = setTimeout(function () {
+          if (ps.value.trim().length < 2) return;
+          var store = document.getElementById('store').value;
+          fetch('{{ url_for("manual_order_products") }}?store=' + store + '&q=' + encodeURIComponent(ps.value))
+            .then(function (r) { return r.json(); }).then(function (list) {
+              var sel = el.querySelector('[data-pvariant]');
+              sel.innerHTML = list.length ? '' : '<option value="">No match</option>';
+              list.forEach(function (v) {
+                var o = document.createElement('option');
+                o.value = v.id; o.textContent = v.label + (v.price ? ' — $' + v.price : '');
+                sel.appendChild(o);
+              });
+            });
+        }, 300);
+      });
+    }
+    if (st && st.value) styleLists(el, st.value);
+  }
+  function styleLists(el, style) {
+    if (!style.trim()) return;
+    fetch('{{ url_for("purchasing_style") }}?style=' + encodeURIComponent(style))
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (!j.ok) return;
+        [['data-colors', j.colors], ['data-sizes', j.sizes]].forEach(function (p) {
+          var input = el.querySelector('[' + p[0] + ']');
+          var id = 'dl-' + Math.random().toString(36).slice(2);
+          var dl = document.createElement('datalist'); dl.id = id;
+          p[1].forEach(function (v) { var o = document.createElement('option'); o.value = v; dl.appendChild(o); });
+          el.appendChild(dl); input.setAttribute('list', id);
+        });
+      });
+  }
+  box.querySelectorAll('.mo-line').forEach(wire);
+  document.getElementById('mo-add').addEventListener('click', function () {
+    var lines = box.querySelectorAll('.mo-line');
+    if (lines.length >= {{ 25 }}) return;
+    var last = lines[lines.length - 1];
+    var copy = last.cloneNode(true);
+    copy.querySelectorAll('input[type=text],input:not([type]),input[type=search]').forEach(function (i) {
+      if (!i.hasAttribute('data-kindval') && i.name !== 'l_style' && i.name !== 'l_title') i.value = '';
+    });
+    var q = copy.querySelector('[name=l_qty]'); if (q) q.value = '1';
+    copy.querySelectorAll('datalist').forEach(function (d) { d.remove(); });
+    box.appendChild(copy);
+    renumber(); wire(copy);
+    var kv = copy.querySelector('[data-kindval]').value;
+    copy.querySelectorAll('[data-kind]').forEach(function (r) { r.checked = r.value === kv; });
+  });
+})();
+</script>
+{% endblock %}

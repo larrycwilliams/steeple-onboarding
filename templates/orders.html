@@ -8,7 +8,8 @@
 
 <div class="ob-head">
   <h2 style="margin:8px 0 0;border:0;padding:0">Orders</h2>
-  <span class="ob-count">{{ open_count }} open{% if late %} · <strong class="ob-late">{{ late }} at 7+ business days</strong>{% endif %}</span>
+  <span class="ob-count">{{ open_count }} open{% if late %} · <strong class="ob-late">{{ late }} at 7+ business days</strong>{% endif %}{% if unpaid %} · <strong class="ob-unpaid-n">{{ unpaid }} awaiting payment</strong>{% endif %}</span>
+  <a class="btn btn-gold ob-new" href="{{ url_for('manual_order_page') }}">+ Manual order</a>
   <form method="get" class="ob-filters">
     <select name="b" aria-label="Business" onchange="this.form.submit()">
       <option value="" {{ 'selected' if not business }}>All businesses</option>
@@ -33,7 +34,7 @@
 {% endif %}
 
 <p class="help" style="margin:0 0 12px">
-  Shopify orders {{ orders_at or 'never' }} · Purchasing {{ purchasing_at or 'never' }}.
+  Shopify orders {{ orders_at or 'never' }} · TWC orders {{ twc_at or 'never' }} · Purchasing {{ purchasing_at or 'never' }}.
   Blanks lanes follow Purchasing, so refresh it there after placing or receiving an order.
   {% if not has_delivery %}Pickup vs ship appears after the next refresh.{% endif %}
 </p>
@@ -56,6 +57,8 @@
       </div>
       <div class="ob-who">{{ c.who }}</div>
       <div class="ob-meta">
+        {% if c.payment %}<span class="ob-tag ob-unpaid">{{ c.payment }}</span>{% endif %}
+        {% if c.manual %}<span class="ob-tag" title="Manual order — from {{ c.manual }}">Manual · {{ c.manual }}</span>{% endif %}
         {% if c.business == 'twc' %}<span class="ob-tag ob-twc">TWC shop</span>{% endif %}
         {% if c.delivery == 'pickup' %}<span class="ob-tag ob-pickup" title="{{ c.delivery_title }}">Pickup</span>
         {% elif c.delivery == 'ship' %}<span class="ob-tag" title="{{ c.delivery_title }}">Ship</span>{% endif %}
@@ -148,6 +151,9 @@
     padding:1px 7px;border-radius:99px;background:#EAE5D9;color:#5C5340}
   .ob-tag.ob-pickup{background:#E4F0E8;color:#265B41}
   .ob-tag.ob-twc{background:#E8E6F2;color:#3E3A6B}
+  .ob-tag.ob-unpaid{background:#FBE3DF;color:#8C332C}
+  .ob-unpaid-n{color:#8C332C}
+  .ob-new{margin-left:auto;padding:8px 14px;font-size:14px}
   .ob-why{font-size:12px;color:#6A5B33;margin-top:5px}
   .ob-ticked{font-size:12px;color:var(--ok);margin-top:5px}
   .ob-inline{display:inline}

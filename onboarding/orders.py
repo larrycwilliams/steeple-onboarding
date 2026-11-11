@@ -34,7 +34,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import purchasing, shopify_sales
+from . import purchasing, shopify_sales, twc_orders
 from .store import PARTNERS
 
 TICKS_DIR = PARTNERS / "_orders"
@@ -43,6 +43,25 @@ TICKS = TICKS_DIR / "ticks.json"
 INHOUSE_SUFFIX = " TWC"          # ssorder config: inhouse_title_suffix
 DONE_FULFILMENT = {"FULFILLED", "RESTOCKED"}
 SHOW_DONE_DAYS = 14              # finished orders placed this recently stay visible
+# Shopify's displayFinancialStatus values that mean "not paid in full yet"
+# (3.90): an invoice paid by bank transfer, Zelle or a check sits PENDING
+# until Larry marks it paid. ssorder buys no blanks for these either.
+PAYMENT_DUE = {"PENDING": "Awaiting payment", "PARTIALLY_PAID": "Part paid",
+               "AUTHORIZED": "Payment authorised", "EXPIRED": "Payment expired",
+               "UNPAID": "Awaiting payment"}
+
+
+def payment_due(order: dict) -> str:
+    return PAYMENT_DUE.get((order.get("status") or "").upper(), "")
+
+
+def manual_source(order: dict) -> str:
+    """'email' / 'text' / ... for a Portal manual order (its lines carry _source)."""
+    for line in order.get("lines") or []:
+        src = (line.get("attrs") or {}).get("_source")
+        if src:
+            return src
+    return ""
 
 LANES = [
     ("new", "New", "Blanks still to buy, or nothing bought yet."),
@@ -262,6 +281,7 @@ def board(business: str = "", partner: str = "", now: datetime | None = None) ->
                           if shop and order.get("id") else ""),
             "ticks": ticks.get(key, {}),
             "boxes": [], "why": "",
+            "payment": payment_due(order), "manual": manual_source(order),
         }
         if not has_fulfilment:
             continue                    # an old cache cannot say what is open; the page says so
@@ -277,6 +297,52 @@ def board(business: str = "", partner: str = "", now: datetime | None = None) ->
             continue
         info = by_order.get(("ss", name))
         lane, why = _blank_lane(info)
+        if info:
+            card["boxes"] = sorted(info["boxes"])
+        for step in TICKABLE:
+            if step in card["ticks"] and RANK[step] > RANK[lane]:
+                lane = step
+        card.update(lane=lane, why=why)
+        cards.append(card)
+
+    # The Williams Collective's own store, pulled directly since 3.90
+    # (twc_orders): paid/unpaid, shipped/picked up and every order -- not only
+    # the ones ssorder has listed. Everything TWC sells is made in-house.
+    twc = twc_orders.load() or {}
+    twc_dom = twc.get("domain") or ""
+    twc_locs = twc.get("locations") or []
+    for order in twc.get("orders") or []:
+        if order.get("test") or order.get("cancelled"):
+            continue
+        name = order.get("name", "")
+        key = order_key("twc", name)
+        seen.add(("twc", name))
+        lines = [l for l in order.get("lines") or [] if int(l.get("qty") or 0) > 0]
+        vendors = sorted({(l.get("vendor") or "").strip() for l in lines} - {""})
+        fulfil = (order.get("fulfillment") or "").upper()
+        placed = _parse(order.get("created_at"))
+        items = sum(int(l.get("qty") or 0) for l in lines)
+        card = {"key": key, "name": name, "business": "twc",
+                "placed": _local(order.get("created_at")), "age": business_days(placed, now),
+                "who": ", ".join(vendors) or "TWC shop", "vendors": vendors,
+                "item_count": items, "inhouse_items": items,
+                "delivery": delivery(order, twc_locs), "delivery_title": order.get("delivery") or "",
+                "fulfillment": fulfil.replace("_", " ").lower(),
+                "admin_url": (f"https://{twc_dom}/admin/orders/{order['id']}"
+                              if twc_dom and order.get("id") else ""),
+                "ticks": ticks.get(key, {}), "boxes": [], "why": "",
+                "payment": payment_due(order), "manual": manual_source(order)}
+        if not lines:
+            continue
+        if fulfil in DONE_FULFILMENT:
+            if placed and (now - placed).days <= SHOW_DONE_DAYS:
+                card["lane"] = "done"
+                done.append(card)
+            continue
+        info = by_order.get(("twc", name)) or by_order.get(("twc", name.replace("TWC ", "")))
+        lane, why = _blank_lane(info)
+        if card["payment"] and not info:
+            why = "Waiting for payment — blanks are bought once it is paid."
         if info:
             card["boxes"] = sorted(info["boxes"])
         for step in TICKABLE:
@@ -307,7 +373,7 @@ def board(business: str = "", partner: str = "", now: datetime | None = None) ->
                       "vendors": [], "item_count": None, "inhouse_items": None,
                       "delivery": "", "delivery_title": "", "fulfillment": "",
                       "admin_url": "", "ticks": entry, "boxes": sorted(info["boxes"]),
-                      "why": why, "lane": lane})
+                      "why": why, "lane": lane, "payment": "", "manual": ""})
 
     # Filters, applied after the cards are built so the counts can show what is hidden.
     def keep(card: dict) -> bool:
@@ -332,6 +398,8 @@ def board(business: str = "", partner: str = "", now: datetime | None = None) ->
         "done": recent_done,
         "open_count": len(shown),
         "late": sum(1 for c in shown if (c["age"] or 0) >= 7),
+        "unpaid": sum(1 for c in shown if c.get("payment")),
+        "twc_at": _local(twc.get("pulled_at")),
         "partners": partners,
         "business": business, "partner": partner,
         "has_fulfilment": has_fulfilment,

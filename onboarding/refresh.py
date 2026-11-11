@@ -32,7 +32,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import leads, orders, purchasing, shopify_sales
+from . import leads, orders, purchasing, shopify_sales, twc_orders
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / "cache"
@@ -167,6 +167,7 @@ def apply_press_runs() -> tuple[bool, str]:
 
 STEPS = (
     ("Shopify orders", _shopify),
+    ("TWC orders", twc_orders.refresh),
     ("Leads", _leads),
     ("S&S order status", _ss_status),
     ("Studio", fetch_studio_summary),

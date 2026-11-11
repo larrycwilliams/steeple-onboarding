@@ -37,7 +37,7 @@ TIMEOUT = 20
 # 60 days of orders -- enough for open orders and the Orders board. Add it
 # here AND in a new app version if TWC revenue history is ever pulled (doc 73).
 SCOPES = ("read_orders,read_products,write_products,read_inventory,write_inventory,"
-          "read_locations,read_publications,write_publications,read_metaobjects,write_metaobjects,write_metaobject_definitions,read_files")
+          "read_locations,read_publications,write_publications,read_metaobjects,write_metaobjects,write_metaobject_definitions,read_files,write_draft_orders")
 
 
 def values() -> dict:
