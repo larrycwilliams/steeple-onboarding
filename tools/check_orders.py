@@ -191,6 +191,19 @@ check("ticking it moves it on and reads 'Engraved'",
       and "✓ Engraved" in portal.app.test_client().get("/orders").get_data(as_text=True))
 twc_orders.CACHE.unlink()
 
+# 3.92: an order Purchasing lists under "need mapping" says so.
+_p = json.loads((cache / "purchasing" / "snapshot.json").read_text()) if (cache / "purchasing" / "snapshot.json").is_file() else None
+if _p is not None:
+    _p["proposal"]["unmapped"] = [{"key": "TWC|91", "order": "#1050", "qty": 1, "title": "x"}]
+    (cache / "purchasing" / "snapshot.json").write_text(json.dumps(_p))
+    w = {c["name"]: c for L in orders.board(now=NOW)["lanes"] for c in L["cards"]}["#1050"]
+    check("an order with lines needing mapping says so (not 'Not in Purchasing')",
+          w["lane"] == "new" and "need" in w["why"] and "mapping" in w["why"])
+    _p["proposal"]["unmapped"] = []
+    (cache / "purchasing" / "snapshot.json").write_text(json.dumps(_p))
+else:
+    check("purchasing cache found for the mapping check", False)
+
 # The page
 client = portal.app.test_client()
 page = client.get("/orders")

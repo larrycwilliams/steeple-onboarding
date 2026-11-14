@@ -197,8 +197,12 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
     <b class="{{ 'bad' if counts.unmapped }}">{{ counts.unmapped }}</b> need mapping ·
     <b class="{{ 'bad' if counts.other_overdue }}">{{ counts.other_to_buy or 0 }}</b> from other suppliers ·
     {{ counts.manual or 0 }} sample(s) added by hand ·
-    {{ counts.ignored }} not in-house · {{ counts.unpaid }} unpaid
+    {{ counts.ignored }} not in-house ·{% if counts.no_blank is defined %} {{ counts.no_blank }} laser engraved ·{% endif %} {{ counts.unpaid }} unpaid
   </p>
+  {% if counts.by_store is defined %}
+  <p class="pu-when">Open lines by store:
+    {% for st, n in counts.by_store.items() %}{{ st }} <b>{{ n }}</b>{% if not loop.last %} · {% endif %}{% else %}none{% endfor %}</p>
+  {% endif %}
   {% endif %}
   {% if other_count %}
     <div class="why"><b>{{ other_count }} line{{ '' if other_count == 1 else 's' }} to buy from other suppliers</b>

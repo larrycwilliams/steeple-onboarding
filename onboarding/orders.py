@@ -222,7 +222,8 @@ def _purchasing_by_order(prop: dict) -> dict:
 
     def slot(store: str, name: str) -> dict:
         return out.setdefault((business_of(store), name),
-                              {"to_buy": 0, "statuses": [], "boxes": set(), "store": store})
+                              {"to_buy": 0, "statuses": [], "boxes": set(), "store": store,
+                               "unmapped": 0})
 
     for line in prop.get("lines") or []:
         for src in (line or {}).get("sources") or []:
@@ -234,6 +235,13 @@ def _purchasing_by_order(prop: dict) -> dict:
         for line in (group or {}).get("lines") or []:
             if line.get("order"):
                 slot(line.get("store", ""), line["order"])["to_buy"] += 1
+    # 3.92: lines Purchasing saw but cannot match to an S&S blank yet. Without
+    # this the card said "Not in Purchasing yet" when it was in Purchasing,
+    # waiting on a `map set`.
+    for u in prop.get("unmapped") or []:
+        key = (u or {}).get("key", "")
+        if u.get("order") and "|" in key:
+            slot(key.split("|", 1)[0], u["order"])["unmapped"] += 1
     for row in prop.get("tracked") or []:
         if not isinstance(row, dict) or row.get("store") == "manual" or not row.get("order"):
             continue
@@ -250,6 +258,10 @@ def _purchasing_by_order(prop: dict) -> dict:
 
 def _blank_lane(info: dict | None) -> tuple[str, str]:
     """(lane, why) from the purchasing evidence alone."""
+    if info and info.get("unmapped"):
+        n = info["unmapped"]
+        return "new", (f"{n} line{'s' if n != 1 else ''} need{'s' if n == 1 else ''} mapping "
+                       "to an S&S blank — see Purchasing.")
     if not info or (not info["to_buy"] and not info["statuses"]):
         return "new", "Not in Purchasing yet — refresh Purchasing."
     if info["to_buy"]:
