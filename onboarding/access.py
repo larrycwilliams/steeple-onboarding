@@ -405,19 +405,42 @@ def set_enforce(on: bool) -> tuple[bool, str]:
                   "Roles are recorded but no longer enforced.")
 
 
-def who(remote_addr: str) -> dict:
+def _via_serve(headers) -> tuple[str, dict | None]:
+    """(client address, identity) for a request `tailscale serve` passed on.
+
+    Behind serve (HTTPS, 3.93) every request reaches the app from 127.0.0.1,
+    which on its own would read as the hub's own keyboard -- the owner. Serve
+    says who is really asking: `Tailscale-User-Login` / `-Name` for a person
+    (it strips any copy a client sends) and `X-Forwarded-For` for the
+    machine. These are trusted ONLY on a loopback request: anything arriving
+    over the tailnet directly is from 100.x and its headers are ignored.
+    Returns ("", None) for a plain loopback request (the hub itself)."""
+    get = (headers or {}).get
+    fwd = (get("X-Forwarded-For") or "").split(",")[0].strip()
+    login = (get("Tailscale-User-Login") or "").strip().lower()
+    if login:
+        return fwd, {"login": login, "name": (get("Tailscale-User-Name") or "").strip(),
+                     "machine": "", "error": ""}
+    if fwd and fwd not in LOOPBACK:
+        return fwd, whois(fwd)          # a tagged device: serve sends no user headers
+    return "", None
+
+
+def who(remote_addr: str, headers=None) -> dict:
     """Everything the app needs about the person making this request."""
     settings = config()
     enforced = settings["enforce"]
     people = settings["people"]
 
     if (remote_addr or "") in LOOPBACK:
-        # Someone at the hub's own keyboard, or the app calling itself. Both
-        # already imply shell access to the machine holding every secret in
-        # the system, so there is nothing left for a role to protect.
-        return _identity("", "on the hub", "", "owner", True, "local", enforced, "")
-
-    found = whois(remote_addr)
+        _addr, found = _via_serve(headers)
+        if found is None:
+            # Someone at the hub's own keyboard, or the app calling itself. Both
+            # already imply shell access to the machine holding every secret in
+            # the system, so there is nothing left for a role to protect.
+            return _identity("", "on the hub", "", "owner", True, "local", enforced, "")
+    else:
+        found = whois(remote_addr)
     login = (found["login"] or "").lower()
 
     if not login:

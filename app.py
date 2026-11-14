@@ -58,7 +58,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.92"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.93"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -129,7 +129,7 @@ def _identify():
     One resolution per request, cached by address inside onboarding.access, so
     a page of twelve lead cards does not fork twelve subprocesses.
     """
-    g.me = access.who(request.remote_addr or "")
+    g.me = access.who(request.remote_addr or "", request.headers)
     # Timed separately: this is the one piece of per-request work that talks to
     # something outside the process, so when a page is slow it is worth being
     # able to rule it in or out rather than argue about it.
