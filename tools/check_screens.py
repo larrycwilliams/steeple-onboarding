@@ -94,7 +94,15 @@ def seed(work: Path) -> list[str]:
          "note": "submitted to the form", "email": f"office{i}@example.org", "name": "Office"}
         for i, n in enumerate(["Grace Fellowship of the Miami Valley", "New Hope", long_name])]}))
     (cache / "purchasing" / "snapshot.json").write_text(json.dumps({"at": ago(0.02), "ok": True, "proposal": {
-        "lines": [], "other_suppliers": [],
+        "lines": [],
+        # 3.94: the supplier dropdown on both forms, with the longest rows.
+        "out_of_stock": [{"sku": "B00576993", "qty": 1, "desc": "Independent Trading Co. PRM180PT Deadwood Tree Camo S",
+                          "reason": "only 0 available, need 1",
+                          "sources": [{"key": "TWC|9", "order": "#1146", "qty": 1}]}],
+        "other_suppliers": [{"label": "SanMar", "supplier": "SanMar", "supplier_url": "https://www.sanmar.com/",
+                             "overdue": False, "lines": [
+            {"key": "TWC|8", "order": "#1145", "order_id": "8", "qty": 1, "age_days": 1,
+             "title": "GCS Athletics - Basketball 1/4 Zip TWC", "variant_title": "Deep Black / XL"}]}],
         "tracked": [{"key": f"Steeple & Stitch|{i}", "store": "Steeple & Stitch", "order": f"#40{i:02d}",
                      "qty": 2, "status": "received" if i % 3 == 0 else "ordered", "ss_order": "77434382"}
                     for i in range(0, 18, 2)]}}))

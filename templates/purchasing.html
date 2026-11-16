@@ -34,6 +34,18 @@
 {% endmacro %}
 
 {% block content %}
+{% macro supplier_fields(current="", form_id="") -%}
+  <label>Supplier
+    <select name="supplier" class="pu-supplier" data-form="{{ form_id }}" required>
+      <option value="" {{ 'selected' if not current }} disabled>Pick one…</option>
+      {% for sp in suppliers %}<option value="{{ sp.name }}" {{ 'selected' if current and sp.name|lower == current|lower }}>{{ sp.name }}</option>{% endfor %}
+      <option value="__other__">Other…</option>
+    </select></label>
+  <label class="pu-new" hidden>New supplier<input type="text" name="supplier_new" maxlength="60" autocomplete="off" placeholder="e.g. Jiffy Shirts"></label>
+  <label class="pu-new" hidden>Website <span class="pu-when">(optional)</span><input type="text" name="supplier_url" maxlength="200" autocomplete="off" placeholder="www.example.com"></label>
+  <label>Their order # <span class="pu-when">(optional)</span><input type="text" name="supplier_order" maxlength="60" autocomplete="off"></label>
+  <label>Unit cost <span class="pu-when">(optional)</span><input type="text" name="cost" inputmode="decimal" placeholder="12.34" autocomplete="off"></label>
+{%- endmacro %}
 <style>
   .pu-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   .pu-top form{margin:0}
@@ -104,7 +116,10 @@
   .pu-fix{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#3E444D;display:block;margin-top:3px}
   .pu-addgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 14px;margin-top:12px}
   .pu-addgrid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;margin:0;min-width:0}
-  .pu-addgrid input{width:100%;box-sizing:border-box}
+  .pu-addgrid input,.pu-addgrid select{width:100%;box-sizing:border-box}
+  .pu-qty{width:4.5em;text-align:right}
+  .pu-elsewhere{margin-top:8px}
+  .pu-elsewhere summary{cursor:pointer;font-size:13px;color:var(--muted,#6b6b6b)}
   .pu-addgrid .wide-field{grid-column:1/-1}
   .pu-ext{font-size:13px;font-weight:600;margin-left:8px;white-space:nowrap}
   tr.bad td{color:#B4443C}
@@ -471,6 +486,25 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
           <td class="bad">{{ o.reason }}</td>
           <td>{% for s in o.sources %}{{ s.order }} {% endfor %}</td></tr>{% endfor %}
     </table>
+    <details class="pu-elsewhere">
+      <summary>Bought these somewhere else?</summary>
+      <form method="post" action="{{ url_for('purchasing_other_mark') }}">
+        <input type="hidden" name="instead" value="1">
+        <div class="pu-scroll"><table class="pu-mini">
+          <thead><tr><th></th><th>Order</th><th>Item</th><th class="num">Qty bought</th></tr></thead>
+          <tbody>{% for o in prop.out_of_stock %}{% for s in o.sources %}
+            <tr><td class="pu-check"><input type="checkbox" name="key" value="{{ s.key }}"></td>
+                <td>{{ s.order }}</td><td>{{ o.desc or o.sku }}</td>
+                <td class="num"><input class="pu-qty" type="text" inputmode="numeric" name="qty:{{ s.key }}" value="{{ s.qty }}" aria-label="Qty bought"></td></tr>
+          {% endfor %}{% endfor %}</tbody>
+        </table></div>
+        <div class="pu-addgrid">{{ supplier_fields() }}</div>
+        <div class="actions">
+          <button class="btn btn-primary" type="submit">Mark ticked as ordered</button>
+          <span class="pu-when">Only these lines, this once — the product still buys from S&amp;S next time. They move to Awaiting product.</span>
+        </div>
+      </form>
+    </details>
   </div>
   {% endif %}
 
@@ -511,24 +545,21 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
       <h3>{{ g.label }}
         {%- if g.supplier_url %} <a class="pu-ext" href="{{ g.supplier_url }}" target="_blank" rel="noopener">Open {{ g.supplier }} ↗</a>{% endif %}</h3>
       <div class="meta">{{ g.lines|length }} line(s) to buy{% if g.overdue %} · <b class="bad">overdue</b>{% endif %}
-        {%- if not g.supplier %} · <b class="bad">no supplier recorded for this product</b> — type it below{% endif %}</div>
+        {%- if not g.supplier %} · <b class="bad">no supplier recorded for this product</b> — pick it below{% endif %}</div>
       <div class="pu-scroll"><table class="pu-mini">
-        <thead><tr><th></th><th>Order</th><th>Item</th><th class="num">Qty</th><th class="num">Age</th></tr></thead>
+        <thead><tr><th></th><th>Order</th><th>Item</th><th class="num">Qty bought</th><th class="num">Age</th></tr></thead>
         <tbody>
         {% for u in g.lines %}
           <tr class="{{ 'bad' if u.overdue }}"><td class="pu-check"><input type="checkbox" name="key" value="{{ u.key }}"></td>
               <td>{{ order_ref(u.order, u.order_id) }}</td>
               <td>{{ u.title }}{% if u.variant_title %} / {{ u.variant_title }}{% endif %}</td>
-              <td class="num">{{ u.qty }}</td>
+              <td class="num"><input class="pu-qty" type="text" inputmode="numeric" name="qty:{{ u.key }}" value="{{ u.qty }}" aria-label="Qty bought"></td>
               <td class="num">{{ u.age_days }} day{{ '' if u.age_days == 1 else 's' }}</td></tr>
         {% endfor %}
         </tbody>
       </table></div>
       <div class="pu-addgrid" style="margin-top:10px">
-        {% if g.supplier %}<input type="hidden" name="supplier" value="{{ g.supplier }}">
-        {% else %}<label>Supplier<input type="text" name="supplier" required placeholder="Who it was bought from"></label>{% endif %}
-        <label>Their order # <span class="pu-when">(optional)</span><input type="text" name="supplier_order" maxlength="60" autocomplete="off"></label>
-        <label>Unit cost <span class="pu-when">(optional)</span><input type="text" name="cost" inputmode="decimal" placeholder="12.34" autocomplete="off"></label>
+        {{ supplier_fields(g.supplier) }}
       </div>
       <div class="actions">
         <button class="btn btn-primary" type="submit">Mark ticked as ordered</button>
@@ -727,5 +758,18 @@ If the order is there:<span class="pu-fix">hub: cd {{ ssorder_dir }} &amp;&amp; 
     });
   });
 })();
+</script>
+<script>
+document.querySelectorAll("select.pu-supplier").forEach(function (sel) {
+  function sync() {
+    var other = sel.value === "__other__";
+    sel.closest("form").querySelectorAll(".pu-new").forEach(function (l) {
+      l.hidden = !other;
+      var i = l.querySelector("input[name=supplier_new]");
+      if (i) i.required = other;
+    });
+  }
+  sel.addEventListener("change", sync); sync();
+});
 </script>
 {% endblock %}

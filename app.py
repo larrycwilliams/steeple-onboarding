@@ -58,7 +58,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.93"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.94"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -2531,9 +2531,17 @@ def purchasing_receive():
 @from_this_app
 def purchasing_other_mark():
     """Lines bought from another supplier (doc 61). Not owner-only, like mark."""
-    result = purchasing.mark_other(request.form.getlist("key"), request.form.get("supplier", ""),
-                                   request.form.get("supplier_order", ""),
-                                   request.form.get("cost", ""))
+    supplier, url = purchasing.pick_supplier(request.form)
+    if not supplier:
+        flash("Not changed — pick the supplier (or type one under Other…).", "error")
+        return _purchasing_back("other")
+    keys = request.form.getlist("key")
+    qtys = {k: request.form.get(f"qty:{k}", "") for k in keys}
+    result = purchasing.mark_other(keys, supplier, request.form.get("supplier_order", ""),
+                                   request.form.get("cost", ""), qtys=qtys,
+                                   instead=request.form.get("instead") == "1")
+    if result["ok"] and result["changed"]:
+        purchasing.remember_supplier(supplier, url)
     if result["ok"]:
         flash(f"{result['changed']} line(s) marked as ordered — now in Awaiting product."
               if result["changed"] else "Nothing changed.", "ok")

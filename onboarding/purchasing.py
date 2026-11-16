@@ -664,8 +664,75 @@ def _line_keys(keys) -> list[str]:
     return [k for k in _keys(keys) if not k.startswith("-")]
 
 
-def mark_other(keys, supplier: str = "", supplier_order: str = "", cost: str = "") -> dict:
-    """These lines were bought from another supplier. By line, never by order."""
+# 3.94: the suppliers offered in the "bought from" dropdown. Seeded with the
+# ones Larry uses; any name typed under "Other…" is added the first time it is
+# used, and any supplier seen on the page (a product's mapping, a past
+# purchase) is offered too.
+SUPPLIERS_FILE = "suppliers.json"
+DEFAULT_SUPPLIERS = [
+    {"name": "SanMar", "url": "https://www.sanmar.com/"},
+    {"name": "Shirt Space", "url": "https://www.shirtspace.com/"},
+    {"name": "All Day Shirts", "url": "https://www.alldayshirts.com/"},
+]
+
+
+def suppliers(prop: dict | None = None, tracked=None) -> list[dict]:
+    """[{name, url}], saved ones first, then any seen on the page. One per name."""
+    seen, out = set(), []
+
+    def add(name, url=""):
+        name = " ".join(str(name or "").split())
+        if name and name.casefold() not in seen and name.casefold() != "s&s activewear":
+            seen.add(name.casefold())
+            out.append({"name": name, "url": str(url or "")})
+        elif name and url:
+            for o in out:
+                if o["name"].casefold() == name.casefold() and not o["url"]:
+                    o["url"] = str(url)
+
+    saved = _read(SUPPLIERS_FILE).get("suppliers")
+    for s_ in (saved if isinstance(saved, list) else DEFAULT_SUPPLIERS):
+        if isinstance(s_, dict):
+            add(s_.get("name"), s_.get("url"))
+    for g in (prop or {}).get("other_suppliers") or []:
+        if isinstance(g, dict):
+            add(g.get("supplier"), g.get("supplier_url"))
+    for t in tracked or []:
+        if isinstance(t, dict) and t.get("source") == "other":
+            add(t.get("supplier"))
+    return sorted(out, key=lambda o: o["name"].casefold())
+
+
+def remember_supplier(name: str, url: str = "") -> None:
+    """Add a supplier to the saved list (no-op if it is already there)."""
+    name = " ".join(str(name or "").split())
+    if not name:
+        return
+    saved = _read(SUPPLIERS_FILE).get("suppliers")
+    saved = [x for x in (saved if isinstance(saved, list) else DEFAULT_SUPPLIERS) if isinstance(x, dict)]
+    if any(str(x.get("name", "")).casefold() == name.casefold() for x in saved):
+        return
+    url = str(url or "").strip()
+    if url and not url.startswith(("https://", "http://")):
+        url = "https://" + url
+    saved.append({"name": name[:60], "url": url[:200]})
+    _write(SUPPLIERS_FILE, {"suppliers": saved})
+
+
+def pick_supplier(form) -> tuple[str, str]:
+    """(name, url) from the dropdown, or from the "Other…" box when chosen."""
+    pick = " ".join(str(form.get("supplier") or "").split())
+    if pick in ("", "__other__"):
+        return (" ".join(str(form.get("supplier_new") or "").split())[:60],
+                str(form.get("supplier_url") or "").strip())
+    return pick, ""
+
+
+def mark_other(keys, supplier: str = "", supplier_order: str = "", cost: str = "",
+               qtys: dict | None = None, instead: bool = False) -> dict:
+    """These lines were bought from another supplier. By line, never by order.
+    instead: S&S lines (out of stock there) bought elsewhere this time.
+    qtys: {key: n} when fewer/more than the line's qty were bought."""
     keys = _line_keys(keys)
     if not keys:
         return {"ok": False, "error": "Tick at least one line.", "changed": 0}
@@ -675,6 +742,12 @@ def mark_other(keys, supplier: str = "", supplier_order: str = "", cost: str = "
         value = " ".join(str(value or "").split())
         if value:
             args += [flag, value]
+    for k in keys:
+        n = str((qtys or {}).get(k) or "").strip()
+        if n:
+            args += ["--qty", f"{k}={n}"]
+    if instead:
+        args.append("--instead")
     return _edit(args + keys)
 
 
@@ -934,6 +1007,7 @@ def view() -> dict:
                                   if o.get("ledger_mismatch"))},
         "received": received,
         "other": other,
+        "suppliers": suppliers(prop, tracked),
         "other_count": sum(len(g.get("lines") or []) for g in other),
         "manual_lines": [m for m in prop.get("manual") or [] if isinstance(m, dict)],
         "manual_preview": preview,
