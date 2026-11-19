@@ -110,7 +110,12 @@ n = len(calls)
 r = client.post("/purchasing/other/mark", headers=host, data={"key": "The Williams Collective|8",
                                                              "supplier": "__other__"})
 check("Other… with no name is refused before anything runs", len(calls) == n and r.status_code in (302, 303))
-check("version is 3.94 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 94))
+check("version is 3.95 or later", tuple(map(int, portal.APP_VERSION.split("."))) >= (3, 95))
+r = client.post("/purchasing/other/mark", headers=host, data={"supplier": "SanMar"})
+check("nothing ticked: refused, and sent to the top of the page where the message shows",
+      len(calls) == n and r.status_code in (302, 303) and "#" not in r.headers["Location"])
+check("other-supplier lines start ticked; out-of-stock lines do not",
+      'value="The Williams Collective|8" checked' in html and 'value="Steeple &amp; Stitch|9" checked' not in html)
 
 # The Other… box appears only when Other… is picked (a real browser).
 try:
@@ -128,9 +133,19 @@ else:
         pg.locator("select.pu-supplier").last.select_option("__other__")
         shown = pg.locator('input[name="supplier_new"]').last.is_visible()
         req = pg.locator('input[name="supplier_new"]').last.evaluate("e => e.required")
+        # nothing ticked -> stays on the page with the message beside the button
+        pg.set_content(page_html)
+        frm = pg.locator("form:has(select.pu-supplier)").last
+        frm.locator('input[name="key"]').uncheck()
+        frm.locator("button:has-text('Mark ticked as ordered')").click()
+        pg.wait_for_timeout(200)
+        err = pg.locator(".pu-tickerr").last.inner_text() if pg.locator(".pu-tickerr").count() else ""
+        qw = pg.locator("table input.pu-qty").last.evaluate("e => e.getBoundingClientRect().width")
         b.close()
     check("the New supplier box shows only when Other… is picked, and is then required",
           hidden_before and shown and req)
+    check("clicking with nothing ticked says so beside the button", "Tick at least one line" in err)
+    check("the Qty bought box is narrow", qw < 110)
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{ok} passed, {fail} failed")

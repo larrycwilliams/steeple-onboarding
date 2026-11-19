@@ -117,7 +117,11 @@
   .pu-addgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 14px;margin-top:12px}
   .pu-addgrid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;margin:0;min-width:0}
   .pu-addgrid input,.pu-addgrid select{width:100%;box-sizing:border-box}
-  .pu-qty{width:4.5em;text-align:right}
+  .pu-addgrid label[hidden]{display:none}
+  table input.pu-qty{width:5.5em;max-width:5.5em;text-align:right;padding:6px 8px}
+  select.pu-supplier{-webkit-appearance:none;appearance:none;min-height:40px;padding-right:30px;
+    background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b6b6b'/%3E%3C/svg%3E") no-repeat right 12px center}
+  .pu-tickerr{color:#B4443C;font-weight:600}
   .pu-elsewhere{margin-top:8px}
   .pu-elsewhere summary{cursor:pointer;font-size:13px;color:var(--muted,#6b6b6b)}
   .pu-addgrid .wide-field{grid-column:1/-1}
@@ -550,7 +554,7 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
         <thead><tr><th></th><th>Order</th><th>Item</th><th class="num">Qty bought</th><th class="num">Age</th></tr></thead>
         <tbody>
         {% for u in g.lines %}
-          <tr class="{{ 'bad' if u.overdue }}"><td class="pu-check"><input type="checkbox" name="key" value="{{ u.key }}"></td>
+          <tr class="{{ 'bad' if u.overdue }}"><td class="pu-check"><input type="checkbox" name="key" value="{{ u.key }}" checked></td>
               <td>{{ order_ref(u.order, u.order_id) }}</td>
               <td>{{ u.title }}{% if u.variant_title %} / {{ u.variant_title }}{% endif %}</td>
               <td class="num"><input class="pu-qty" type="text" inputmode="numeric" name="qty:{{ u.key }}" value="{{ u.qty }}" aria-label="Qty bought"></td>
@@ -563,7 +567,7 @@ Everything below is from {{ proposal_time or 'an earlier refresh' }} and cannot 
       </div>
       <div class="actions">
         <button class="btn btn-primary" type="submit">Mark ticked as ordered</button>
-        <span class="pu-when">Tick the lines you bought. They move to Awaiting product.</span>
+        <span class="pu-when">Every line is ticked — untick any you did not buy. They move to Awaiting product.</span>
       </div>
     </form>
   </div>
@@ -770,6 +774,22 @@ document.querySelectorAll("select.pu-supplier").forEach(function (sel) {
     });
   }
   sel.addEventListener("change", sync); sync();
+});
+// 3.95: a form posted with nothing ticked used to come back with its message
+// at the top of the page, out of sight, so it looked like nothing happened.
+document.querySelectorAll("select.pu-supplier").forEach(function (sel) {
+  var form = sel.closest("form");
+  form.addEventListener("submit", function (e) {
+    if (form.querySelector('input[name="key"]:checked')) return;
+    e.preventDefault();
+    var msg = form.querySelector(".pu-tickerr");
+    if (!msg) {
+      msg = document.createElement("span");
+      msg.className = "pu-tickerr"; msg.setAttribute("role", "alert");
+      form.querySelector(".actions").appendChild(msg);
+    }
+    msg.textContent = "Tick at least one line first.";
+  });
 });
 </script>
 {% endblock %}

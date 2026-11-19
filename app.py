@@ -58,7 +58,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.94"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.95"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -2532,10 +2532,15 @@ def purchasing_receive():
 def purchasing_other_mark():
     """Lines bought from another supplier (doc 61). Not owner-only, like mark."""
     supplier, url = purchasing.pick_supplier(request.form)
+    # 3.95: a refusal goes back to the TOP of the page, where the message is.
+    # (#other jumped past it, so the click looked like it did nothing.)
     if not supplier:
         flash("Not changed — pick the supplier (or type one under Other…).", "error")
-        return _purchasing_back("other")
+        return _purchasing_back()
     keys = request.form.getlist("key")
+    if not keys:
+        flash("Not changed — tick the line(s) you bought, then click Mark ticked as ordered.", "error")
+        return _purchasing_back()
     qtys = {k: request.form.get(f"qty:{k}", "") for k in keys}
     result = purchasing.mark_other(keys, supplier, request.form.get("supplier_order", ""),
                                    request.form.get("cost", ""), qtys=qtys,
@@ -2547,9 +2552,9 @@ def purchasing_other_mark():
               if result["changed"] else "Nothing changed.", "ok")
         if result.get("stale"):
             flash(result["stale"], "error")
-        return _purchasing_back("awaiting" if result["changed"] else "other")
+        return _purchasing_back("awaiting" if result["changed"] else "")
     flash(f"Not changed — {result['error']}", "error")
-    return _purchasing_back("other")
+    return _purchasing_back()
 
 
 @app.route("/purchasing/other/unmark", methods=["POST"])
