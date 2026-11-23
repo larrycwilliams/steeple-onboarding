@@ -837,6 +837,22 @@ def style_options(style: str) -> dict:
             "sizes": [str(c) for c in doc.get("sizes") or []]}
 
 
+STYLE_SEARCH_TIMEOUT = 120   # the first search reads S&S's whole style list (then cached a week)
+
+
+def style_search(q: str, limit: int = 10) -> dict:
+    """S&S styles matching what was typed ("comfort 1717", "cc 1717") -- 3.96.
+    [{style, title, brand, category}], best first. Read-only."""
+    q = " ".join(str(q or "").split())[:80]
+    if len(q) < 2:
+        return {"ok": True, "error": "", "styles": []}
+    result = _run(_argv("styles", q, "--limit", str(max(1, min(int(limit), 25)))), STYLE_SEARCH_TIMEOUT)
+    doc = result["doc"] or {}
+    rows = [{k: str(r.get(k) or "") for k in ("style", "title", "brand", "category")}
+            for r in doc.get("styles") or [] if isinstance(r, dict) and r.get("style")]
+    return {"ok": result["ok"], "error": result["error"], "styles": rows}
+
+
 # ------------------------------------------------------------------ S&S order status (doc 62)
 
 def check_ss_status() -> dict:

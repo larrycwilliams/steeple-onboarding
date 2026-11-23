@@ -109,6 +109,47 @@ def blank() -> dict:
                        "placement": ""}]}
 
 
+# 3.96: "S 5, M 8, L 20" (or "3xl - 2 2xl - 5 ...") typed in Size: one item
+# per size, each with its own qty. One size per item is how Shopify, S&S and
+# the press all count, so the split happens here rather than being refused.
+_PAIR = r"([A-Za-z0-9/]*[A-Za-z][A-Za-z0-9/]*)\s*[-:=]?\s*(\d{1,3})"
+_BREAKDOWN = re.compile(r"\s*(?:" + _PAIR + r"\s*[,;]?\s*){2,}")
+
+
+def size_breakdown(text: str) -> list[tuple[str, int]]:
+    """[(size, qty), ...] when text lists two or more sizes with counts, else []."""
+    text = str(text or "")
+    if not _BREAKDOWN.fullmatch(text):
+        return []
+    pairs = [(sz, int(n)) for sz, n in re.findall(_PAIR, text)]
+    return pairs if len(pairs) >= 2 and all(n > 0 for _, n in pairs) else []
+
+
+def _split_sizes(lines: list[dict]) -> list[dict]:
+    out = []
+    for row in lines:
+        pairs = size_breakdown(row.get("size", "")) if row.get("kind") in ("ss", "supplier") else []
+        if not pairs:
+            out.append(row)
+            continue
+        total = sum(n for _, n in pairs)
+        typed = row.get("qty", "")
+        for sz, n in pairs:
+            out.append({**row, "size": sz, "qty": str(n),
+                        "_split": f"{len(pairs)} sizes, {total} in all"
+                                  + (f" (the Qty box said {typed})" if typed.isdigit() and typed not in ("1", str(total)) else "")})
+    return out
+
+
+def _canon(value: str, options: list[str]) -> str:
+    """The S&S spelling of a colour or size typed in another case ('3xl' -> '3XL')."""
+    v = " ".join(str(value or "").split())
+    for o in options:
+        if o.casefold() == v.casefold():
+            return o
+    return v
+
+
 def read_form(form) -> dict:
     if form is None:
         return blank()
@@ -131,6 +172,7 @@ def read_form(form) -> dict:
         if not any(row[k] for k in ("variant", "title", "style", "supplier", "price")):
             continue
         lines.append(row)
+    lines = _split_sizes(lines)[:MAX_LINES]
     f["lines"] = lines or blank()["lines"]
     f["_empty"] = not lines
     return f
@@ -210,12 +252,16 @@ def preview(form) -> dict:
             if n:
                 found[n["id"]] = n
     styles_seen: dict[str, dict] = {}
+    seen_splits: set = set()
     for i, l in enumerate(f["lines"], 1):
         tag = f"Line {i}"
         qty = int(l["qty"]) if l["qty"].isdigit() else 0
         if not 1 <= qty <= 999:
             b.append(f"{tag}: quantity must be 1–999.")
         row = {"n": i, "kind": l["kind"], "qty": qty}
+        if l.get("_split") and l["_split"] not in seen_splits:
+            seen_splits.add(l["_split"])
+            w.append(f"{tag}: the size list was split into one item per size — {l['_split']}.")
         if l["kind"] == "product":
             v = found.get(l["variant"])
             if not v:
@@ -246,8 +292,13 @@ def preview(form) -> dict:
                         styles_seen[style] = purchasing.style_options(style)
                     opt = styles_seen[style]
                     if not opt.get("ok"):
-                        b.append(f"{tag}: S&S does not know style “{style}” ({opt.get('error') or 'no answer'}).")
+                        hits = [h["style"] for h in purchasing.style_search(style, 4).get("styles") or []]
+                        b.append(f"{tag}: S&S does not know style “{style}”"
+                                 + (f" — did you mean {', '.join(hits)}?" if hits
+                                    else " — type the brand and number, e.g. Comfort Colors 1717."))
                     else:
+                        l["color"] = _canon(l["color"], opt["colors"])
+                        l["size"] = _canon(l["size"], opt["sizes"])
                         if l["color"] not in opt["colors"]:
                             b.append(f"{tag}: “{l['color'] or '(no colour)'}” is not an S&S colour of {style}.")
                         if l["size"] not in opt["sizes"]:

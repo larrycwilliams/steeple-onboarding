@@ -82,6 +82,9 @@ twc_shop.domain = lambda: "254cba-03.myshopify.com"
 STYLE = {"Gildan 64000": {"ok": True, "error": "", "colors": ["Iris", "Natural", "Sport Grey"],
                           "sizes": ["S", "M", "L", "XL", "2XL", "3XL"]}}
 purchasing.style_options = lambda s: STYLE.get(s, {"ok": False, "error": "S&S returned nothing", "colors": [], "sizes": []})
+purchasing.style_search = lambda q, limit=10: {"ok": True, "error": "", "styles": [
+    {"style": "Gildan 64000", "title": "Softstyle T-Shirt", "brand": "Gildan", "category": "T-Shirts"}]
+    if "64" in q or "gild" in q.lower() else []}
 
 
 def form(**kw):
@@ -121,6 +124,22 @@ check("colour and size are checked against S&S, not guessed",
       and any("“5XL” is not an S&S size" in b for b in bad["blocking"]))
 bad = mo.preview(form(l_style=["Gildn 6400", "Gildan 64000", "", ""]))
 check("an unknown S&S style blocks", any("does not know style" in b for b in bad["blocking"]))
+check("an unknown style suggests the real one",
+      any("did you mean Gildan 64000?" in b for b in bad["blocking"]))
+# 3.96: a size list in one item -> one item per size
+check("size lists are recognised", mo.size_breakdown("3xl - 2 2xl - 5 Xl - 7 L - 20 M - 8 S - 5") ==
+      [("3xl", 2), ("2xl", 5), ("Xl", 7), ("L", 20), ("M", 8), ("S", 5)]
+      and mo.size_breakdown("S 5, M 8") == [("S", 5), ("M", 8)]
+      and mo.size_breakdown("M/L") == [] and mo.size_breakdown("2XL") == [] and mo.size_breakdown("") == [])
+sp_ = mo.preview(form(l_kind=["ss"], l_variant=[""], l_title=["Homesick for Heaven tee"], l_style=["Gildan 64000"],
+                      l_color=["iris"], l_size=["3xl - 2 2xl - 5 Xl - 7 L - 20 M - 8 S - 5"], l_supplier=[""],
+                      l_supplier_url=[""], l_qty=["47"], l_price=["19"], l_decoration=["DTF"], l_placement=["Front"]))
+check("a size list in one item previews as one item per size, 47 in all, $893",
+      sp_["ok"] and [(r["qty"]) for r in sp_["lines"]] == [2, 5, 7, 20, 8, 5] and sp_["subtotal"] == 893.0)
+a = {x["key"]: x["value"] for x in sp_["lines"][0]["attrs"]}
+check("sizes and colours typed in another case take S&S's spelling ('3xl' -> '3XL', 'iris' -> 'Iris')",
+      a["_ss_size"] == "3XL" and a["_ss_color"] == "Iris" and sp_["form"]["lines"][2]["size"] == "XL")
+check("the split is explained once, as a warning", sum("split into one item per size" in x for x in sp_["warnings"]) == 1)
 bad = mo.preview(form(l_supplier=["", "", "", ""]))
 check("an other-supplier line needs a supplier", any("name the supplier" in b for b in bad["blocking"]))
 bad = mo.preview(form(email="", phone=""))
@@ -239,7 +258,16 @@ try:
         pg.fill("#first", "Dana"); pg.fill("#email", "dana@example.com")
         first = pg.locator(".mo-line").nth(0)
         first.locator("[name=l_title]").fill("Crew tee — left chest logo")
+        first.locator("[name=l_style]").fill("gild")
+        pg.wait_for_function("() => { const i = document.querySelector('[name=l_style]');"
+                             " const d = i.list; return d && d.options.length > 0; }", timeout=5000)
+        opts = first.locator("[name=l_style]").evaluate("i => [...i.list.options].map(o => o.value)")
+        check("browser: typing part of a style lists matching S&S styles", opts == ["Gildan 64000"])
         first.locator("[name=l_style]").fill("Gildan 64000")
+        first.locator("[name=l_style]").dispatch_event("change")
+        pg.wait_for_function("() => document.querySelector('[data-stylehint]').textContent.includes('✓')", timeout=5000)
+        check("browser: a known style says so under the box (colours · sizes)",
+              "3 colours · S–3XL" in first.locator("[data-stylehint]").inner_text())
         first.locator("[name=l_color]").fill("Iris"); first.locator("[name=l_size]").fill("M")
         first.locator("[name=l_qty]").fill("6"); first.locator("[name=l_price]").fill("12.50")
         pg.click("#mo-add")

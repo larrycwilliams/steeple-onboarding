@@ -37,6 +37,9 @@
   @media (max-width:899px){.mo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media (max-width:599px){.mo-grid,.mo-grid.two{grid-template-columns:minmax(0,1fr)}
     .mo-recent .row{grid-template-columns:minmax(0,1fr)}}
+  .mo-hint{margin-top:4px;min-height:1em;color:var(--muted,#6b6b6b)}
+  .mo-hint.ok{color:#3F7A52}
+  .mo-hint.bad{color:#B4443C}
 </style>
 
 <div class="mo-head">
@@ -94,7 +97,7 @@
               <select name="l_variant" data-pvariant><option value="{{ l.variant }}">{{ (d.lines|selectattr('n','equalto',loop.index)|map(attribute='title')|first) or ('— pick after searching —' if not l.variant else l.variant) }}</option></select></div></div>
           <div data-for="ss supplier" style="grid-column:1/-1"><label>Item name (customer sees this)</label>
             <input type="text" name="l_title" value="{{ l.title }}" placeholder="e.g. Staff tee — left chest logo"></div>
-          <div data-for="ss"><label>S&amp;S style</label><input type="text" name="l_style" value="{{ l.style }}" list="mo-styles" placeholder="Gildan 64000" data-style></div>
+          <div data-for="ss"><label>S&amp;S style</label><input type="text" name="l_style" value="{{ l.style }}" list="mo-styles" placeholder="Type to search: comfort 1717" autocomplete="off" data-style><div class="small mo-hint" data-stylehint></div></div>
           <div data-for="supplier"><label>Supplier</label><input type="text" name="l_supplier" value="{{ l.supplier }}" placeholder="Lunar Headwear"></div>
           <div data-for="ss supplier"><label>Colour</label><input type="text" name="l_color" value="{{ l.color }}" data-colors></div>
           <div data-for="ss supplier"><label>Size</label><input type="text" name="l_size" value="{{ l.size }}" data-sizes></div>
@@ -109,7 +112,7 @@
       {% endfor %}
     </div>
     <button type="button" class="btn btn-quiet" id="mo-add">+ Add item</button>
-    <p class="small" style="margin:8px 0 0">One size or colour per item: 6 Medium and 4 Large of the same shirt are two items. S&amp;S colours and sizes fill in once the style is typed.</p>
+    <p class="small" style="margin:8px 0 0">Type part of the S&amp;S style (brand, number or words like “comfort 1717”) and pick it from the list; its colours and sizes then fill in. One colour per item. For several sizes, type them in Size — <i>S 5, M 8, L 20, XL 7</i> — and Preview splits them into one item per size.</p>
   </div>
 
   <div class="mo-card">
@@ -191,7 +194,14 @@
       if (box.querySelectorAll('.mo-line').length > 1) { el.remove(); renumber(); }
     });
     var st = el.querySelector('[data-style]');
-    if (st) st.addEventListener('change', function () { styleLists(el, st.value); });
+    if (st) {
+      st.addEventListener('change', function () { styleLists(el, st.value); });
+      var ts;
+      st.addEventListener('input', function () {
+        clearTimeout(ts);
+        ts = setTimeout(function () { styleSearch(el, st); }, 300);
+      });
+    }
     var ps = el.querySelector('[data-psearch]');
     if (ps) {
       var t;
@@ -215,10 +225,40 @@
     }
     if (st && st.value) styleLists(el, st.value);
   }
+  // 3.96: search S&S styles as you type; the matches fill this box's list.
+  function styleSearch(el, st) {
+    var q = st.value.trim();
+    if (q.length < 2) return;
+    var hint = el.querySelector('[data-stylehint]');
+    fetch('{{ url_for("purchasing_style_search") }}?q=' + encodeURIComponent(q))
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (st.value.trim() !== q) return;            // typed on since
+        var id = st.getAttribute('data-dl') || ('st-' + Math.random().toString(36).slice(2));
+        var dl = document.getElementById(id);
+        if (!dl) { dl = document.createElement('datalist'); dl.id = id; el.appendChild(dl); }
+        dl.innerHTML = '';
+        (j.styles || []).forEach(function (s) {
+          var o = document.createElement('option'); o.value = s.style; o.label = s.title; dl.appendChild(o);
+        });
+        st.setAttribute('data-dl', id); st.setAttribute('list', id);
+        if (hint && !(j.styles || []).some(function (s) { return s.style.toLowerCase() === q.toLowerCase(); })) {
+          hint.textContent = j.ok ? ((j.styles || []).length ? 'Pick one from the list.' : 'No S&S style matches that.')
+                                  : 'Could not search S&S just now.';
+          hint.className = 'small mo-hint';
+        }
+      });
+  }
   function styleLists(el, style) {
     if (!style.trim()) return;
+    var hint = el.querySelector('[data-stylehint]');
     fetch('{{ url_for("purchasing_style") }}?style=' + encodeURIComponent(style))
       .then(function (r) { return r.json(); }).then(function (j) {
+        if (hint) {
+          hint.textContent = j.ok ? '✓ ' + j.colors.length + ' colours · ' + (j.sizes[0] || '') +
+                                    (j.sizes.length > 1 ? '–' + j.sizes[j.sizes.length - 1] : '')
+                                  : 'S&S does not know this style — pick one from the list.';
+          hint.className = 'small mo-hint ' + (j.ok ? 'ok' : 'bad');
+        }
         if (!j.ok) return;
         [['data-colors', j.colors], ['data-sizes', j.sizes]].forEach(function (p) {
           var input = el.querySelector('[' + p[0] + ']');
@@ -240,6 +280,7 @@
     });
     var q = copy.querySelector('[name=l_qty]'); if (q) q.value = '1';
     copy.querySelectorAll('datalist').forEach(function (d) { d.remove(); });
+    var cst = copy.querySelector('[data-style]'); if (cst) { cst.removeAttribute('data-dl'); cst.setAttribute('list', 'mo-styles'); }
     box.appendChild(copy);
     renumber(); wire(copy);
     var kv = copy.querySelector('[data-kindval]').value;

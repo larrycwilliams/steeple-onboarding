@@ -58,7 +58,7 @@ from onboarding.shopify_pull import fetch_collection
 
 ROOT = Path(__file__).resolve().parent
 
-APP_VERSION = "3.95"   # shown in the header so you can tell a stale process at a glance
+APP_VERSION = "3.96"   # shown in the header so you can tell a stale process at a glance
 # 3.28 and .29 skipped on purpose: the hub was reported showing 3.29 while the
 # newest commit on main set 3.27, so a number in that range would be ambiguous
 # exactly where this one is meant to settle an argument. Never go backwards.
@@ -2652,6 +2652,12 @@ def purchasing_dtf_file():
 def purchasing_style():
     """Colours and sizes S&S has for one style -- the Add form's lists. Read-only."""
     return jsonify(purchasing.style_options(request.args.get("style", "")))
+
+
+@app.route("/purchasing/style-search")
+def purchasing_style_search():
+    """S&S styles matching typed words, for the style boxes. Read-only (3.96)."""
+    return jsonify(purchasing.style_search(request.args.get("q", "")))
 
 
 # ------------------------------------------------------------ manual orders (3.90)
